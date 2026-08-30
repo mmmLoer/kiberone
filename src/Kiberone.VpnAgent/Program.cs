@@ -1,19 +1,15 @@
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using Kiberone.Vpn;
 using Kiberone.VpnAgent;
-using Kiberone.VpnAgent.WireGuard;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
 
-// Official embeddable-dll-service entry: same EXE with /service <conf>
-if (args is ["/service", var configFile, ..])
-{
-    var ok = TunnelService.Run(configFile);
-    return ok ? 0 : 1;
-}
+if (VpnServiceEntry.TryRunService(args, out var serviceExit))
+    return serviceExit;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseWindowsService(options => options.ServiceName = "KiberoneVpnAgent");
@@ -25,13 +21,18 @@ builder.Services.AddSingleton(sp =>
     opts.Validate();
     return opts;
 });
-builder.Services.AddSingleton<VpnTunnelManager>();
+builder.Services.AddSingleton(sp =>
+{
+    var opts = sp.GetRequiredService<VpnAgentOptions>();
+    return new VpnController(new VpnOptions { ConfigPath = opts.ConfigPath, RequireBridge = false });
+});
 
 var earlyOptions = builder.Configuration.GetSection(VpnAgentOptions.SectionName).Get<VpnAgentOptions>() ?? new VpnAgentOptions();
 builder.WebHost.UseUrls($"http://0.0.0.0:{earlyOptions.Port}");
 
 var app = builder.Build();
 var options = app.Services.GetRequiredService<VpnAgentOptions>();
+var vpn = app.Services.GetRequiredService<VpnController>();
 var allowlist = options.ParseAllowlist();
 
 app.Use(async (context, next) =>
@@ -69,33 +70,12 @@ app.Use(async (context, next) =>
 
 app.MapGet("/health", () => Results.Ok(new { ok = true, service = "Kiberone.VpnAgent", version = "0.1.0" }));
 app.MapGet("/v1/health", () => Results.Ok(new { ok = true, service = "Kiberone.VpnAgent", version = "0.1.0" }));
-
-app.MapGet("/v1/status", (VpnTunnelManager vpn) => Results.Ok(vpn.Status()));
-app.MapPost("/v1/connect", (VpnTunnelManager vpn) =>
-{
-    try { return Results.Ok(vpn.Connect()); }
-    catch (FileNotFoundException ex) { return Results.NotFound(new { error = ex.Message }); }
-    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
-});
-app.MapPost("/v1/disconnect", (VpnTunnelManager vpn) =>
-{
-    try { return Results.Ok(vpn.Disconnect()); }
-    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
-});
-
-// Flat aliases for simple router scripts
-app.MapGet("/status", (VpnTunnelManager vpn) => Results.Ok(vpn.Status()));
-app.MapPost("/connect", (VpnTunnelManager vpn) =>
-{
-    try { return Results.Ok(vpn.Connect()); }
-    catch (FileNotFoundException ex) { return Results.NotFound(new { error = ex.Message }); }
-    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
-});
-app.MapPost("/disconnect", (VpnTunnelManager vpn) =>
-{
-    try { return Results.Ok(vpn.Disconnect()); }
-    catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
-});
+app.MapGet("/v1/status", () => Results.Ok(vpn.GetStatus()));
+app.MapPost("/v1/connect", () => Results.Ok(vpn.Connect()));
+app.MapPost("/v1/disconnect", () => Results.Ok(vpn.Disconnect()));
+app.MapGet("/status", () => Results.Ok(vpn.GetStatus()));
+app.MapPost("/connect", () => Results.Ok(vpn.Connect()));
+app.MapPost("/disconnect", () => Results.Ok(vpn.Disconnect()));
 
 app.Logger.LogInformation("Kiberone.VpnAgent listening on 0.0.0.0:{Port}, config={Config}", options.Port, options.ConfigPath);
 await app.RunAsync();

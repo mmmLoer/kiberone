@@ -38,7 +38,11 @@ public sealed class StudentFileSyncClient
         if (pending is null)
         {
             var changes = BuildChanges(accepted, current);
-            if (changes.Count == 0) return;
+            if (changes.Count == 0)
+            {
+                Raise("Актуально", 0);
+                return;
+            }
             var request = new SyncPrepareRequest(clientId, changes, accepted.Count > 0, current.Count == 0, 5);
             using var response = await http.PostAsJsonAsync("/sync/prepare", request, JsonOptions, ct);
             response.EnsureSuccessStatusCode();

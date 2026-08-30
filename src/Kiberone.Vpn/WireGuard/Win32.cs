@@ -2,7 +2,7 @@
 
 using System.Runtime.InteropServices;
 
-namespace Kiberone.VpnAgent.WireGuard;
+namespace Kiberone.Vpn.WireGuard;
 
 internal static class Win32
 {

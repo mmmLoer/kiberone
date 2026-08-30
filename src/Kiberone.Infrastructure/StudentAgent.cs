@@ -52,6 +52,8 @@ public sealed class StudentAgent : IAsyncDisposable
     public Func<byte[]?>? ScreenProvider { get; set; }
     public Func<bool>? FocusModeStateProvider { get; set; }
     public Func<bool>? WatchdogStateProvider { get; set; }
+    public Func<ClassroomCommand, CommandExecutionResult>? VpnCommandHandler { get; set; }
+    public Func<bool>? VpnStateProvider { get; set; }
     public event Action<StudentConnectionState>? ConnectionChanged;
     public event Action<ClassroomCommand>? CommandReceived;
     public event Action<StudentSyncState>? SyncStateChanged;
@@ -147,7 +149,12 @@ public sealed class StudentAgent : IAsyncDisposable
             BuildInfo.Version,
             studentId,
             null,
-            new ClientRuntimeInfo(WatchdogStateProvider?.Invoke() ?? false, FocusModeStateProvider?.Invoke() ?? false, string.Empty, null));
+            new ClientRuntimeInfo(
+                WatchdogStateProvider?.Invoke() ?? false,
+                FocusModeStateProvider?.Invoke() ?? false,
+                string.Empty,
+                null,
+                VpnStateProvider?.Invoke() ?? false));
         using var response = await http.PostAsJsonAsync("/heartbeat", heartbeat, JsonOptions, cancellationToken);
         response.EnsureSuccessStatusCode();
         var settings = await response.Content.ReadFromJsonAsync<HeartbeatResponse>(JsonOptions, cancellationToken);
@@ -175,9 +182,10 @@ public sealed class StudentAgent : IAsyncDisposable
                 if (command.Kind == ClassroomCommandKinds.SyncNow) nextSyncAt = DateTimeOffset.MinValue;
                 if (command.Kind == ClassroomCommandKinds.Configure && command.Payload.TryGetProperty("sync_seconds", out var seconds) && seconds.TryGetInt32(out var configured))
                     syncSeconds = Math.Clamp(configured, 15, 3600);
-                result = CommandHandler is null
-                    ? new CommandExecutionResult(false, "Обработчик команд не настроен.")
-                    : await CommandHandler(command, cancellationToken);
+                result = TryHandleVpnCommand(command)
+                    ?? (CommandHandler is null
+                        ? new CommandExecutionResult(false, "Обработчик команд не настроен.")
+                        : await CommandHandler(command, cancellationToken));
             }
             catch (Exception error)
             {
@@ -303,6 +311,28 @@ public sealed class StudentAgent : IAsyncDisposable
             .Select(network => network.GetPhysicalAddress().ToString())
             .FirstOrDefault(value => value.Length >= 12);
         return string.IsNullOrWhiteSpace(address) ? $"host-{Environment.MachineName.ToLowerInvariant()}" : address.ToLowerInvariant();
+    }
+
+    private CommandExecutionResult? TryHandleVpnCommand(ClassroomCommand command)
+    {
+        if (command.Kind is not (
+            ClassroomCommandKinds.VpnConnect
+            or ClassroomCommandKinds.VpnDisconnect
+            or ClassroomCommandKinds.VpnStatus
+            or ClassroomCommandKinds.VpnInstallConfig))
+            return null;
+
+        if (VpnCommandHandler is null)
+            return new CommandExecutionResult(false, "VPN не настроен на этом ПК.");
+
+        try
+        {
+            return VpnCommandHandler(command);
+        }
+        catch (Exception error)
+        {
+            return new CommandExecutionResult(false, error.Message);
+        }
     }
 
     public async ValueTask DisposeAsync()

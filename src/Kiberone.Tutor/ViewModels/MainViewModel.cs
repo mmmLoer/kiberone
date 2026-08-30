@@ -82,7 +82,11 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [ObservableProperty] private bool enableStudentUpdates = true;
     [ObservableProperty] private string locationName = "KIBERone Classroom";
     [ObservableProperty] private string settingsStatus = "Настройки действуют только на этом Tutor.";
+    [ObservableProperty] private string vpnConfigsFolder = string.Empty;
+    [ObservableProperty] private string vpnDistributionStatus = "Укажите папку с .conf файлами — конфиги раздадутся ученикам автоматически.";
     [ObservableProperty] private int selectedSectionIndex;
+
+    public Func<Task<string?>>? VpnConfigsFolderPicker { get; set; }
 
     public bool IsSection0 => SelectedSectionIndex == 0;
     public bool IsSection1 => SelectedSectionIndex == 1;
@@ -139,14 +143,36 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
 
     public void RefreshClients()
     {
-        ConnectedClientCount = clients.GetAll().Count(client => client.IsOnline);
+        var online = clients.GetAll().Where(client => client.IsOnline).ToList();
+        ConnectedClientCount = online.Count;
+        var vpnCount = online.Count(client => client.Extra.VpnConnected);
         ConnectedClientLabel = ConnectedClientCount switch
         {
             0 => "Нет учеников",
-            1 => "1 ученик онлайн",
-            _ => $"{ConnectedClientCount} учеников онлайн"
+            1 => vpnCount == 1 ? "1 ученик онлайн · VPN вкл" : "1 ученик онлайн",
+            _ => vpnCount > 0
+                ? $"{ConnectedClientCount} учеников онлайн · VPN: {vpnCount}"
+                : $"{ConnectedClientCount} учеников онлайн"
         };
+        RefreshVpnDistributionStatus(online);
     }
+
+    private void RefreshVpnDistributionStatus(IReadOnlyList<ClassroomClientSnapshot> onlineClients)
+    {
+        if (string.IsNullOrWhiteSpace(VpnConfigsFolder) || !Directory.Exists(VpnConfigsFolder))
+        {
+            VpnDistributionStatus = string.IsNullOrWhiteSpace(VpnConfigsFolder)
+                ? "Укажите папку с .conf файлами — конфиги раздадутся ученикам автоматически."
+                : $"Папка не найдена: {VpnConfigsFolder}";
+            return;
+        }
+
+        var configCount = Directory.GetFiles(VpnConfigsFolder, "*.conf", SearchOption.TopDirectoryOnly).Length;
+        var assignments = VpnConfigDistributor.Assign(onlineClients, VpnConfigsFolder);
+        VpnDistributionStatus = VpnConfigDistributor.DescribeAssignments(assignments, onlineClients.Count, configCount);
+    }
+
+    partial void OnVpnConfigsFolderChanged(string value) => RefreshVpnDistributionStatus(clients.GetAll().Where(client => client.IsOnline).ToList());
 
     public Task RefreshScreensAsync()
     {
@@ -220,7 +246,29 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [RelayCommand] private void WatchdogAllOn() => SendClassCommand(ClassroomCommandKinds.WatchdogOn, new { });
     [RelayCommand] private void WatchdogAllOff() => SendClassCommand(ClassroomCommandKinds.WatchdogOff, new { });
     [RelayCommand] private void SyncAllNow() => SendClassCommand(ClassroomCommandKinds.SyncNow, new { });
+    [RelayCommand] private Task VpnAllOnAsync() => EnableVpnForClassAsync();
+    [RelayCommand] private void VpnAllOff() => SendClassCommand(ClassroomCommandKinds.VpnDisconnect, new { });
     [RelayCommand] private void SendMessageAll() => SendClassCommand(ClassroomCommandKinds.Message, new { text = ClassroomMessage });
+
+    [RelayCommand]
+    private async Task PickVpnConfigsFolderAsync()
+    {
+        if (VpnConfigsFolderPicker is null)
+        {
+            HasError = true;
+            StatusMessage = "Выбор папки недоступен в этом окне.";
+            return;
+        }
+
+        var selected = await VpnConfigsFolderPicker();
+        if (string.IsNullOrWhiteSpace(selected))
+            return;
+
+        VpnConfigsFolder = selected;
+        SaveSettings();
+        HasError = false;
+        StatusMessage = $"Папка VPN-конфигов: {selected}";
+    }
 
     [RelayCommand]
     private void StartLiveLesson()
@@ -253,7 +301,13 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     {
         ScreenRefreshSeconds = Math.Clamp(ScreenRefreshSeconds, 5, 300);
         SyncIntervalSeconds = Math.Clamp(SyncIntervalSeconds, 5, 600);
-        var settings = new TutorLocalSettings(LocationName.Trim(), ScreenRefreshSeconds, SyncIntervalSeconds, AutoApproveSafeFiles, EnableStudentUpdates);
+        var settings = new TutorLocalSettings(
+            LocationName.Trim(),
+            ScreenRefreshSeconds,
+            SyncIntervalSeconds,
+            AutoApproveSafeFiles,
+            EnableStudentUpdates,
+            VpnConfigsFolder.Trim());
         var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KIBERone", "Tutor");
         Directory.CreateDirectory(directory);
         File.WriteAllText(Path.Combine(directory, "settings.json"), JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
@@ -273,6 +327,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             SyncIntervalSeconds = saved.SyncIntervalSeconds;
             AutoApproveSafeFiles = saved.AutoApproveSafeFiles;
             EnableStudentUpdates = saved.EnableStudentUpdates;
+            VpnConfigsFolder = saved.VpnConfigsFolder ?? string.Empty;
             SettingsStatus = "Локальные настройки загружены.";
         }
         catch (Exception error)
@@ -331,6 +386,67 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             var command = commandQueue.Enqueue(new EnqueueCommandRequest(["__all__"], kind, document.RootElement));
             HasError = false;
             StatusMessage = $"Команда {kind} поставлена в очередь · {command.Id.ToString("N")[..8]}.";
+        }
+        catch (Exception error)
+        {
+            HasError = true;
+            StatusMessage = error.Message;
+        }
+    }
+
+    private void SendClientCommand(string clientId, string kind, object payload)
+    {
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(payload));
+        commandQueue.Enqueue(new EnqueueCommandRequest([clientId], kind, document.RootElement));
+    }
+
+    private async Task EnableVpnForClassAsync()
+    {
+        try
+        {
+            var online = clients.GetAll().Where(client => client.IsOnline).ToList();
+            if (online.Count == 0)
+            {
+                HasError = true;
+                StatusMessage = "Нет онлайн-учеников для включения VPN.";
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(VpnConfigsFolder) && Directory.Exists(VpnConfigsFolder))
+            {
+                var assignments = VpnConfigDistributor.Assign(online, VpnConfigsFolder);
+                if (assignments.Count == 0)
+                {
+                    HasError = true;
+                    StatusMessage = "В папке нет .conf файлов или не удалось сопоставить конфиги с учениками.";
+                    RefreshVpnDistributionStatus(online);
+                    return;
+                }
+
+                foreach (var assignment in assignments)
+                {
+                    var content = await File.ReadAllBytesAsync(assignment.ConfigFilePath);
+                    SendClientCommand(
+                        assignment.ClientId,
+                        ClassroomCommandKinds.VpnInstallConfig,
+                        new
+                        {
+                            config_base64 = Convert.ToBase64String(content),
+                            source_name = assignment.ConfigFileName,
+                            auto_connect = true
+                        });
+                }
+
+                var configCount = Directory.GetFiles(VpnConfigsFolder, "*.conf", SearchOption.TopDirectoryOnly).Length;
+                VpnDistributionStatus = VpnConfigDistributor.DescribeAssignments(assignments, online.Count, configCount);
+                HasError = false;
+                StatusMessage = $"VPN: {VpnDistributionStatus}";
+                return;
+            }
+
+            SendClassCommand(ClassroomCommandKinds.VpnConnect, new { });
+            HasError = true;
+            StatusMessage = "Папка с VPN-конфигами не указана. Укажите её в поле выше или установите peer.conf вручную на каждом ПК.";
         }
         catch (Exception error)
         {
@@ -637,7 +753,13 @@ public sealed class StudentCardViewModel(StudentSummary student)
     public override string ToString() => Name;
 }
 
-public sealed record TutorLocalSettings(string LocationName, int ScreenRefreshSeconds, int SyncIntervalSeconds, bool AutoApproveSafeFiles, bool EnableStudentUpdates);
+public sealed record TutorLocalSettings(
+    string LocationName,
+    int ScreenRefreshSeconds,
+    int SyncIntervalSeconds,
+    bool AutoApproveSafeFiles,
+    bool EnableStudentUpdates,
+    string? VpnConfigsFolder = "");
 
 public sealed class WinnerCardViewModel(int place, string name, string group, int xp)
 {

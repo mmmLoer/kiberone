@@ -276,7 +276,12 @@ public sealed class ClassroomServer(
     public async ValueTask DisposeAsync()
     {
         if (app is null) return;
-        await app.StopAsync();
+        using var stopTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        try
+        {
+            await app.StopAsync(stopTimeout.Token);
+        }
+        catch (OperationCanceledException) { }
         await app.DisposeAsync();
         app = null;
     }

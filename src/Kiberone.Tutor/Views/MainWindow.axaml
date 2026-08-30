@@ -492,6 +492,17 @@
                 <Button Content="Включить режим фокуса" Command="{Binding FocusAllOnCommand}" Classes="accent" />
                 <Button Grid.Column="1" Content="Выключить фокус" Command="{Binding FocusAllOffCommand}" Margin="10,0,0,0" />
               </Grid>
+              <TextBlock Text="VPN (WireGuard)" Classes="eyebrow" Margin="0,8,0,0" />
+              <TextBlock Text="Укажите папку с .conf файлами. На каждом ПК ученика один раз установите VPN-службу (install-student-vpn.ps1). Дальше UAC не нужен." Classes="muted" TextWrapping="Wrap" />
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBox Text="{Binding VpnConfigsFolder}" Watermark="Папка с VPN-конфигами" />
+                <Button Grid.Column="1" Content="Обзор…" Command="{Binding PickVpnConfigsFolderCommand}" Margin="10,0,0,0" />
+              </Grid>
+              <TextBlock Text="{Binding VpnDistributionStatus}" Classes="muted" TextWrapping="Wrap" />
+              <Grid ColumnDefinitions="*,*">
+                <Button Content="Включить VPN" Command="{Binding VpnAllOnCommand}" Classes="primary" />
+                <Button Grid.Column="1" Content="Выключить VPN" Command="{Binding VpnAllOffCommand}" Margin="10,0,0,0" />
+              </Grid>
             </StackPanel>
           </Border>
           <Border Grid.Column="1" Classes="card" Margin="18,0,0,0">

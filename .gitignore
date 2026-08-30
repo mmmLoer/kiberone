@@ -17,3 +17,4 @@ TestResults/
 *.exe
 !scripts/**/*.ps1
 src/Kiberone.VpnAgent/native/*.dll
+src/Kiberone.Student/native/*.dll

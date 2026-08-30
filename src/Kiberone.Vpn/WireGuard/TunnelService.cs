@@ -1,16 +1,11 @@
 /* Adapted from WireGuard embeddable-dll-service csharp sample (MIT). */
 
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 
-namespace Kiberone.VpnAgent.WireGuard;
+namespace Kiberone.Vpn.WireGuard;
 
-/// <summary>
-/// Manages a WireGuard tunnel via official tunnel.dll (WireGuardTunnelService).
-/// Service name: WireGuardTunnel${tunnelName} where tunnelName = conf file name without extension.
-/// </summary>
-internal static class TunnelService
+public static class TunnelService
 {
     private const string DisplayPrefix = "KIBERone WireGuard";
     private const string Description = "KIBERone classroom WireGuard tunnel (embeddable-dll-service)";
@@ -34,7 +29,7 @@ internal static class TunnelService
         var shortName = ServiceNameFromConfig(configFile);
         var longName = $"{DisplayPrefix}: {tunnelName}";
         var exeName = Environment.ProcessPath
-            ?? throw new InvalidOperationException("Cannot resolve agent executable path.");
+            ?? throw new InvalidOperationException("Cannot resolve host executable path.");
         var pathAndArgs = $"\"{exeName}\" /service \"{configFile}\"";
 
         var scm = Win32.OpenSCManager(null, null, Win32.ScmAccessRights.AllAccess);
@@ -74,14 +69,13 @@ internal static class TunnelService
                 if (!Win32.ChangeServiceConfig2(service, Win32.ServiceConfigType.SidInfo, ref sidType))
                     throw new Win32Exception(Marshal.GetLastWin32Error());
 
-                var description = new Win32.ServiceDescription { lpDescription = Description };
-                if (!Win32.ChangeServiceConfig2(service, Win32.ServiceConfigType.Description, ref description))
+                var serviceDescription = new Win32.ServiceDescription { lpDescription = Description };
+                if (!Win32.ChangeServiceConfig2(service, Win32.ServiceConfigType.Description, ref serviceDescription))
                     throw new Win32Exception(Marshal.GetLastWin32Error());
 
                 if (!Win32.StartService(service, 0, null))
                     throw new Win32Exception(Marshal.GetLastWin32Error());
 
-                // Mark for deletion after stop — keeps SCM clean for daily connect/disconnect.
                 if (ephemeral && !Win32.DeleteService(service))
                     throw new Win32Exception(Marshal.GetLastWin32Error());
             }
@@ -120,7 +114,6 @@ internal static class TunnelService
                     Thread.Sleep(500);
                 }
 
-                // ERROR_SERVICE_MARKED_FOR_DELETE = 0x430 — already ephemeral
                 if (!Win32.DeleteService(service) && Marshal.GetLastWin32Error() is not (0 or 0x00000430))
                     throw new Win32Exception(Marshal.GetLastWin32Error());
             }
@@ -169,4 +162,4 @@ internal static class TunnelService
     }
 }
 
-internal sealed record TunnelStatus(bool Connected, string State, string ServiceName, string ConfigPath);
+public sealed record TunnelStatus(bool Connected, string State, string ServiceName, string ConfigPath);

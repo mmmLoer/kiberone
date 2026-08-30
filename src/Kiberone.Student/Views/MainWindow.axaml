@@ -789,6 +789,7 @@
                     <StackPanel Spacing="4">
                       <TextBlock Text="Синхронизация" FontWeight="SemiBold"/>
                       <TextBlock Text="{Binding SyncLabel}" Classes="muted" TextWrapping="Wrap"/>
+                      <TextBlock Text="{Binding VpnLabel}" Classes="muted" TextWrapping="Wrap" Margin="0,6,0,0"/>
                     </StackPanel>
                     <TextBlock Grid.Column="1" Text="{Binding UpdateLabel}" Classes="muted" VerticalAlignment="Center" Margin="16,0,0,0"/>
                   </Grid>

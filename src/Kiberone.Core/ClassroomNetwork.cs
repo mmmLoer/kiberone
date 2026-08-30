@@ -21,7 +21,8 @@ public sealed record ClientRuntimeInfo(
     bool WatchdogActive,
     bool FocusModeActive,
     string ActiveApp,
-    int? BatteryPercent);
+    int? BatteryPercent,
+    bool VpnConnected = false);
 
 public sealed record HeartbeatResponse(
     bool Ok,
@@ -91,11 +92,16 @@ public static class ClassroomCommandKinds
     public const string WatchdogOff = "watchdog_off";
     public const string QuizStart = "quiz_start";
     public const string Notification = "notification";
+    public const string VpnConnect = "vpn_connect";
+    public const string VpnDisconnect = "vpn_disconnect";
+    public const string VpnStatus = "vpn_status";
+    public const string VpnInstallConfig = "vpn_install_config";
 
     public static IReadOnlySet<string> SafeKnownKinds { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
         Message, OpenUrl, LockScreen, UnlockScreen, FocusOn, FocusOff,
-        SyncNow, TypingStart, TypingFinish, Configure, WatchdogOn, WatchdogOff, QuizStart, Notification
+        SyncNow, TypingStart, TypingFinish, Configure, WatchdogOn, WatchdogOff, QuizStart, Notification,
+        VpnConnect, VpnDisconnect, VpnStatus, VpnInstallConfig
     };
 }
 

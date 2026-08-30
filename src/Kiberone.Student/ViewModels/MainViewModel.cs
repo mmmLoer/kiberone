@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kiberone.Core;
 using Kiberone.Infrastructure;
+using Kiberone.Vpn;
 using System.Collections.ObjectModel;
 
 namespace Kiberone.Student.ViewModels;
@@ -37,7 +38,8 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private bool isConnected;
     [ObservableProperty] private string connectionLabel = "Ищем тьютора…";
     [ObservableProperty] private string connectionActionMessage = "Поиск Tutor выполняется автоматически.";
-    [ObservableProperty] private string syncLabel = "Подготовка синхронизации…";
+    [ObservableProperty] private string syncLabel = "Ожидаем первую проверку…";
+    [ObservableProperty] private string vpnLabel = "VPN: ожидает команду тьютора";
     [ObservableProperty] private string updateLabel = $"Версия {BuildInfo.Version}";
     [ObservableProperty] private bool hasUpdate;
     [ObservableProperty] private bool isScreenLocked;
@@ -211,6 +213,25 @@ public partial class MainViewModel : ViewModelBase
 
     public void SetSyncState(StudentSyncState state) =>
         SyncLabel = state.PendingChanges > 0 ? $"{state.Status}: {state.PendingChanges}" : state.Status;
+
+    public void SetVpnState(VpnStatus? status, string? detail = null)
+    {
+        if (status?.Connected == true)
+        {
+            VpnLabel = "VPN: подключён";
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(detail))
+        {
+            VpnLabel = detail.Contains("VPN-служба не установлена", StringComparison.Ordinal)
+                ? "VPN: нужна установка службы (один раз от админа)"
+                : $"VPN: {detail}";
+            return;
+        }
+
+        VpnLabel = status?.ConfigExists == true ? "VPN: конфиг есть, не подключён" : "VPN: ожидает команду тьютора";
+    }
 
     public void SetUpdate(StudentUpdateInfo update)
     {
