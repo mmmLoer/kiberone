@@ -1,0 +1,196 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Kiberone.Student.App"
+             xmlns:local="using:Kiberone.Student"
+             RequestedThemeVariant="Light">
+
+    <Application.DataTemplates>
+        <local:ViewLocator />
+    </Application.DataTemplates>
+
+    <Application.Styles>
+        <FluentTheme />
+
+        <!-- KIBERone Student: quiet learning workspace with yellow used only as guidance. -->
+        <Style Selector="Window">
+            <Setter Property="FontFamily" Value="Inter, Segoe UI" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Foreground" Value="#13181D" />
+            <Setter Property="Background" Value="#F6F8F9" />
+        </Style>
+
+        <Style Selector="TextBlock.brand">
+            <Setter Property="FontSize" Value="20" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="#068F8A" />
+        </Style>
+        <Style Selector="TextBlock.eyebrow">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="LetterSpacing" Value="1.1" />
+            <Setter Property="Foreground" Value="#068F8A" />
+        </Style>
+        <Style Selector="TextBlock.h1">
+            <Setter Property="FontSize" Value="28" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="LineHeight" Value="34" />
+        </Style>
+        <Style Selector="TextBlock.h2">
+            <Setter Property="FontSize" Value="20" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="LineHeight" Value="26" />
+        </Style>
+        <Style Selector="TextBlock.muted">
+            <Setter Property="Foreground" Value="#6B7880" />
+        </Style>
+        <Style Selector="TextBlock.metricValue">
+            <Setter Property="FontSize" Value="24" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="#068F8A" />
+        </Style>
+
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="#E5EAED" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="Padding" Value="24" />
+            <Setter Property="BoxShadow" Value="0 8 24 0 #0A13181D" />
+        </Style>
+        <Style Selector="Border.softCard">
+            <Setter Property="Background" Value="#F7FAFA" />
+            <Setter Property="BorderBrush" Value="#E3EAEC" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="18" />
+        </Style>
+        <Style Selector="Border.metric">
+            <Setter Property="Background" Value="#F7FAFA" />
+            <Setter Property="BorderBrush" Value="#E5EAED" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="14" />
+        </Style>
+        <Style Selector="Border.achievement">
+            <Setter Property="Background" Value="#E0F5F2" />
+            <Setter Property="BorderBrush" Value="#CBE9E6" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="20" />
+        </Style>
+        <Style Selector="Border.statusPill">
+            <Setter Property="Background" Value="#E0F5F2" />
+            <Setter Property="CornerRadius" Value="999" />
+            <Setter Property="Padding" Value="12,7" />
+        </Style>
+
+        <Style Selector="Button">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="MinHeight" Value="42" />
+            <Setter Property="Padding" Value="16,10" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="#068F8A" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderBrush" Value="#068F8A" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style Selector="Button.primary:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#047B77" />
+        </Style>
+        <Style Selector="Button.secondary">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="Foreground" Value="#056D69" />
+            <Setter Property="BorderBrush" Value="#B9D8D5" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style Selector="Button.secondary:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#EAF7F5" />
+        </Style>
+        <Style Selector="Button:focus-visible /template/ ContentPresenter">
+            <Setter Property="BorderBrush" Value="#FFB80D" />
+            <Setter Property="BorderThickness" Value="2" />
+        </Style>
+
+        <Style Selector="Button.nav">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="#52616A" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="12,10" />
+            <Setter Property="MinHeight" Value="46" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+        </Style>
+        <Style Selector="Button.nav:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#EEF7F6" />
+            <Setter Property="TextElement.Foreground" Value="#056D69" />
+        </Style>
+        <Style Selector="Button.nav.active">
+            <Setter Property="Background" Value="#E0F5F2" />
+            <Setter Property="Foreground" Value="#056D69" />
+        </Style>
+        <Style Selector="Button.nav.active /template/ ContentPresenter">
+            <Setter Property="Background" Value="#E0F5F2" />
+            <Setter Property="TextElement.Foreground" Value="#056D69" />
+        </Style>
+
+        <Style Selector="Button.lesson">
+            <Setter Property="Width" Value="268" />
+            <Setter Property="Height" Value="108" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+            <Setter Property="Background" Value="White" />
+            <Setter Property="Foreground" Value="#13181D" />
+            <Setter Property="BorderBrush" Value="#DFE6E9" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="16" />
+            <Setter Property="Margin" Value="0,0,14,14" />
+        </Style>
+        <Style Selector="Button.lesson:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#F0FAF9" />
+            <Setter Property="BorderBrush" Value="#8CCBC6" />
+        </Style>
+
+        <Style Selector="ComboBox">
+            <Setter Property="MinHeight" Value="48" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="BorderBrush" Value="#CAD4D9" />
+        </Style>
+        <Style Selector="ProgressBar">
+            <Setter Property="Foreground" Value="#068F8A" />
+            <Setter Property="Background" Value="#E0E5E8" />
+            <Setter Property="CornerRadius" Value="999" />
+        </Style>
+
+        <Style Selector="TabControl">
+            <Setter Property="Background" Value="#F6F8F9" />
+        </Style>
+        <Style Selector="TabControl.contentOnly">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Grid RowDefinitions="0,*" Background="{TemplateBinding Background}">
+                        <!-- Keep the presenter materialized: TabControl needs it to create TabItem content. -->
+                        <ItemsPresenter Name="PART_ItemsPresenter"
+                                        Height="0"
+                                        Opacity="0"
+                                        IsHitTestVisible="False"
+                                        ItemsPanel="{TemplateBinding ItemsPanel}" />
+                        <ContentPresenter Grid.Row="1"
+                                          Name="PART_SelectedContentHost"
+                                          Content="{TemplateBinding SelectedContent}"
+                                          ContentTemplate="{TemplateBinding SelectedContentTemplate}"
+                                          HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                    </Grid>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+    </Application.Styles>
+</Application>

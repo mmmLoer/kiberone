@@ -1,0 +1,19 @@
+.dotnet/
+.dotnet-home/
+.nuget/
+**/bin/
+**/obj/
+dist/
+data/
+*.db
+*.db-shm
+*.db-wal
+*.user
+*.suo
+TestResults/
+# Published single-file builds (too large for GitHub)
+/KIBERoneStudent.exe
+/KIBERoneTutor.exe
+*.exe
+!scripts/**/*.ps1
+src/Kiberone.VpnAgent/native/*.dll

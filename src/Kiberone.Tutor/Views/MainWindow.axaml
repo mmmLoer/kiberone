@@ -1,0 +1,663 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Kiberone.Tutor.ViewModels"
+        x:Class="Kiberone.Tutor.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Width="1360" Height="900" MinWidth="1100" MinHeight="720"
+        Title="KIBERone Classroom — Тьютор">
+  <Grid ColumnDefinitions="208,*" RowDefinitions="76,*">
+    <Border Grid.RowSpan="2" Background="White" BorderBrush="#DCE4E7" BorderThickness="0,0,1,0">
+      <Grid RowDefinitions="76,*,Auto" Margin="14,0,14,18">
+        <StackPanel VerticalAlignment="Center" Margin="12,0,0,0" Spacing="2">
+          <StackPanel Orientation="Horizontal" Spacing="4">
+            <TextBlock Text="KIBER" FontSize="20" FontWeight="ExtraBold" Foreground="#078F8A" />
+            <TextBlock Text="ONE" FontSize="20" FontWeight="ExtraBold" Foreground="#172126" />
+          </StackPanel>
+          <TextBlock Text="CLASSROOM · ТЬЮТОР" Classes="eyebrow" />
+        </StackPanel>
+        <ScrollViewer Grid.Row="1" Margin="0,10,0,10" VerticalScrollBarVisibility="Auto">
+          <StackPanel Spacing="2">
+            <TextBlock Text="ОСНОВНОЕ" Classes="eyebrow" Margin="13,4,0,6"/>
+            <Button Content="Класс сейчас" Command="{Binding NavigateCommand}" CommandParameter="0" Classes="nav compact" Classes.active="{Binding IsSection0}"/>
+            <Button Content="Ученики и группы" Command="{Binding NavigateCommand}" CommandParameter="2" Classes="nav compact" Classes.active="{Binding IsSection2}"/>
+            <Button Content="Уроки печати" Command="{Binding NavigateCommand}" CommandParameter="1" Classes="nav compact" Classes.active="{Binding IsSection1}"/>
+
+            <TextBlock Text="УПРАВЛЕНИЕ" Classes="eyebrow" Margin="13,14,0,6"/>
+            <Button Content="Экраны учеников" Command="{Binding NavigateCommand}" CommandParameter="5" Classes="nav compact" Classes.active="{Binding IsSection5}"/>
+            <Button Content="Пульт класса" Command="{Binding NavigateCommand}" CommandParameter="6" Classes="nav compact" Classes.active="{Binding IsSection6}"/>
+            <Button Content="Живой урок" Command="{Binding NavigateCommand}" CommandParameter="7" Classes="nav compact" Classes.active="{Binding IsSection7}"/>
+            <Button Content="Итоги урока" Command="{Binding NavigateCommand}" CommandParameter="8" Classes="nav compact" Classes.active="{Binding IsSection8}"/>
+
+            <TextBlock Text="АНАЛИТИКА" Classes="eyebrow" Margin="13,14,0,6"/>
+            <Button Content="Статистика" Command="{Binding NavigateCommand}" CommandParameter="18" Classes="nav compact" Classes.active="{Binding IsSection18}"/>
+            <Button Content="Награды и магазин" Command="{Binding NavigateCommand}" CommandParameter="3" Classes="nav compact" Classes.active="{Binding IsSection3}"/>
+            <Button Content="Цели" Command="{Binding NavigateCommand}" CommandParameter="14" Classes="nav compact" Classes.active="{Binding IsSection14}"/>
+            <Button Content="Достижения" Command="{Binding NavigateCommand}" CommandParameter="16" Classes="nav compact" Classes.active="{Binding IsSection16}"/>
+
+            <TextBlock Text="ДАННЫЕ" Classes="eyebrow" Margin="13,14,0,6"/>
+            <Button Content="Сохранения" Command="{Binding NavigateCommand}" CommandParameter="4" Classes="nav compact" Classes.active="{Binding IsSection4}"/>
+            <Button Content="Модули и версии" Command="{Binding NavigateCommand}" CommandParameter="12" Classes="nav compact" Classes.active="{Binding IsSection12}"/>
+            <Button Content="Сравнение версии" Command="{Binding NavigateCommand}" CommandParameter="13" Classes="nav compact" Classes.active="{Binding IsSection13}"/>
+            <Button Content="Журнал аудита" Command="{Binding NavigateCommand}" CommandParameter="17" Classes="nav compact" Classes.active="{Binding IsSection17}"/>
+
+            <TextBlock Text="СИСТЕМА" Classes="eyebrow" Margin="13,14,0,6"/>
+            <Button Content="Сервер и локация" Command="{Binding NavigateCommand}" CommandParameter="11" Classes="nav compact" Classes.active="{Binding IsSection11}"/>
+            <Button Content="Настройки" Command="{Binding NavigateCommand}" CommandParameter="15" Classes="nav compact" Classes.active="{Binding IsSection15}"/>
+          </StackPanel>
+        </ScrollViewer>
+        <Border Grid.Row="2" Background="#FFF4CF" BorderBrush="#F4D675" BorderThickness="1" CornerRadius="11" Padding="13,11">
+          <Grid ColumnDefinitions="Auto,*">
+            <Border Width="9" Height="9" CornerRadius="100" Background="#068F8A" VerticalAlignment="Top" Margin="0,5,9,0" />
+            <StackPanel Grid.Column="1" Spacing="2">
+              <TextBlock Text="Сервер · 8765" FontWeight="Bold" FontSize="13" />
+              <TextBlock Text="{Binding ConnectedClientLabel}" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+          </Grid>
+        </Border>
+      </Grid>
+    </Border>
+
+    <Border Grid.Column="1" Background="White" BorderBrush="#E4EAEC" BorderThickness="0,0,0,1">
+      <Grid ColumnDefinitions="*,Auto" Margin="32,0">
+        <StackPanel VerticalAlignment="Center">
+          <TextBlock Text="КОНСОЛЬ ТЬЮТОРА" Classes="eyebrow" Margin="0,0,0,3" />
+          <TextBlock Text="{Binding SectionTitle}" FontSize="23" FontWeight="Bold" />
+          <TextBlock Text="{Binding SectionSubtitle}" Classes="muted" FontSize="12" TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+        <Border Grid.Column="1" VerticalAlignment="Center" Background="#E0F5F2" CornerRadius="100" Padding="12,7" IsVisible="{Binding !HasError}">
+          <StackPanel Orientation="Horizontal" Spacing="7">
+            <Border Width="8" Height="8" CornerRadius="100" Background="#068F8A" VerticalAlignment="Center" />
+            <TextBlock Text="Система готова" Foreground="#068F8A" FontWeight="Bold" FontSize="12" />
+          </StackPanel>
+        </Border>
+        <Border Grid.Column="1" VerticalAlignment="Center" Background="#FDEBEC" BorderBrush="#F2C7CA" BorderThickness="1" CornerRadius="100" Padding="12,7" IsVisible="{Binding HasError}" ToolTip.Tip="{Binding StatusMessage}">
+          <StackPanel Orientation="Horizontal" Spacing="7">
+            <Border Width="8" Height="8" CornerRadius="100" Background="#C93E45" VerticalAlignment="Center" />
+            <TextBlock Text="Требуется внимание" Foreground="#A82F36" FontWeight="Bold" FontSize="12" />
+          </StackPanel>
+        </Border>
+      </Grid>
+    </Border>
+
+    <TabControl Grid.Row="1" Grid.Column="1" SelectedIndex="{Binding SelectedSectionIndex}" Classes="contentOnly">
+      <TabItem Header="Класс">
+        <Grid Margin="32,32" RowDefinitions="Auto,*">
+          <Grid ColumnDefinitions="Auto,*">
+            <Border Width="58" Height="58" CornerRadius="14" Background="#E0F5F2">
+              <TextBlock Text="{Binding ConnectedClientCount}" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#068F8A" FontSize="26" FontWeight="ExtraBold" />
+            </Border>
+            <StackPanel Grid.Column="1" Margin="16,3,0,0" Spacing="3">
+              <TextBlock Text="Класс готов к занятию" FontSize="22" FontWeight="Bold" />
+              <TextBlock Text="{Binding ConnectedClientLabel}" Classes="muted" FontSize="14" />
+            </StackPanel>
+          </Grid>
+          <Grid Grid.Row="1" ColumnDefinitions="1.7*,*" Margin="0,24,0,0">
+            <Border Classes="card">
+              <Grid RowDefinitions="Auto,*">
+                <StackPanel>
+                  <TextBlock Text="Состав класса" Classes="h2" />
+                  <TextBlock Text="Карточки учеников из локальной базы" Classes="muted" FontSize="13" Margin="0,4,0,0" />
+                </StackPanel>
+                <Grid Grid.Row="1" Margin="0,18,0,0">
+                  <ScrollViewer IsVisible="{Binding HasStudents}">
+                    <ItemsControl ItemsSource="{Binding Students}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:StudentCardViewModel">
+                          <Border BorderBrush="#E0E5E8" BorderThickness="0,0,0,1" Padding="2,14">
+                            <Grid ColumnDefinitions="28,*,130,150">
+                              <Border Width="9" Height="9" CornerRadius="100" Background="#068F8A" VerticalAlignment="Center" />
+                              <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+                              <TextBlock Grid.Column="2" Text="{Binding Group}" Foreground="#068F8A" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                              <TextBlock Grid.Column="3" Text="{Binding Progress}" Classes="muted" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                            </Grid>
+                          </Border>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </ScrollViewer>
+                  <Border IsVisible="{Binding HasNoStudents}" Classes="subcard" HorizontalAlignment="Stretch" VerticalAlignment="Top">
+                    <StackPanel Spacing="7">
+                      <TextBlock Text="Пока нет учеников" FontWeight="Bold" />
+                      <TextBlock Text="Добавьте первого ученика — его карточка и прогресс появятся здесь." Classes="muted" TextWrapping="Wrap" />
+                      <Button Content="Добавить ученика" Command="{Binding NavigateCommand}" CommandParameter="2" HorizontalAlignment="Left" Margin="0,4,0,0" />
+                    </StackPanel>
+                  </Border>
+                </Grid>
+              </Grid>
+            </Border>
+            <StackPanel Grid.Column="1" Margin="22,0,0,0" Spacing="16">
+              <Border Classes="card">
+                <StackPanel Spacing="11">
+                  <TextBlock Text="Состояние класса" Classes="h2" />
+                  <Border Classes="status">
+                    <StackPanel Orientation="Horizontal" Spacing="9">
+                      <Border Width="9" Height="9" CornerRadius="100" Background="#068F8A" VerticalAlignment="Center" />
+                      <TextBlock Text="{Binding ConnectedClientLabel}" Foreground="#068F8A" FontWeight="Bold" />
+                    </StackPanel>
+                  </Border>
+                  <TextBlock Text="Сервер и локальная сеть готовы принимать ученические компьютеры." Classes="muted" TextWrapping="Wrap" />
+                  <Button Content="Открыть экраны учеников" Command="{Binding NavigateCommand}" CommandParameter="5" Classes="primary" HorizontalAlignment="Stretch" />
+                </StackPanel>
+              </Border>
+              <Border Classes="card">
+                <StackPanel Spacing="10">
+                  <TextBlock Text="Быстрый старт" Classes="h2" />
+                  <Button Content="Отправить сообщение" Command="{Binding NavigateCommand}" CommandParameter="6" HorizontalAlignment="Stretch" />
+                  <Button Content="Подготовить урок печати" Command="{Binding NavigateCommand}" CommandParameter="1" HorizontalAlignment="Stretch" />
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </Grid>
+        </Grid>
+      </TabItem>
+      <TabItem Header="Уроки печати">
+    <Grid ColumnDefinitions="1.35*,*" Margin="32,32">
+      <Border Classes="card">
+        <Grid RowDefinitions="Auto,Auto,*,Auto">
+          <StackPanel>
+            <TextBlock Text="Мои уроки" Classes="h2" />
+            <TextBlock Text="Черновики и опубликованные маршруты" Classes="muted" Margin="0,4,0,16" />
+          </StackPanel>
+          <Border Grid.Row="1" Background="#F3F6F7" CornerRadius="10" Padding="12" Margin="0,0,0,12">
+            <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" />
+          </Border>
+          <Grid Grid.Row="2">
+            <ScrollViewer IsVisible="{Binding HasLessons}">
+              <ItemsControl ItemsSource="{Binding Lessons}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:LessonCardViewModel">
+                  <Border BorderBrush="#DDE5E8" BorderThickness="1" CornerRadius="12" Padding="16" Margin="0,0,0,10">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <StackPanel>
+                        <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="16" />
+                        <TextBlock Text="{Binding Details}" Classes="muted" Margin="0,4,0,0" />
+                        <TextBlock Text="{Binding Kind}" Foreground="#078F8A" FontWeight="Bold" FontSize="12" Margin="0,8,0,0" />
+                      </StackPanel>
+                      <Border Grid.Column="1" Background="#FFF7CE" CornerRadius="100" Padding="8,4" VerticalAlignment="Top">
+                        <TextBlock Text="{Binding Version}" FontWeight="Bold" />
+                      </Border>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+            <Border IsVisible="{Binding HasNoLessons}" Classes="subcard" VerticalAlignment="Top">
+              <StackPanel Spacing="7">
+                <TextBlock Text="Уроков пока нет" FontWeight="Bold" />
+                <TextBlock Text="Заполните маршрут справа и сохраните его. Он сразу появится в этом списке." Classes="muted" TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+          </Grid>
+          <Button Grid.Row="3" Content="Обновить список" Command="{Binding RefreshCommand}" HorizontalAlignment="Stretch" Margin="0,12,0,0" />
+        </Grid>
+      </Border>
+
+      <Border Grid.Column="1" Classes="card" Margin="22,0,0,0">
+        <ScrollViewer>
+          <StackPanel Spacing="16">
+            <StackPanel>
+              <TextBlock Text="Новый маршрут" Classes="h2" />
+              <TextBlock Text="Разбейте урок на этапы — прогресс сохранится отдельно по каждому." Classes="muted" />
+            </StackPanel>
+            <Grid ColumnDefinitions="*,*">
+              <StackPanel Spacing="6">
+                <TextBlock Text="Название" FontWeight="Bold" />
+                <TextBox Text="{Binding LessonName}" Watermark="Например, Циклы Python" />
+              </StackPanel>
+              <StackPanel Grid.Column="1" Spacing="6" Margin="14,0,0,0">
+                <TextBlock Text="Описание" FontWeight="Bold" />
+                <TextBox Text="{Binding Description}" Watermark="Что тренируем" />
+              </StackPanel>
+            </Grid>
+            <Grid ColumnDefinitions="*,*,*,*">
+              <StackPanel Spacing="6">
+                <TextBlock Text="Тип" FontWeight="Bold" />
+                <ComboBox ItemsSource="{Binding LessonKinds}" SelectedItem="{Binding SelectedLessonKind}" />
+              </StackPanel>
+              <StackPanel Grid.Column="1" Spacing="6" Margin="12,0,0,0">
+                <TextBlock Text="Раскладка" FontWeight="Bold" />
+                <ComboBox ItemsSource="{Binding KeyboardLayouts}" SelectedItem="{Binding SelectedKeyboardLayout}" />
+              </StackPanel>
+              <StackPanel Grid.Column="2" Spacing="6" Margin="12,0,0,0">
+                <TextBlock Text="Минут" FontWeight="Bold" />
+                <NumericUpDown Value="{Binding DurationMinutes}" Minimum="1" Maximum="180" />
+              </StackPanel>
+              <StackPanel Grid.Column="3" Spacing="6" Margin="12,0,0,0">
+                <TextBlock Text="Мин. знаков" FontWeight="Bold" />
+                <NumericUpDown Value="{Binding MinimumCharacters}" Minimum="1" Maximum="100000" />
+              </StackPanel>
+            </Grid>
+            <Grid ColumnDefinitions="*,Auto,Auto">
+              <TextBlock Text="Этапы урока" Classes="h2" VerticalAlignment="Center" />
+              <Button Grid.Column="1" Content="− Последний" Command="{Binding RemoveLastStepCommand}" Margin="0,0,8,0" />
+              <Button Grid.Column="2" Content="+ Добавить этап" Command="{Binding AddStepCommand}" Classes="accent" />
+            </Grid>
+            <ItemsControl ItemsSource="{Binding Steps}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:LessonStepEditorViewModel">
+                  <Border BorderBrush="#DDE5E8" BorderThickness="1" CornerRadius="12" Padding="16" Margin="0,0,0,10">
+                    <StackPanel Spacing="10">
+                      <TextBox Text="{Binding Title}" Watermark="Название этапа" FontWeight="Bold" />
+                      <TextBox Text="{Binding Text}" Watermark="Текст для набора" AcceptsReturn="True" MinHeight="100" TextWrapping="Wrap" />
+                      <Grid ColumnDefinitions="*,*">
+                        <NumericUpDown Value="{Binding TargetCpm}" Minimum="0" Maximum="2000" Watermark="Цель CPM" />
+                        <NumericUpDown Grid.Column="1" Value="{Binding TargetAccuracy}" Minimum="0" Maximum="100" Watermark="Цель точности" Margin="12,0,0,0" />
+                      </Grid>
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Button Content="Сохранить урок" Command="{Binding CreateLessonCommand}" IsEnabled="{Binding !IsBusy}" Classes="primary" HorizontalAlignment="Stretch" />
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+    </Grid>
+      </TabItem>
+      <TabItem Header="Ученики и группы">
+        <Grid ColumnDefinitions="0.78*,1.2*,*" Margin="32,32">
+          <Border Classes="card">
+            <Grid RowDefinitions="Auto,Auto,*">
+              <StackPanel>
+                <TextBlock Text="Группы" Classes="h2" />
+                <TextBlock Text="Модули и состав класса" Classes="muted" Margin="0,4,0,14" />
+              </StackPanel>
+              <StackPanel Grid.Row="1" Spacing="8" Margin="0,0,0,16">
+                <TextBox Text="{Binding GroupName}" Watermark="Название группы" />
+                <TextBox Text="{Binding GroupModule}" Watermark="Текущий модуль" />
+                <TextBox Text="{Binding GroupTopics}" Watermark="Темы" />
+                <Button Content="Создать группу" Command="{Binding CreateGroupCommand}" Classes="accent" />
+              </StackPanel>
+              <ScrollViewer Grid.Row="2">
+                <ItemsControl ItemsSource="{Binding Groups}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:GroupCardViewModel">
+                      <Border BorderBrush="#DDE5E8" BorderThickness="1" CornerRadius="12" Padding="14" Margin="0,0,0,8">
+                        <StackPanel>
+                          <TextBlock Text="{Binding Name}" FontWeight="Bold" />
+                          <TextBlock Text="{Binding Details}" Classes="muted" Margin="0,4,0,0" />
+                        </StackPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ScrollViewer>
+            </Grid>
+          </Border>
+
+          <Border Grid.Column="1" Classes="card" Margin="18,0,0,0">
+            <Grid RowDefinitions="Auto,*">
+              <StackPanel>
+                <TextBlock Text="Ученики" Classes="h2" />
+                <TextBlock Text="Прогресс, уровень и баланс киберонов" Classes="muted" Margin="0,4,0,14" />
+              </StackPanel>
+              <ScrollViewer Grid.Row="1">
+                <ItemsControl ItemsSource="{Binding Students}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:StudentCardViewModel">
+                      <Border BorderBrush="#DDE5E8" BorderThickness="1" CornerRadius="12" Padding="14" Margin="0,0,0,8">
+                        <Grid ColumnDefinitions="*,Auto">
+                          <StackPanel>
+                            <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="15" />
+                            <TextBlock Text="{Binding Group}" Foreground="#078F8A" Margin="0,3,0,0" />
+                            <TextBlock Text="{Binding Progress}" Classes="muted" Margin="0,3,0,0" />
+                          </StackPanel>
+                          <Border Grid.Column="1" Background="#FFF7CE" CornerRadius="100" Padding="10,5" VerticalAlignment="Top">
+                            <TextBlock Text="{Binding Balance}" FontWeight="Bold" />
+                          </Border>
+                        </Grid>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ScrollViewer>
+            </Grid>
+          </Border>
+
+          <Border Grid.Column="2" Classes="card" Margin="18,0,0,0">
+            <StackPanel Spacing="10">
+              <TextBlock Text="Новый ученик" Classes="h2" />
+              <TextBlock Text="Карточка сразу появится в локальной базе" Classes="muted" Margin="0,0,0,6" />
+              <TextBox Text="{Binding StudentLastName}" Watermark="Фамилия" />
+              <TextBox Text="{Binding StudentFirstName}" Watermark="Имя" />
+              <NumericUpDown Value="{Binding StudentAge}" Minimum="5" Maximum="100" Watermark="Возраст" />
+              <ComboBox ItemsSource="{Binding Groups}" SelectedItem="{Binding SelectedGroup}" />
+              <TextBox Text="{Binding StudentComment}" Watermark="Комментарий тьютора" AcceptsReturn="True" MinHeight="90" />
+              <Button Content="Добавить ученика" Command="{Binding CreateStudentCommand}" Classes="primary" />
+              <Border Background="#F3F6F7" CornerRadius="10" Padding="12" Margin="0,8,0,0">
+                <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" />
+              </Border>
+            </StackPanel>
+          </Border>
+        </Grid>
+      </TabItem>
+      <TabItem Header="Награды и магазин">
+        <Grid ColumnDefinitions="*,*,*" Margin="36,40">
+          <Border Classes="card">
+            <StackPanel Spacing="10">
+              <TextBlock Text="Ученик" Classes="h2" />
+              <TextBlock Text="Выберите получателя награды или покупки" Classes="muted" />
+              <ComboBox ItemsSource="{Binding Students}" SelectedItem="{Binding SelectedStudent}" />
+              <Button Content="+10 киберонов" Command="{Binding AddKiberonsCommand}" Classes="accent" />
+              <Border Background="#F3F6F7" CornerRadius="10" Padding="12" Margin="0,8,0,0">
+                <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" />
+              </Border>
+            </StackPanel>
+          </Border>
+          <Border Grid.Column="1" Classes="card" Margin="18,0">
+            <StackPanel Spacing="10">
+              <TextBlock Text="Достижения" Classes="h2" />
+              <ComboBox ItemsSource="{Binding Achievements}" SelectedItem="{Binding SelectedAchievement}" />
+              <Button Content="Выдать выбранное" Command="{Binding AwardAchievementCommand}" Classes="primary" />
+              <Border BorderBrush="#DDE5E8" BorderThickness="1" CornerRadius="12" Padding="14" Margin="0,12,0,0">
+                <StackPanel Spacing="8">
+                  <TextBlock Text="Новое достижение" FontWeight="Bold" />
+                  <TextBox Text="{Binding AchievementCode}" Watermark="Код: first_win" />
+                  <TextBox Text="{Binding AchievementName}" Watermark="Название" />
+                  <Grid ColumnDefinitions="*,*">
+                    <NumericUpDown Value="{Binding AchievementXp}" Minimum="0" Maximum="10000" Watermark="XP" />
+                    <NumericUpDown Grid.Column="1" Value="{Binding AchievementKiberons}" Minimum="0" Maximum="10000" Watermark="Кибероны" Margin="8,0,0,0" />
+                  </Grid>
+                  <Button Content="Создать достижение" Command="{Binding CreateAchievementCommand}" />
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </Border>
+          <Border Grid.Column="2" Classes="card">
+            <StackPanel Spacing="10">
+              <TextBlock Text="Магазин" Classes="h2" />
+              <ComboBox ItemsSource="{Binding StoreItems}" SelectedItem="{Binding SelectedStoreItem}" />
+              <Button Content="Оформить покупку" Command="{Binding PurchaseCommand}" Classes="primary" />
+              <Border BorderBrush="#DDE5E8" BorderThickness="1" CornerRadius="12" Padding="14" Margin="0,12,0,0">
+                <StackPanel Spacing="8">
+                  <TextBlock Text="Новый товар" FontWeight="Bold" />
+                  <TextBox Text="{Binding StoreSku}" Watermark="Артикул" />
+                  <TextBox Text="{Binding StoreItemName}" Watermark="Название" />
+                  <Grid ColumnDefinitions="*,*">
+                    <NumericUpDown Value="{Binding StorePrice}" Minimum="0" Maximum="100000" Watermark="Цена" />
+                    <NumericUpDown Grid.Column="1" Value="{Binding StoreStock}" Minimum="0" Maximum="10000" Watermark="Остаток" Margin="8,0,0,0" />
+                  </Grid>
+                  <Button Content="Добавить товар" Command="{Binding CreateStoreItemCommand}" />
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </Border>
+        </Grid>
+      </TabItem>
+      <TabItem Header="Сохранения и версии">
+        <Grid ColumnDefinitions="0.8*,1.7*" Margin="32,32">
+          <Border Classes="card">
+            <Grid RowDefinitions="Auto,*,Auto">
+              <StackPanel>
+                <TextBlock Text="Запросы подтверждения" Classes="h2" />
+                <TextBlock Text="Опасные файлы и массовые изменения" Classes="muted" Margin="0,4,0,12" />
+              </StackPanel>
+              <ListBox Grid.Row="1" ItemsSource="{Binding SyncApprovals}" SelectedItem="{Binding SelectedSyncApproval}" />
+              <Grid Grid.Row="2" ColumnDefinitions="*,*" Margin="0,12,0,0">
+                <Button Content="Отклонить" Command="{Binding RejectSyncCommand}" />
+                <Button Grid.Column="1" Content="Разрешить" Command="{Binding ApproveSyncCommand}" Classes="primary" Margin="8,0,0,0" />
+              </Grid>
+            </Grid>
+          </Border>
+          <Border Grid.Column="1" Classes="card" Margin="18,0,0,0">
+            <Grid RowDefinitions="Auto,Auto,*,Auto">
+              <StackPanel>
+                <TextBlock Text="Файлы учеников" Classes="h2" />
+                <TextBlock Text="Выберите компьютер, файл и точку восстановления" Classes="muted" />
+              </StackPanel>
+              <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,14,0,12">
+                <ComboBox ItemsSource="{Binding SyncClients}" SelectedItem="{Binding SelectedSyncClient}" />
+                <Button Grid.Column="1" Content="Загрузить файлы" Command="{Binding LoadSyncedFilesCommand}" Margin="8,0,0,0" />
+              </Grid>
+              <Grid Grid.Row="2" ColumnDefinitions="*,*">
+                <StackPanel Margin="0,0,8,0" Spacing="8">
+                  <TextBlock Text="Файлы на сервере" FontWeight="Bold" />
+                  <ListBox ItemsSource="{Binding SyncedFiles}" SelectedItem="{Binding SelectedSyncedFile}" MinHeight="280" />
+                  <Button Content="Показать версии" Command="{Binding LoadVersionsCommand}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Margin="8,0,0,0" Spacing="8">
+                  <TextBlock Text="История — до 30 снимков" FontWeight="Bold" />
+                  <ListBox ItemsSource="{Binding FileVersions}" SelectedItem="{Binding SelectedFileVersion}" MinHeight="280" />
+                  <Button Content="Восстановить выбранную версию" Command="{Binding RestoreVersionCommand}" Classes="accent" />
+                </StackPanel>
+              </Grid>
+              <Border Grid.Row="3" Background="#F3F6F7" CornerRadius="10" Padding="12" Margin="0,12,0,0">
+                <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" />
+              </Border>
+            </Grid>
+          </Border>
+        </Grid>
+      </TabItem>
+      <TabItem Header="Экраны">
+        <Grid RowDefinitions="Auto,*" Margin="32,32">
+          <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,24">
+            <StackPanel>
+              <TextBlock Text="{Binding ScreenPreviews.Count, StringFormat={}{0} экранов}" Classes="h2" />
+              <TextBlock Text="Последние снимки из локальной сети" Classes="muted" FontSize="13" Margin="0,6,0,0" />
+            </StackPanel>
+            <Button Grid.Column="1" Content="Обновить сетку" Command="{Binding RefreshScreenGridCommand}" />
+          </Grid>
+          <Grid Grid.Row="1">
+            <ScrollViewer IsVisible="{Binding HasScreenPreviews}">
+              <ItemsControl ItemsSource="{Binding ScreenPreviews}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate><WrapPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:ScreenPreviewCardViewModel">
+                    <Border Classes="card" Width="246" Height="168" Margin="0,0,20,24" Padding="10">
+                      <StackPanel Spacing="7">
+                        <Grid Height="108" Background="#F0F5F5">
+                          <TextBlock Text="Ожидаем первый снимок…" Foreground="#8EA1A9" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                          <Image Source="{Binding Preview}" Stretch="UniformToFill" />
+                        </Grid>
+                        <Grid ColumnDefinitions="*,Auto">
+                          <TextBlock Text="{Binding Title}" FontWeight="Bold" FontSize="13" TextTrimming="CharacterEllipsis" />
+                          <TextBlock Grid.Column="1" Text="{Binding Status}" Foreground="#078F8A" FontSize="11" />
+                        </Grid>
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+            <Border IsVisible="{Binding HasNoScreenPreviews}" Classes="card" HorizontalAlignment="Stretch" VerticalAlignment="Top">
+              <Grid ColumnDefinitions="Auto,*">
+                <Border Width="48" Height="48" CornerRadius="12" Background="#E0F5F2">
+                  <TextBlock Text="▦" Foreground="#068F8A" FontSize="23" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <StackPanel Grid.Column="1" Margin="16,0,0,0" Spacing="6">
+                  <TextBlock Text="Нет подключённых экранов" FontWeight="Bold" FontSize="16" />
+                  <TextBlock Text="Запустите Student на компьютерах класса, затем нажмите «Обновить сетку»." Classes="muted" TextWrapping="Wrap" />
+                </StackPanel>
+              </Grid>
+            </Border>
+          </Grid>
+        </Grid>
+      </TabItem>
+      <TabItem Header="Пульт класса">
+        <Grid ColumnDefinitions="*,*" Margin="36,40">
+          <Border Classes="card">
+            <StackPanel Spacing="14">
+              <TextBlock Text="Управление вниманием" Classes="h2" />
+              <TextBlock Text="Команды отправляются всем известным ученическим ПК и требуют подтверждения выполнения." Classes="muted" TextWrapping="Wrap" />
+              <TextBox Text="{Binding ClassroomMessage}" Watermark="Сообщение ученикам" AcceptsReturn="True" MinHeight="90" />
+              <Button Content="Отправить сообщение всем" Command="{Binding SendMessageAllCommand}" Classes="primary" />
+              <Grid ColumnDefinitions="*,*">
+                <Button Content="Заблокировать экраны" Command="{Binding LockAllCommand}" Classes="accent" />
+                <Button Grid.Column="1" Content="Разблокировать" Command="{Binding UnlockAllCommand}" Margin="10,0,0,0" />
+              </Grid>
+              <Grid ColumnDefinitions="*,*">
+                <Button Content="Включить режим фокуса" Command="{Binding FocusAllOnCommand}" Classes="accent" />
+                <Button Grid.Column="1" Content="Выключить фокус" Command="{Binding FocusAllOffCommand}" Margin="10,0,0,0" />
+              </Grid>
+            </StackPanel>
+          </Border>
+          <Border Grid.Column="1" Classes="card" Margin="18,0,0,0">
+            <StackPanel Spacing="14">
+              <TextBlock Text="Надёжность и синхронизация" Classes="h2" />
+              <TextBlock Text="Watchdog перезапускает закрытый Student. Функция включается только явной командой." Classes="muted" TextWrapping="Wrap" />
+              <Grid ColumnDefinitions="*,*">
+                <Button Content="Включить Watchdog" Command="{Binding WatchdogAllOnCommand}" Classes="accent" />
+                <Button Grid.Column="1" Content="Выключить Watchdog" Command="{Binding WatchdogAllOffCommand}" Margin="10,0,0,0" />
+              </Grid>
+              <Button Content="Синхронизировать сейчас" Command="{Binding SyncAllNowCommand}" Classes="primary" />
+              <Border BorderBrush="#DDE5E8" BorderThickness="1" CornerRadius="12" Padding="14" Margin="0,8,0,0">
+                <StackPanel Spacing="8">
+                  <TextBlock Text="Быстрая викторина" FontWeight="Bold" FontSize="16" />
+                  <TextBox Text="{Binding QuizQuestion}" Watermark="Вопрос" />
+                  <TextBox Text="{Binding QuizOptionsText}" Watermark="Каждый вариант с новой строки" AcceptsReturn="True" MinHeight="76" />
+                  <Grid ColumnDefinitions="*,*">
+                    <NumericUpDown Value="{Binding QuizCorrectAnswer}" Minimum="1" Maximum="6" Watermark="№ правильного" />
+                    <NumericUpDown Grid.Column="1" Value="{Binding QuizXpReward}" Minimum="0" Maximum="1000" Watermark="XP" Margin="8,0,0,0" />
+                  </Grid>
+                  <Button Content="Запустить всем" Command="{Binding StartQuizCommand}" Classes="accent" />
+                  <TextBlock Text="{Binding QuizStatus}" Classes="muted" TextWrapping="Wrap" />
+                </StackPanel>
+              </Border>
+              <Border Background="#F3F6F7" CornerRadius="10" Padding="14" Margin="0,12,0,0">
+                <StackPanel>
+                  <TextBlock Text="Состояние команды" FontWeight="Bold" />
+                  <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" Margin="0,5,0,0" />
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </Border>
+        </Grid>
+      </TabItem>
+      <TabItem Header="Живой урок">
+        <Grid Margin="32,32">
+          <Border Classes="card">
+            <Grid RowDefinitions="Auto,Auto,180,Auto,*,Auto">
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel>
+                  <TextBlock Text="Живой урок печати" Classes="h2" />
+                  <TextBlock Text="{Binding LiveLessonState}" Classes="muted" FontSize="14" Margin="0,6,0,0" />
+                </StackPanel>
+                <Border Grid.Column="1" Classes="status" VerticalAlignment="Top">
+                  <TextBlock Text="{Binding ConnectedClientLabel}" Foreground="#068F8A" FontWeight="Bold" />
+                </Border>
+              </Grid>
+              <Grid Grid.Row="1" ColumnDefinitions="0.7*,1.8*" Margin="0,20,0,0">
+                <StackPanel Spacing="6">
+                  <TextBlock Text="Название урока" FontWeight="Bold" />
+                  <TextBox Text="{Binding LiveLessonName}" Watermark="Например, Циклы Python" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="6" Margin="14,0,0,0">
+                  <TextBlock Text="Текст для учеников" FontWeight="Bold" />
+                  <TextBox Text="{Binding LiveLessonText}" Watermark="Введите текст упражнения" />
+                </StackPanel>
+              </Grid>
+              <Border Grid.Row="2" Background="#F2F7F7" BorderBrush="#DDE8E9" BorderThickness="1" CornerRadius="10" Margin="0,18,0,0" Padding="28,22">
+                <StackPanel>
+                  <TextBlock Text="{Binding LiveLessonText}" FontFamily="Cascadia Mono, Consolas" FontSize="22" FontWeight="Bold" TextWrapping="Wrap" />
+                  <TextBlock Text="Этот текст увидят ученики после запуска" Classes="muted" FontSize="13" Margin="0,18,0,0" />
+                </StackPanel>
+              </Border>
+              <TextBlock Grid.Row="3" Text="Средние показатели появятся во время урока" FontWeight="Bold" FontSize="15" Margin="0,24,0,0" />
+              <Grid Grid.Row="4" ColumnDefinitions="182,270,*" Margin="0,16,0,20">
+                <TextBlock Text="— CPM" Foreground="#068F8A" FontSize="26" FontWeight="Bold" />
+                <TextBlock Grid.Column="1" Text="— точность" Foreground="#1F9E61" FontSize="26" FontWeight="Bold" />
+                <TextBlock Grid.Column="2" Text="— знаков" FontSize="26" FontWeight="Bold" />
+              </Grid>
+              <Grid Grid.Row="5" ColumnDefinitions="*,*">
+                <Button Content="Запустить для всего класса" Command="{Binding StartLiveLessonCommand}" Classes="primary" />
+                <Button Grid.Column="1" Content="Завершить урок" Command="{Binding FinishLiveLessonCommand}" Classes="danger" Margin="12,0,0,0" />
+              </Grid>
+            </Grid>
+          </Border>
+        </Grid>
+      </TabItem>
+      <TabItem Header="Итоги урока">
+        <Border Classes="card" Margin="36,40"><Grid RowDefinitions="Auto,*"><StackPanel><TextBlock Text="Три награды — три разных ученика" FontSize="22" FontWeight="Bold"/><TextBlock Text="Награды распределены по правилам точности, скорости и объёма" Classes="muted" FontSize="14" Margin="0,8,0,0"/></StackPanel><ItemsControl Grid.Row="1" ItemsSource="{Binding Winners}" Margin="0,58,0,0"><ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:WinnerCardViewModel"><Border Background="#FFF7DB" CornerRadius="12" Height="92" Padding="24" Margin="0,0,0,26"><Grid ColumnDefinitions="58,*,260,130"><TextBlock Text="{Binding Place}" Foreground="#6B7880" FontWeight="Bold"/><StackPanel Grid.Column="1"><TextBlock Text="Награда за результат" FontSize="16" FontWeight="Bold"/><TextBlock Text="{Binding Name}" Foreground="#068F8A" FontWeight="Bold" Margin="0,8,0,0"/></StackPanel><TextBlock Grid.Column="2" Text="{Binding Details}" FontSize="18" FontWeight="Bold"/><TextBlock Grid.Column="3" Text="+20 XP" Foreground="#FFB80D" FontWeight="Bold"/></Grid></Border></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></Grid></Border>
+      </TabItem>
+      <TabItem Header="Статистика ученика">
+        <Grid ColumnDefinitions="1.8*,*" Margin="32,32"><Border Classes="card"><StackPanel Spacing="34"><TextBlock Text="Прогресс по урокам" FontSize="20" FontWeight="Bold"/><Grid ColumnDefinitions="162,130,160,*"><TextBlock Text="Буквы" FontWeight="Bold"/><TextBlock Grid.Column="1" Text="34 CPM" Foreground="#068F8A" FontWeight="Bold"/><TextBlock Grid.Column="2" Text="88% точность" Foreground="#1F9E61"/><ProgressBar Grid.Column="3" Value="45" Maximum="100" Height="8"/></Grid><Grid ColumnDefinitions="162,130,160,*"><TextBlock Text="Слова" FontWeight="Bold"/><TextBlock Grid.Column="1" Text="42 CPM" Foreground="#068F8A" FontWeight="Bold"/><TextBlock Grid.Column="2" Text="90% точность" Foreground="#1F9E61"/><ProgressBar Grid.Column="3" Value="57" Maximum="100" Height="8"/></Grid><Grid ColumnDefinitions="162,130,160,*"><TextBlock Text="Python" FontWeight="Bold"/><TextBlock Grid.Column="1" Text="50 CPM" Foreground="#068F8A" FontWeight="Bold"/><TextBlock Grid.Column="2" Text="92% точность" Foreground="#1F9E61"/><ProgressBar Grid.Column="3" Value="69" Maximum="100" Height="8"/></Grid><Grid ColumnDefinitions="162,130,160,*"><TextBlock Text="C#" FontWeight="Bold"/><TextBlock Grid.Column="1" Text="58 CPM" Foreground="#068F8A" FontWeight="Bold"/><TextBlock Grid.Column="2" Text="94% точность" Foreground="#1F9E61"/><ProgressBar Grid.Column="3" Value="81" Maximum="100" Height="8"/></Grid></StackPanel></Border><Border Grid.Column="1" Classes="card" Margin="22,0,0,0"><StackPanel Spacing="16"><TextBlock Text="Итог" FontSize="20" FontWeight="Bold"/><TextBlock Text="42 CPM" Foreground="#068F8A" FontSize="34" FontWeight="Bold" Margin="0,40,0,0"/><TextBlock Text="92% точность" Foreground="#1F9E61" FontWeight="Bold"/><TextBlock Text="Уровень 7" FontSize="24" FontWeight="Bold" Margin="0,42,0,0"/><TextBlock Text="640 / 700 XP" Classes="muted"/><ProgressBar Value="91" Maximum="100" Height="8" Foreground="#FFB80D"/></StackPanel></Border></Grid>
+      </TabItem>
+      <TabItem Header="Статистика группы">
+        <Border Classes="card" Margin="36,40"><Grid RowDefinitions="Auto,300,Auto"><StackPanel><TextBlock Text="Динамика класса" FontSize="22" FontWeight="Bold"/><TextBlock Text="Средний CPM и точность по завершённым сессиям" Classes="muted" Margin="0,8,0,0"/></StackPanel><Border Grid.Row="1" Background="#F7FAFA" CornerRadius="8" Margin="32,58"><Grid ColumnDefinitions="*,*,*,*,*,*,*" VerticalAlignment="Bottom"><Border Background="#068F8A" CornerRadius="6" Width="48" Height="55" VerticalAlignment="Bottom"/><Border Grid.Column="1" Background="#068F8A" CornerRadius="6" Width="48" Height="75" VerticalAlignment="Bottom"/><Border Grid.Column="2" Background="#068F8A" CornerRadius="6" Width="48" Height="88" VerticalAlignment="Bottom"/><Border Grid.Column="3" Background="#068F8A" CornerRadius="6" Width="48" Height="114" VerticalAlignment="Bottom"/><Border Grid.Column="4" Background="#068F8A" CornerRadius="6" Width="48" Height="139" VerticalAlignment="Bottom"/><Border Grid.Column="5" Background="#068F8A" CornerRadius="6" Width="48" Height="158" VerticalAlignment="Bottom"/><Border Grid.Column="6" Background="#068F8A" CornerRadius="6" Width="48" Height="183" VerticalAlignment="Bottom"/></Grid></Border><Grid Grid.Row="2" ColumnDefinitions="220,220,*" Margin="52,0"><StackPanel><TextBlock Text="Средний CPM" Classes="muted"/><TextBlock Text="44" Foreground="#068F8A" FontSize="28" FontWeight="Bold"/></StackPanel><StackPanel Grid.Column="1"><TextBlock Text="Точность" Classes="muted"/><TextBlock Text="91%" Foreground="#1F9E61" FontSize="28" FontWeight="Bold"/></StackPanel></Grid></Grid></Border>
+      </TabItem>
+      <TabItem Header="Сервер и настройки">
+        <ScrollViewer><Grid ColumnDefinitions="*,*" Margin="36,40">
+          <StackPanel Spacing="18">
+            <Border Classes="card"><StackPanel Spacing="12"><TextBlock Text="Сервер локации" Classes="h2"/><TextBlock Text="Tutor принимает подключения только в локальной сети." Classes="muted"/><TextBlock Text="HTTP API" FontWeight="Bold"/><Border Background="#F3F6F7" CornerRadius="8" Padding="14"><TextBlock Text="{Binding ServerAddress}"/></Border><TextBlock Text="Обнаружение Student" FontWeight="Bold"/><Border Background="#F3F6F7" CornerRadius="8" Padding="14"><TextBlock Text="{Binding DiscoveryAddress}"/></Border><TextBlock Text="{Binding ConnectedClientLabel}" Foreground="#068F8A" FontWeight="Bold"/><TextBlock Text="{Binding VersionLabel}" Classes="muted"/></StackPanel></Border>
+            <Border Classes="card"><StackPanel Spacing="12"><TextBlock Text="Безопасность" Classes="h2"/><TextBlock Text="Токен класса не показывается в интерфейсе и передаётся Student только через локальное обнаружение." Classes="muted" TextWrapping="Wrap"/><TextBlock Text="Опасные файлы всегда требуют отдельного подтверждения во вкладке «Сохранения и версии»." Foreground="#A34942" TextWrapping="Wrap"/></StackPanel></Border>
+          </StackPanel>
+          <Border Grid.Column="1" Classes="card" Margin="18,0,0,0"><StackPanel Spacing="14"><TextBlock Text="Настройки Tutor" Classes="h2"/><TextBlock Text="Параметры текущей локации" Classes="muted"/><TextBlock Text="Название локации" FontWeight="Bold"/><TextBox Text="{Binding LocationName}"/><TextBlock Text="Обновление экранов, секунд" FontWeight="Bold"/><NumericUpDown Value="{Binding ScreenRefreshSeconds}" Minimum="5" Maximum="300"/><TextBlock Text="Интервал синхронизации, секунд" FontWeight="Bold"/><NumericUpDown Value="{Binding SyncIntervalSeconds}" Minimum="5" Maximum="600"/><CheckBox Content="Автоматически принимать безопасные файлы" IsChecked="{Binding AutoApproveSafeFiles}"/><CheckBox Content="Разрешить обновления Student" IsChecked="{Binding EnableStudentUpdates}"/><Button Content="Сохранить настройки" Command="{Binding SaveSettingsCommand}" Classes="primary" Margin="0,12,0,0"/><Border Background="#F3F6F7" CornerRadius="10" Padding="14"><TextBlock Text="{Binding SettingsStatus}" TextWrapping="Wrap"/></Border></StackPanel></Border>
+        </Grid></ScrollViewer>
+      </TabItem>
+      <TabItem Header="Модули и версии">
+        <Grid ColumnDefinitions="0.7*,1.8*" Margin="32,32"><Border Classes="card"><Grid RowDefinitions="Auto,*,Auto"><TextBlock Text="Модули" FontSize="20" FontWeight="Bold"/><StackPanel Grid.Row="1" Spacing="18" Margin="0,30,0,0"><Border Background="#E0F5F2" CornerRadius="8" Height="44" Padding="16,13"><TextBlock Text="Python · активный" Foreground="#068F8A" FontWeight="Bold"/></Border><Border Background="#F6F8F9" CornerRadius="8" Height="44" Padding="16,13"><TextBlock Text="C# · архив"/></Border><Border Background="#F6F8F9" CornerRadius="8" Height="44" Padding="16,13"><TextBlock Text="Вёрстка · архив"/></Border></StackPanel><Button Grid.Row="2" Content="Загрузить файлы" Command="{Binding LoadSyncedFilesCommand}" Classes="primary"/></Grid></Border><Border Grid.Column="1" Classes="card" Margin="22,0,0,0"><Grid RowDefinitions="Auto,Auto,*"><TextBlock Text="Последние версии" FontSize="20" FontWeight="Bold"/><Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,22,0,18"><ComboBox ItemsSource="{Binding SyncClients}" SelectedItem="{Binding SelectedSyncClient}"/><Button Grid.Column="1" Content="Обновить" Command="{Binding LoadSyncedFilesCommand}" Margin="12,0,0,0"/></Grid><Grid Grid.Row="2" ColumnDefinitions="*,*"><ListBox ItemsSource="{Binding SyncedFiles}" SelectedItem="{Binding SelectedSyncedFile}" Margin="0,0,12,0"/><StackPanel Grid.Column="1" Spacing="10"><Button Content="Показать версии" Command="{Binding LoadVersionsCommand}"/><ListBox ItemsSource="{Binding FileVersions}" SelectedItem="{Binding SelectedFileVersion}"/><Button Content="Восстановить" Command="{Binding RestoreVersionCommand}" Classes="primary"/></StackPanel></Grid></Grid></Border></Grid>
+      </TabItem>
+      <TabItem Header="Сравнение">
+        <Border Classes="card" Margin="36,40"><Grid RowDefinitions="Auto,*,46"><TextBlock Text="Сравнение версии" FontSize="22" FontWeight="Bold"/><Grid Grid.Row="1" ColumnDefinitions="*,*" Margin="0,34,0,34"><Border Background="#F7FAFA" CornerRadius="8" Padding="24" Margin="0,0,12,0"><StackPanel Spacing="18"><TextBlock Text="На компьютере" FontWeight="Bold"/><TextBlock Text="+ print(i)&#10;- print(j)" FontFamily="Consolas" Foreground="#1F9E61" FontSize="15"/></StackPanel></Border><Border Grid.Column="1" Background="#F7FAFA" CornerRadius="8" Padding="24" Margin="12,0,0,0"><StackPanel Spacing="18"><TextBlock Text="На сервере" FontWeight="Bold"/><TextBlock Text="+ print(i)&#10;- print(j)" FontFamily="Consolas" Foreground="#DB4040" FontSize="15"/></StackPanel></Border></Grid><Button Grid.Row="2" Content="Восстановить эту версию" Command="{Binding RestoreVersionCommand}" Background="#DB4040" Foreground="White" Width="300" HorizontalAlignment="Right"/></Grid></Border>
+      </TabItem>
+      <TabItem Header="Цели и каталог">
+        <Border Classes="card" Margin="36,40"><Grid RowDefinitions="Auto,*"><StackPanel><TextBlock Text="Общий каталог" FontSize="22" FontWeight="Bold"/><TextBlock Text="Ближайшая выбранная цель показывается первой у ученика" Classes="muted" Margin="0,8,0,0"/></StackPanel><ItemsControl Grid.Row="1" ItemsSource="{Binding StoreItems}" Margin="18,64,0,0"><ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel><ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:StoreItemCardViewModel"><Border Width="220" Margin="0,0,30,30"><StackPanel Spacing="12"><Border Background="#F0F5F5" Height="110" CornerRadius="8"/><TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="16"/><TextBlock Text="{Binding Details}" Foreground="#068F8A"/><Button Content="В каталоге" Classes="primary" Height="38"/></StackPanel></Border></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></Grid></Border>
+      </TabItem>
+      <TabItem Header="Настройки Figma">
+        <Grid ColumnDefinitions="*,*" Margin="32,32"><Border Classes="card"><StackPanel Spacing="20"><TextBlock Text="Основные параметры" FontSize="22" FontWeight="Bold"/><TextBlock Text="Кибероны за обычный урок" FontWeight="Bold"/><NumericUpDown Value="{Binding StorePrice}" Minimum="0" Maximum="1000"/><TextBlock Text="Порог изменений для подтверждения" FontWeight="Bold"/><TextBlock Text="Более 5 файлов" Classes="muted"/><TextBlock Text="Минимум символов для рейтинга" FontWeight="Bold"/><NumericUpDown Value="{Binding MinimumCharacters}" Minimum="1" Maximum="10000"/><TextBlock Text="Интервал снимков экрана" FontWeight="Bold"/><NumericUpDown Value="{Binding ScreenRefreshSeconds}" Minimum="5" Maximum="300"/></StackPanel></Border><Border Grid.Column="1" Classes="card" Margin="22,0,0,0"><StackPanel Spacing="18"><TextBlock Text="Параметры локации" FontSize="22" FontWeight="Bold"/><TextBlock Text="Локальное хранение журнала" FontWeight="Bold"/><Border Background="#F6F8F9" Height="42" CornerRadius="8" Padding="16,12"><TextBlock Text="90 дней"/></Border><TextBlock Text="Имя тьютора для аудита" FontWeight="Bold"/><TextBox Watermark="Не указано"/><TextBlock Text="Тема интерфейса" FontWeight="Bold"/><Border Background="#F6F8F9" Height="42" CornerRadius="8" Padding="16,12"><TextBlock Text="Только светлая"/></Border><TextBlock Text="Название локации" FontWeight="Bold"/><TextBox Text="{Binding LocationName}"/><Button Content="Сохранить настройки" Command="{Binding SaveSettingsCommand}" Classes="primary" Margin="0,22,0,0"/></StackPanel></Border></Grid>
+      </TabItem>
+      <TabItem Header="Достижения Figma">
+        <Border Classes="card" Margin="36,40"><Grid RowDefinitions="Auto,*,Auto"><StackPanel><TextBlock Text="Награды урока печати" FontSize="22" FontWeight="Bold"/><TextBlock Text="Один ученик получает не более одной награды за сессию" Classes="muted" Margin="0,8,0,0"/></StackPanel><StackPanel Grid.Row="1" Spacing="28" Margin="0,58,0,0"><Border Background="#F6F8F9" CornerRadius="8" Height="72" Padding="20"><Grid ColumnDefinitions="*,260,120"><StackPanel><TextBlock Text="Лучшая точность" FontWeight="Bold"/><TextBlock Text="Повторное получение разрешено" Classes="muted" FontSize="12"/></StackPanel><TextBlock Grid.Column="1" Text="20 XP" FontWeight="Bold"/><TextBlock Grid.Column="2" Text="Активно" Foreground="#068F8A"/></Grid></Border><Border Background="#F6F8F9" CornerRadius="8" Height="72" Padding="20"><Grid ColumnDefinitions="*,260,120"><StackPanel><TextBlock Text="Самая высокая скорость" FontWeight="Bold"/><TextBlock Text="Повторное получение разрешено" Classes="muted" FontSize="12"/></StackPanel><TextBlock Grid.Column="1" Text="20 XP" FontWeight="Bold"/><TextBlock Grid.Column="2" Text="Активно" Foreground="#068F8A"/></Grid></Border><Border Background="#F6F8F9" CornerRadius="8" Height="72" Padding="20"><Grid ColumnDefinitions="*,260,120"><StackPanel><TextBlock Text="Больше всего знаков" FontWeight="Bold"/><TextBlock Text="Повторное получение разрешено" Classes="muted" FontSize="12"/></StackPanel><TextBlock Grid.Column="1" Text="20 XP" FontWeight="Bold"/><TextBlock Grid.Column="2" Text="Активно" Foreground="#068F8A"/></Grid></Border><Border Background="#F6F8F9" CornerRadius="8" Height="44" Width="300" HorizontalAlignment="Left" Padding="16,12"><TextBlock Text="Награда за обычный урок · 10 ₭"/></Border></StackPanel><Button Grid.Row="2" Content="Сохранить правила" Command="{Binding SaveSettingsCommand}" Classes="primary" Width="300" HorizontalAlignment="Right"/></Grid></Border>
+      </TabItem>
+      <TabItem Header="Аудит">
+        <Grid RowDefinitions="Auto,*" Margin="36,40">
+          <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,12">
+            <ComboBox ItemsSource="{Binding AuditCategories}" SelectedItem="{Binding SelectedAuditCategory}" Width="190" />
+            <TextBox Grid.Column="1" Text="{Binding AuditSearch}" Watermark="Поиск по действию, ПК или пути" Margin="10,0" />
+            <Button Grid.Column="2" Content="Обновить журнал" Command="{Binding RefreshAuditCommand}" Classes="primary" />
+          </Grid>
+          <Border Grid.Row="1" Classes="card">
+            <ScrollViewer>
+              <ItemsControl ItemsSource="{Binding AuditEvents}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:AuditEventCardViewModel">
+                    <Border Background="#F6F8F9" CornerRadius="8" Height="70" Padding="16" Margin="0,0,0,18">
+                      <Grid ColumnDefinitions="130,130,100,*,150" RowDefinitions="Auto,Auto">
+                        <TextBlock Text="{Binding Time}" Classes="muted" />
+                        <TextBlock Grid.Column="1" Text="{Binding Category}" Foreground="#078F8A" FontWeight="Bold" />
+                        <TextBlock Grid.Column="2" Text="{Binding Action}" FontWeight="Bold" />
+                        <TextBlock Grid.Column="3" Text="{Binding Target}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Grid.Column="4" Text="{Binding Result}" HorizontalAlignment="Right" />
+                        <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding Actor}" Classes="muted" Margin="0,4,0,0" />
+                        <TextBlock Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="3" Text="{Binding Details}" Foreground="#A34942" TextTrimming="CharacterEllipsis" Margin="0,4,0,0" />
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </Border>
+        </Grid>
+      </TabItem>
+      <TabItem Header="Статистика">
+        <Grid ColumnDefinitions="*,*" Margin="36,40">
+          <Border Classes="card">
+            <StackPanel Spacing="14">
+              <TextBlock Text="Статистика группы" Classes="h2" />
+              <TextBlock Text="Сводка по оценкам, прогрессу и активности" Classes="muted" />
+              <ComboBox ItemsSource="{Binding Groups}" SelectedItem="{Binding SelectedGroup}" />
+              <Button Content="Рассчитать по группе" Command="{Binding LoadGroupStatisticsCommand}" Classes="primary" />
+              <Border Background="#F3F6F7" CornerRadius="12" Padding="20">
+                <TextBlock Text="{Binding GroupStatisticsText}" FontSize="17" LineHeight="28" TextWrapping="Wrap" />
+              </Border>
+            </StackPanel>
+          </Border>
+          <Border Grid.Column="1" Classes="card" Margin="18,0,0,0">
+            <StackPanel Spacing="14">
+              <TextBlock Text="Статистика ученика" Classes="h2" />
+              <TextBlock Text="Персональные оценки, XP, достижения и покупки" Classes="muted" />
+              <ComboBox ItemsSource="{Binding Students}" SelectedItem="{Binding SelectedStudent}" />
+              <Button Content="Открыть карточку" Command="{Binding LoadStudentStatisticsCommand}" Classes="accent" />
+              <Border Background="#F3F6F7" CornerRadius="12" Padding="20">
+                <TextBlock Text="{Binding StudentStatisticsText}" FontSize="17" LineHeight="28" TextWrapping="Wrap" />
+              </Border>
+            </StackPanel>
+          </Border>
+        </Grid>
+      </TabItem>
+    </TabControl>
+  </Grid>
+</Window>

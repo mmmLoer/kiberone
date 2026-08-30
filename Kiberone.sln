@@ -1,0 +1,64 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{4CC5A69F-2B1D-4AB0-B692-3C58D26F788D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Kiberone.Core", "src\Kiberone.Core\Kiberone.Core.csproj", "{403B47E1-D20D-4F26-BE43-5EC0CA4BE009}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Kiberone.Infrastructure", "src\Kiberone.Infrastructure\Kiberone.Infrastructure.csproj", "{E1F43CBC-B158-4181-AD23-6B5904227BC4}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Kiberone.Tutor", "src\Kiberone.Tutor\Kiberone.Tutor.csproj", "{E577AABD-E12F-4E97-A395-00F04F567924}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Kiberone.Student", "src\Kiberone.Student\Kiberone.Student.csproj", "{35BF6CA9-FC49-4258-B098-7082E0C88899}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0CB0620F-FAD5-4EAB-91E0-837B06362DC4}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Kiberone.Tests", "tests\Kiberone.Tests\Kiberone.Tests.csproj", "{90854ED8-8BB8-474D-9B0F-E5C6BB8029DF}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Kiberone.VpnAgent", "src\Kiberone.VpnAgent\Kiberone.VpnAgent.csproj", "{A8E8D27C-1CFA-4FEB-B5E3-9597013DC536}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{403B47E1-D20D-4F26-BE43-5EC0CA4BE009}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{403B47E1-D20D-4F26-BE43-5EC0CA4BE009}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{403B47E1-D20D-4F26-BE43-5EC0CA4BE009}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{403B47E1-D20D-4F26-BE43-5EC0CA4BE009}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E1F43CBC-B158-4181-AD23-6B5904227BC4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E1F43CBC-B158-4181-AD23-6B5904227BC4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E1F43CBC-B158-4181-AD23-6B5904227BC4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E1F43CBC-B158-4181-AD23-6B5904227BC4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E577AABD-E12F-4E97-A395-00F04F567924}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E577AABD-E12F-4E97-A395-00F04F567924}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E577AABD-E12F-4E97-A395-00F04F567924}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E577AABD-E12F-4E97-A395-00F04F567924}.Release|Any CPU.Build.0 = Release|Any CPU
+		{35BF6CA9-FC49-4258-B098-7082E0C88899}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{35BF6CA9-FC49-4258-B098-7082E0C88899}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{35BF6CA9-FC49-4258-B098-7082E0C88899}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{35BF6CA9-FC49-4258-B098-7082E0C88899}.Release|Any CPU.Build.0 = Release|Any CPU
+		{90854ED8-8BB8-474D-9B0F-E5C6BB8029DF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{90854ED8-8BB8-474D-9B0F-E5C6BB8029DF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{90854ED8-8BB8-474D-9B0F-E5C6BB8029DF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{90854ED8-8BB8-474D-9B0F-E5C6BB8029DF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A8E8D27C-1CFA-4FEB-B5E3-9597013DC536}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A8E8D27C-1CFA-4FEB-B5E3-9597013DC536}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A8E8D27C-1CFA-4FEB-B5E3-9597013DC536}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A8E8D27C-1CFA-4FEB-B5E3-9597013DC536}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{403B47E1-D20D-4F26-BE43-5EC0CA4BE009} = {4CC5A69F-2B1D-4AB0-B692-3C58D26F788D}
+		{E1F43CBC-B158-4181-AD23-6B5904227BC4} = {4CC5A69F-2B1D-4AB0-B692-3C58D26F788D}
+		{E577AABD-E12F-4E97-A395-00F04F567924} = {4CC5A69F-2B1D-4AB0-B692-3C58D26F788D}
+		{35BF6CA9-FC49-4258-B098-7082E0C88899} = {4CC5A69F-2B1D-4AB0-B692-3C58D26F788D}
+		{90854ED8-8BB8-474D-9B0F-E5C6BB8029DF} = {0CB0620F-FAD5-4EAB-91E0-837B06362DC4}
+		{A8E8D27C-1CFA-4FEB-B5E3-9597013DC536} = {4CC5A69F-2B1D-4AB0-B692-3C58D26F788D}
+	EndGlobalSection
+EndGlobal
