@@ -144,6 +144,8 @@ public sealed class ClassroomServer(
             IsTutor(context) ? Results.Created("/students", await classroom.CreateStudentAsync(draft, ct)) : Results.Unauthorized());
         application.MapPut("/students/{id:guid}", async (HttpContext context, Guid id, [FromBody] StudentDraft draft, CancellationToken ct) =>
             !IsTutor(context) ? Results.Unauthorized() : await classroom.UpdateStudentAsync(id, draft, ct) is { } student ? Results.Ok(student) : Results.NotFound());
+        application.MapDelete("/students/{id:guid}", async (HttpContext context, Guid id, CancellationToken ct) =>
+            !IsTutor(context) ? Results.Unauthorized() : await classroom.DeleteStudentAsync(id, ct) ? Results.NoContent() : Results.NotFound());
         application.MapPost("/grades", async (HttpContext context, [FromBody] GradeDraft draft, CancellationToken ct) =>
             IsTutor(context) ? Results.Ok(await classroom.AddGradeAsync(draft, ct)) : Results.Unauthorized());
         application.MapPost("/check-in", ([FromBody] CheckInRequest request, CancellationToken ct) =>

@@ -52,6 +52,7 @@ public sealed class StudentAgent : IAsyncDisposable
     public Func<byte[]?>? ScreenProvider { get; set; }
     public Func<bool>? FocusModeStateProvider { get; set; }
     public Func<bool>? WatchdogStateProvider { get; set; }
+    public Func<int?>? BatteryProvider { get; set; }
     public Func<ClassroomCommand, CommandExecutionResult>? VpnCommandHandler { get; set; }
     public Func<bool>? VpnStateProvider { get; set; }
     public event Action<StudentConnectionState>? ConnectionChanged;
@@ -153,7 +154,7 @@ public sealed class StudentAgent : IAsyncDisposable
                 WatchdogStateProvider?.Invoke() ?? false,
                 FocusModeStateProvider?.Invoke() ?? false,
                 string.Empty,
-                null,
+                BatteryProvider?.Invoke(),
                 VpnStateProvider?.Invoke() ?? false));
         using var response = await http.PostAsJsonAsync("/heartbeat", heartbeat, JsonOptions, cancellationToken);
         response.EnsureSuccessStatusCode();

@@ -16,6 +16,7 @@ public sealed class Student
     public required string LastName { get; set; }
     public required string FirstName { get; set; }
     public int? Age { get; set; }
+    public DateOnly? Birthday { get; set; }
     public Guid GroupId { get; set; }
     public ClassroomGroup? Group { get; set; }
     public string Comment { get; set; } = string.Empty;

@@ -77,7 +77,17 @@ public sealed class StoreOrder
 }
 
 public sealed record GroupDraft(string Name, string Module, string Topics);
-public sealed record StudentDraft(string LastName, string FirstName, int? Age, Guid GroupId, string Comment, string PortfolioUrl, string CrmId);
+public sealed record StudentDraft(
+    string LastName,
+    string FirstName,
+    int? Age,
+    Guid GroupId,
+    string Comment,
+    string PortfolioUrl,
+    string CrmId,
+    DateOnly? Birthday = null,
+    int? Kiberons = null,
+    int? Xp = null);
 public sealed record GradeDraft(Guid StudentId, Guid? ClassroomSessionId, int Value, string Note);
 public sealed record AchievementDraft(string Code, string Name, string Description, string Icon, int XpReward, int KiberonReward);
 public sealed record AwardAchievementRequest(Guid StudentId, Guid AchievementId, string Note);
@@ -86,7 +96,18 @@ public sealed record StoreItemDraft(string Sku, string Name, string Description,
 public sealed record PurchaseRequest(Guid StudentId, Guid StoreItemId);
 public sealed record UpdateOrderStatusRequest(StoreOrderStatus Status, string Note);
 public sealed record CheckInRequest(Guid StudentId, string Topic, string PcNumber, string ClientId);
-public sealed record StudentSummary(Guid Id, string DisplayName, int? Age, Guid GroupId, string GroupName, int Kiberons, int Xp, int Level);
+public sealed record StudentSummary(
+    Guid Id,
+    string DisplayName,
+    int? Age,
+    Guid GroupId,
+    string GroupName,
+    int Kiberons,
+    int Xp,
+    int Level,
+    DateOnly? Birthday = null,
+    string LastName = "",
+    string FirstName = "");
 public sealed record StudentProfile(Student Student, IReadOnlyList<Grade> Grades, IReadOnlyList<StudentAchievement> Achievements, IReadOnlyList<KiberonTransaction> KiberonHistory, IReadOnlyList<StoreOrder> Orders);
 public sealed record PurchaseResult(StoreOrder Order, int BalanceAfter, int StockAfter);
 public sealed record GroupStatistics(Guid GroupId, string GroupName, int StudentCount, double AverageGrade, int TotalXp, int TotalKiberons, int SessionCount, int AchievementCount);

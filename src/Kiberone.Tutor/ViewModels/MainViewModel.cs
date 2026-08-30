@@ -13,6 +13,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     public ObservableCollection<LessonCardViewModel> Lessons { get; } = [];
     public ObservableCollection<GroupCardViewModel> Groups { get; } = [];
     public ObservableCollection<StudentCardViewModel> Students { get; } = [];
+    public ObservableCollection<StudentCardViewModel> FilteredStudents { get; } = [];
     public ObservableCollection<AchievementCardViewModel> Achievements { get; } = [];
     public ObservableCollection<StoreItemCardViewModel> StoreItems { get; } = [];
     public ObservableCollection<SyncApprovalCardViewModel> SyncApprovals { get; } = [];
@@ -48,6 +49,12 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [ObservableProperty] private string studentFirstName = string.Empty;
     [ObservableProperty] private int studentAge = 10;
     [ObservableProperty] private string studentComment = string.Empty;
+    [ObservableProperty] private string studentBirthdayText = string.Empty;
+    [ObservableProperty] private int studentLevel = 1;
+    [ObservableProperty] private int studentKiberons;
+    [ObservableProperty] private bool isEditingStudent;
+    [ObservableProperty] private bool showClassScreens;
+    [ObservableProperty] private bool showTypingStatistics;
     [ObservableProperty] private StudentCardViewModel? selectedStudent;
     [ObservableProperty] private AchievementCardViewModel? selectedAchievement;
     [ObservableProperty] private StoreItemCardViewModel? selectedStoreItem;
@@ -112,10 +119,18 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     public bool HasNoLessons => !HasLessons;
     public bool HasStudents => Students.Count > 0;
     public bool HasNoStudents => !HasStudents;
+    public bool HasFilteredStudents => FilteredStudents.Count > 0;
+    public bool HasNoFilteredStudents => !HasFilteredStudents;
     public bool HasGroups => Groups.Count > 0;
     public bool HasNoGroups => !HasGroups;
     public bool HasScreenPreviews => ScreenPreviews.Count > 0;
     public bool HasNoScreenPreviews => !HasScreenPreviews;
+    public bool ShowClassRoster => !ShowClassScreens;
+    public bool ShowTypingEditor => !ShowTypingStatistics;
+    public string ClassViewToggleLabel => ShowClassScreens ? "Показать список" : "Показать экраны";
+    public string TypingViewToggleLabel => ShowTypingStatistics ? "К редактору уроков" : "К статистике";
+    public string StudentFormTitle => IsEditingStudent ? "Редактировать ученика" : "Новый ученик";
+    public string StudentFormActionLabel => IsEditingStudent ? "Сохранить изменения" : "Добавить ученика";
     public bool HasAuditEvents => AuditEvents.Count > 0;
     public bool HasNoAuditEvents => !HasAuditEvents;
     public string ServerAddress => "http://0.0.0.0:8765";
@@ -143,7 +158,8 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
 
     public void RefreshClients()
     {
-        var online = clients.GetAll().Where(client => client.IsOnline).ToList();
+        var all = clients.GetAll();
+        var online = all.Where(client => client.IsOnline).ToList();
         ConnectedClientCount = online.Count;
         var vpnCount = online.Count(client => client.Extra.VpnConnected);
         ConnectedClientLabel = ConnectedClientCount switch
@@ -154,7 +170,22 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
                 ? $"{ConnectedClientCount} учеников онлайн · VPN: {vpnCount}"
                 : $"{ConnectedClientCount} учеников онлайн"
         };
+        ApplyPresence(all);
         RefreshVpnDistributionStatus(online);
+        OnPropertyChanged(nameof(SectionSubtitle));
+    }
+
+    private void ApplyPresence(IReadOnlyList<ClassroomClientSnapshot> snapshots)
+    {
+        foreach (var student in Students)
+        {
+            var match = snapshots
+                .Where(client => client.StudentId == student.Id)
+                .OrderByDescending(client => client.IsOnline)
+                .ThenByDescending(client => client.LastSeenAt)
+                .FirstOrDefault();
+            student.ApplyPresence(match);
+        }
     }
 
     private void RefreshVpnDistributionStatus(IReadOnlyList<ClassroomClientSnapshot> onlineClients)
@@ -505,6 +536,62 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     private Task RefreshAsync() => RefreshCoreAsync();
 
     [RelayCommand]
+    private void ToggleClassScreens()
+    {
+        ShowClassScreens = !ShowClassScreens;
+        OnPropertyChanged(nameof(ShowClassRoster));
+        OnPropertyChanged(nameof(ClassViewToggleLabel));
+        if (ShowClassScreens) _ = RefreshScreensAsync();
+    }
+
+    [RelayCommand]
+    private void ToggleTypingStatistics()
+    {
+        ShowTypingStatistics = !ShowTypingStatistics;
+        OnPropertyChanged(nameof(ShowTypingEditor));
+        OnPropertyChanged(nameof(TypingViewToggleLabel));
+    }
+
+    [RelayCommand]
+    private void SelectGroup(GroupCardViewModel? group)
+    {
+        if (group is null) return;
+        SelectedGroup = group;
+        RebuildFilteredStudents();
+        StatusMessage = $"Группа «{group.Name}»: {FilteredStudents.Count} учеников.";
+    }
+
+    [RelayCommand]
+    private void BeginEditStudent(StudentCardViewModel? student)
+    {
+        if (student is null) return;
+        SelectedStudent = student;
+        IsEditingStudent = true;
+        StudentLastName = student.LastName;
+        StudentFirstName = student.FirstName;
+        StudentAge = student.Age ?? 10;
+        StudentComment = string.Empty;
+        StudentBirthdayText = student.Birthday?.ToString("dd.MM.yyyy") ?? string.Empty;
+        StudentLevel = Math.Max(1, student.Level);
+        StudentKiberons = student.Kiberons;
+        SelectedGroup = Groups.FirstOrDefault(x => x.Id == student.GroupId) ?? SelectedGroup;
+        OnPropertyChanged(nameof(StudentFormTitle));
+        OnPropertyChanged(nameof(StudentFormActionLabel));
+    }
+
+    [RelayCommand]
+    private void BeginCreateStudent()
+    {
+        IsEditingStudent = false;
+        StudentLastName = StudentFirstName = StudentComment = StudentBirthdayText = string.Empty;
+        StudentAge = 10;
+        StudentLevel = 1;
+        StudentKiberons = 0;
+        OnPropertyChanged(nameof(StudentFormTitle));
+        OnPropertyChanged(nameof(StudentFormActionLabel));
+    }
+
+    [RelayCommand]
     private async Task CreateGroupAsync()
     {
         await RunActionAsync(async () =>
@@ -516,7 +603,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     }
 
     [RelayCommand]
-    private async Task CreateStudentAsync()
+    private async Task SaveStudentAsync()
     {
         if (SelectedGroup is null)
         {
@@ -524,12 +611,67 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             StatusMessage = "Сначала выберите группу ученика.";
             return;
         }
+
+        DateOnly? birthday = null;
+        if (!string.IsNullOrWhiteSpace(StudentBirthdayText))
+        {
+            if (!DateOnly.TryParse(StudentBirthdayText.Trim(), out var parsed) &&
+                !DateOnly.TryParseExact(StudentBirthdayText.Trim(), ["dd.MM.yyyy", "yyyy-MM-dd"], null, System.Globalization.DateTimeStyles.None, out parsed))
+            {
+                HasError = true;
+                StatusMessage = "Дата рождения: используйте ДД.ММ.ГГГГ.";
+                return;
+            }
+            birthday = parsed;
+        }
+
+        var level = Math.Clamp(StudentLevel, 1, 100);
+        var xp = (level - 1) * 100;
+        var draft = new StudentDraft(
+            StudentLastName,
+            StudentFirstName,
+            StudentAge,
+            SelectedGroup.Id,
+            StudentComment,
+            string.Empty,
+            string.Empty,
+            birthday,
+            Math.Max(0, StudentKiberons),
+            xp);
+
         await RunActionAsync(async () =>
         {
-            var student = await classroom.CreateStudentAsync(new StudentDraft(StudentLastName, StudentFirstName, StudentAge,
-                SelectedGroup.Id, StudentComment, string.Empty, string.Empty));
-            StudentLastName = StudentFirstName = StudentComment = string.Empty;
-            StatusMessage = $"Ученик {student.DisplayName} добавлен.";
+            if (IsEditingStudent && SelectedStudent is not null)
+            {
+                var updated = await classroom.UpdateStudentAsync(SelectedStudent.Id, draft)
+                    ?? throw new KeyNotFoundException("Ученик не найден.");
+                StatusMessage = $"Карточка {updated.DisplayName} обновлена.";
+            }
+            else
+            {
+                var student = await classroom.CreateStudentAsync(draft);
+                StatusMessage = $"Ученик {student.DisplayName} добавлен.";
+            }
+            BeginCreateStudent();
+        });
+    }
+
+    [RelayCommand]
+    private async Task DeleteStudentAsync()
+    {
+        if (SelectedStudent is null)
+        {
+            ShowSelectionError("Выберите ученика для удаления.");
+            return;
+        }
+        var name = SelectedStudent.Name;
+        var id = SelectedStudent.Id;
+        await RunActionAsync(async () =>
+        {
+            if (!await classroom.DeleteStudentAsync(id))
+                throw new KeyNotFoundException("Ученик не найден.");
+            StatusMessage = $"Ученик {name} удалён.";
+            BeginCreateStudent();
         });
     }
 
@@ -680,6 +822,8 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         Students.Clear();
         foreach (var student in storedStudents) Students.Add(new StudentCardViewModel(student));
         SelectedStudent = Students.FirstOrDefault(x => x.Id == selectedStudentId) ?? Students.FirstOrDefault();
+        ApplyPresence(clients.GetAll());
+        RebuildFilteredStudents();
         RefreshWinners();
         var selectedAchievementId = SelectedAchievement?.Id;
         Achievements.Clear();
@@ -702,18 +846,41 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         NotifyCollectionStates();
     }
 
+    private void RebuildFilteredStudents()
+    {
+        FilteredStudents.Clear();
+        IEnumerable<StudentCardViewModel> source = Students;
+        if (SelectedGroup is not null)
+            source = Students.Where(x => x.GroupId == SelectedGroup.Id);
+        foreach (var student in source) FilteredStudents.Add(student);
+        if (SelectedStudent is not null && FilteredStudents.All(x => x.Id != SelectedStudent.Id))
+            SelectedStudent = FilteredStudents.FirstOrDefault();
+        OnPropertyChanged(nameof(HasFilteredStudents));
+        OnPropertyChanged(nameof(HasNoFilteredStudents));
+    }
+
+    partial void OnSelectedGroupChanged(GroupCardViewModel? value) => RebuildFilteredStudents();
+
     private void NotifyCollectionStates()
     {
         OnPropertyChanged(nameof(HasLessons));
         OnPropertyChanged(nameof(HasNoLessons));
         OnPropertyChanged(nameof(HasStudents));
         OnPropertyChanged(nameof(HasNoStudents));
+        OnPropertyChanged(nameof(HasFilteredStudents));
+        OnPropertyChanged(nameof(HasNoFilteredStudents));
         OnPropertyChanged(nameof(HasGroups));
         OnPropertyChanged(nameof(HasNoGroups));
         OnPropertyChanged(nameof(HasScreenPreviews));
         OnPropertyChanged(nameof(HasNoScreenPreviews));
         OnPropertyChanged(nameof(HasAuditEvents));
         OnPropertyChanged(nameof(HasNoAuditEvents));
+        OnPropertyChanged(nameof(ShowClassRoster));
+        OnPropertyChanged(nameof(ShowTypingEditor));
+        OnPropertyChanged(nameof(ClassViewToggleLabel));
+        OnPropertyChanged(nameof(TypingViewToggleLabel));
+        OnPropertyChanged(nameof(StudentFormTitle));
+        OnPropertyChanged(nameof(StudentFormActionLabel));
     }
 }
 
@@ -742,15 +909,69 @@ public sealed class GroupCardViewModel(ClassroomGroup group)
     public override string ToString() => Name;
 }
 
-public sealed class StudentCardViewModel(StudentSummary student)
+public partial class StudentCardViewModel : ObservableObject
 {
-    public Guid Id { get; } = student.Id;
-    public string Name { get; } = student.DisplayName;
-    public string Group { get; } = student.GroupName;
-    public string Progress { get; } = $"Уровень {student.Level} · {student.Xp} XP";
-    public int Xp { get; } = student.Xp;
-    public string Balance { get; } = $"{student.Kiberons} K";
+    public StudentCardViewModel(StudentSummary student)
+    {
+        Id = student.Id;
+        GroupId = student.GroupId;
+        LastName = string.IsNullOrWhiteSpace(student.LastName) ? SplitName(student.DisplayName).Last : student.LastName;
+        FirstName = string.IsNullOrWhiteSpace(student.FirstName) ? SplitName(student.DisplayName).First : student.FirstName;
+        Name = student.DisplayName;
+        Group = student.GroupName;
+        Age = student.Age;
+        Birthday = student.Birthday;
+        Kiberons = student.Kiberons;
+        Xp = student.Xp;
+        Level = student.Level;
+        Progress = $"Уровень {student.Level} · {student.Xp} XP";
+        Balance = $"{student.Kiberons} K";
+        ApplyPresence(null);
+    }
+
+    public Guid Id { get; }
+    public Guid GroupId { get; }
+    public string LastName { get; }
+    public string FirstName { get; }
+    public string Name { get; }
+    public string Group { get; }
+    public int? Age { get; }
+    public DateOnly? Birthday { get; }
+    public int Kiberons { get; }
+    public int Xp { get; }
+    public int Level { get; }
+    public string Progress { get; }
+    public string Balance { get; }
+
+    [ObservableProperty] private bool isOnline;
+    [ObservableProperty] private bool isOffline = true;
+    [ObservableProperty] private string presenceLabel = "оффлайн";
+    [ObservableProperty] private string presenceColor = "#9AA7AE";
+    [ObservableProperty] private string batteryLabel = "—";
+    [ObservableProperty] private string detailsLine = "оффлайн · батарея —";
+
+    public void ApplyPresence(ClassroomClientSnapshot? client)
+    {
+        IsOnline = client?.IsOnline == true;
+        IsOffline = !IsOnline;
+        PresenceLabel = IsOnline ? "онлайн" : "оффлайн";
+        PresenceColor = IsOnline ? "#068F8A" : "#9AA7AE";
+        BatteryLabel = client?.Extra.BatteryPercent is int pct ? $"{pct}%" : "—";
+        DetailsLine = $"{PresenceLabel} · батарея {BatteryLabel}";
+    }
+
     public override string ToString() => Name;
+
+    private static (string Last, string First) SplitName(string displayName)
+    {
+        var parts = displayName.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length switch
+        {
+            0 => ("", ""),
+            1 => (parts[0], ""),
+            _ => (parts[0], parts[1])
+        };
+    }
 }
 
 public sealed record TutorLocalSettings(

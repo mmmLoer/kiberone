@@ -941,10 +941,15 @@
           <StackPanel Grid.Column="1" Margin="34" Spacing="16" VerticalAlignment="Center">
             <StackPanel Spacing="5">
               <TextBlock Text="Добро пожаловать" Classes="h1"/>
-              <TextBlock Text="Выбери своё имя — группа указана рядом." Classes="muted"/>
+              <TextBlock Text="Сначала группа, затем имя из этой группы." Classes="muted"/>
             </StackPanel>
+            <TextBlock Text="Группа" FontWeight="SemiBold" Margin="0,8,0,0"/>
+            <ComboBox ItemsSource="{Binding LoginGroups}"
+                      SelectedItem="{Binding SelectedLoginGroup}"
+                      PlaceholderText="Выбери группу"
+                      HorizontalAlignment="Stretch"/>
             <TextBlock Text="Ученик" FontWeight="SemiBold" Margin="0,8,0,0"/>
-            <ComboBox ItemsSource="{Binding Students}"
+            <ComboBox ItemsSource="{Binding LoginStudents}"
                       SelectedItem="{Binding SelectedStudent}"
                       PlaceholderText="Выбери себя"
                       HorizontalAlignment="Stretch"/>

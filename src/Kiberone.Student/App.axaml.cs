@@ -35,6 +35,7 @@ public partial class App : Avalonia.Application
             agent = new StudentAgent();
             vpn = new VpnController();
             agent.VpnStateProvider = () => vpn.IsConnected;
+            agent.BatteryProvider = BatteryInfo.TryGetBatteryPercent;
             agent.VpnCommandHandler = HandleVpnCommand;
             focusMode = new FocusModeManager();
             watchdog = new WatchdogManager();

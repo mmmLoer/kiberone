@@ -54,9 +54,12 @@ public partial class MainViewModel : ViewModelBase
     public ObservableCollection<TypingGlyphViewModel> TextGlyphs { get; } = [];
     public ObservableCollection<KeyboardRowViewModel> KeyboardRows { get; } = [];
     public ObservableCollection<StudentChoiceViewModel> Students { get; } = [];
+    public ObservableCollection<string> LoginGroups { get; } = [];
+    public ObservableCollection<StudentChoiceViewModel> LoginStudents { get; } = [];
+    [ObservableProperty] private string? selectedLoginGroup;
     [ObservableProperty] private StudentChoiceViewModel? selectedStudent;
     [ObservableProperty] private bool isLoginVisible = true;
-    [ObservableProperty] private string loginMessage = "Подключитесь к Tutor и выберите своё имя.";
+    [ObservableProperty] private string loginMessage = "Подключитесь к Tutor, выберите группу и своё имя.";
     [ObservableProperty] private string currentStudentName = "Ученик";
     [ObservableProperty] private string currentStudentGroup = "Группа не выбрана";
     [ObservableProperty] private int currentStudentLevel = 1;
@@ -205,10 +208,33 @@ public partial class MainViewModel : ViewModelBase
     public void SetStudents(IReadOnlyList<StudentSummary> students)
     {
         var selectedId = SelectedStudent?.Id;
+        var previousGroup = SelectedLoginGroup;
         Students.Clear();
         foreach (var student in students) Students.Add(new StudentChoiceViewModel(student));
-        SelectedStudent = Students.FirstOrDefault(x => x.Id == selectedId) ?? Students.FirstOrDefault();
-        LoginMessage = Students.Count == 0 ? "Тьютор ещё не добавил учеников." : "Выберите свою карточку.";
+
+        LoginGroups.Clear();
+        foreach (var group in Students.Select(x => x.Group).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().OrderBy(x => x))
+            LoginGroups.Add(group);
+
+        SelectedLoginGroup = LoginGroups.FirstOrDefault(x => x == previousGroup)
+            ?? LoginGroups.FirstOrDefault(x => Students.Any(s => s.Id == selectedId && s.Group == x))
+            ?? LoginGroups.FirstOrDefault();
+        RebuildLoginStudents(selectedId);
+        LoginMessage = Students.Count == 0
+            ? "Тьютор ещё не добавил учеников."
+            : LoginGroups.Count == 0
+                ? "Группы пока не назначены."
+                : "Сначала выберите группу, затем своё имя.";
+    }
+
+    partial void OnSelectedLoginGroupChanged(string? value) => RebuildLoginStudents(SelectedStudent?.Id);
+
+    private void RebuildLoginStudents(Guid? preferredId)
+    {
+        LoginStudents.Clear();
+        foreach (var student in Students.Where(x => SelectedLoginGroup is null || x.Group == SelectedLoginGroup))
+            LoginStudents.Add(student);
+        SelectedStudent = LoginStudents.FirstOrDefault(x => x.Id == preferredId) ?? LoginStudents.FirstOrDefault();
     }
 
     public void SetSyncState(StudentSyncState state) =>
@@ -264,7 +290,8 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void ConfirmStudent()
     {
-        if (SelectedStudent is null) { LoginMessage = "Сначала выберите ученика."; return; }
+        if (SelectedLoginGroup is null) { LoginMessage = "Сначала выберите группу."; return; }
+        if (SelectedStudent is null) { LoginMessage = "Затем выберите своё имя в группе."; return; }
         StudentSelected?.Invoke(SelectedStudent.Id);
         IsLoginVisible = false;
         CurrentStudentName = SelectedStudent.Name;

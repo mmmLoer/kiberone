@@ -54,8 +54,18 @@ public sealed class ClassroomService(DbContextOptions<ClassroomDbContext> option
             students = students.Where(x => x.FirstName.Contains(normalized) || x.LastName.Contains(normalized));
         }
         return await students.OrderBy(x => x.LastName).ThenBy(x => x.FirstName)
-            .Select(x => new StudentSummary(x.Id, x.LastName + " " + x.FirstName, x.Age, x.GroupId,
-                x.Group != null ? x.Group.Name : string.Empty, x.Kiberons, x.Xp, (x.Xp / 100) + 1))
+            .Select(x => new StudentSummary(
+                x.Id,
+                x.LastName + " " + x.FirstName,
+                x.Age,
+                x.GroupId,
+                x.Group != null ? x.Group.Name : string.Empty,
+                x.Kiberons,
+                x.Xp,
+                (x.Xp / 100) + 1,
+                x.Birthday,
+                x.LastName,
+                x.FirstName))
             .ToListAsync(ct);
     }
 
@@ -65,6 +75,8 @@ public sealed class ClassroomService(DbContextOptions<ClassroomDbContext> option
         await using var db = new ClassroomDbContext(options);
         if (!await db.Groups.AnyAsync(x => x.Id == draft.GroupId, ct)) throw new KeyNotFoundException("Группа не найдена.");
         var student = ToStudent(draft);
+        if (draft.Kiberons is >= 0) student.Kiberons = draft.Kiberons.Value;
+        if (draft.Xp is >= 0) student.Xp = draft.Xp.Value;
         db.Students.Add(student);
         await db.SaveChangesAsync(ct);
         return student;
@@ -80,12 +92,41 @@ public sealed class ClassroomService(DbContextOptions<ClassroomDbContext> option
         student.LastName = draft.LastName.Trim();
         student.FirstName = draft.FirstName.Trim();
         student.Age = draft.Age;
+        student.Birthday = draft.Birthday;
         student.GroupId = draft.GroupId;
         student.Comment = Trim(draft.Comment, 2000);
         student.PortfolioUrl = Trim(draft.PortfolioUrl, 500);
         student.CrmId = Trim(draft.CrmId, 120);
+        if (draft.Xp is >= 0) student.Xp = draft.Xp.Value;
+        if (draft.Kiberons is int targetKiberons)
+        {
+            var delta = targetKiberons - student.Kiberons;
+            if (delta != 0)
+                AddKiberons(db, student, delta, KiberonTransactionKind.Adjustment, "Редактирование карточки тьютором", null);
+        }
         await db.SaveChangesAsync(ct);
         return student;
+    }
+
+    public async Task<bool> DeleteStudentAsync(Guid id, CancellationToken ct = default)
+    {
+        await using var db = new ClassroomDbContext(options);
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var student = await db.Students.SingleOrDefaultAsync(x => x.Id == id, ct);
+        if (student is null) return false;
+
+        var orders = await db.StoreOrders.Where(x => x.StudentId == id).ToListAsync(ct);
+        db.StoreOrders.RemoveRange(orders);
+        db.Grades.RemoveRange(await db.Grades.Where(x => x.StudentId == id).ToListAsync(ct));
+        db.ClassroomSessions.RemoveRange(await db.ClassroomSessions.Where(x => x.StudentId == id).ToListAsync(ct));
+        db.StudentAchievements.RemoveRange(await db.StudentAchievements.Where(x => x.StudentId == id).ToListAsync(ct));
+        db.KiberonTransactions.RemoveRange(await db.KiberonTransactions.Where(x => x.StudentId == id).ToListAsync(ct));
+        var quizAnswers = await db.QuizAnswers.Where(x => x.StudentId == id).ToListAsync(ct);
+        db.QuizAnswers.RemoveRange(quizAnswers);
+        db.Students.Remove(student);
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return true;
     }
 
     public async Task<StudentProfile?> GetStudentAsync(Guid id, CancellationToken ct = default)
@@ -300,8 +341,14 @@ public sealed class ClassroomService(DbContextOptions<ClassroomDbContext> option
 
     private static Student ToStudent(StudentDraft draft) => new()
     {
-        LastName = draft.LastName.Trim(), FirstName = draft.FirstName.Trim(), Age = draft.Age, GroupId = draft.GroupId,
-        Comment = Trim(draft.Comment, 2000), PortfolioUrl = Trim(draft.PortfolioUrl, 500), CrmId = Trim(draft.CrmId, 120)
+        LastName = draft.LastName.Trim(),
+        FirstName = draft.FirstName.Trim(),
+        Age = draft.Age,
+        Birthday = draft.Birthday,
+        GroupId = draft.GroupId,
+        Comment = Trim(draft.Comment, 2000),
+        PortfolioUrl = Trim(draft.PortfolioUrl, 500),
+        CrmId = Trim(draft.CrmId, 120)
     };
 
     private static void ValidateStudent(StudentDraft draft)
