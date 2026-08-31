@@ -34,6 +34,11 @@ foreach ($dll in @("tunnel.dll", "wireguard.dll")) {
     }
 }
 
+$serviceDir = Join-Path $out "service"
+New-Item -ItemType Directory -Force -Path $serviceDir | Out-Null
+Copy-Item (Join-Path $projectRoot "scripts\install-student-vpn-service.ps1") $serviceDir -Force
+Write-Host "Copied VPN service installer to $serviceDir"
+
 Write-Host ""
 Write-Host "Published to $out"
 Write-Host "Next (admin, once per PC): .\scripts\restart-student-vpn-service.ps1 -SourceDir `"$out`""

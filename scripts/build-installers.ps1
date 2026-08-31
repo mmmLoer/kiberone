@@ -30,6 +30,7 @@ function New-StudentInstaller {
     Copy-Item -Path (Join-Path $PublishDir "*") -Destination (Join-Path $stage "app") -Recurse -Force
     Copy-Item (Join-Path $projectRoot "install\Setup-Student.ps1") $stage -Force
     Copy-Item (Join-Path $projectRoot "install\Install-Student.cmd") $stage -Force
+    Copy-Item (Join-Path $projectRoot "install\Repair-Student-Vpn.cmd") $stage -Force
     Copy-Item (Join-Path $projectRoot "install\README-Student.txt") $stage -Force
     Copy-Item (Join-Path $projectRoot "scripts\install-student-vpn-service.ps1") (Join-Path $stage "service") -Force
 

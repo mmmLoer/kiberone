@@ -5,7 +5,7 @@ namespace Kiberone.Vpn;
 public sealed class VpnController
 {
     private const string ServiceMissingMessage =
-        "VPN-служба не установлена. Один раз запустите от администратора: scripts\\install-student-vpn-service.ps1";
+        "VPN-служба не установлена. Подтвердите запрос UAC или запустите Install-Student.cmd от администратора.";
 
     private const string ServiceStoppedMessage =
         "VPN-служба установлена, но не запущена. Выполните: sc start KIBERoneStudentVpn";
@@ -85,7 +85,7 @@ public sealed class VpnController
 
             try
             {
-                var activeBridge = TryResolveBridge();
+                var activeBridge = EnsureBridgeReady();
                 if (activeBridge is not null)
                 {
                     var bridged = activeBridge.Connect(path);
@@ -142,7 +142,7 @@ public sealed class VpnController
         lock (gate)
         {
             var path = ResolveInstallPath();
-            var activeBridge = TryResolveBridge();
+            var activeBridge = EnsureBridgeReady();
             if (activeBridge is not null)
             {
                 var status = activeBridge.InstallConfig(content.ToArray(), path);
@@ -157,6 +157,50 @@ public sealed class VpnController
             options.ConfigPath = path;
             lastError = null;
             return GetStatus();
+        }
+    }
+
+    private VpnBridgeClient? EnsureBridgeReady()
+    {
+        var activeBridge = TryResolveBridge();
+        if (activeBridge is not null || !options.RequireBridge)
+            return activeBridge;
+
+        if (!bridgeClient.IsServiceInstalled)
+        {
+            if (VpnServiceInstaller.TryInstallInPlace())
+                ResetBridgeCache();
+        }
+        else if (!bridgeClient.IsServiceRunning)
+        {
+            TryStartBridgeService();
+            ResetBridgeCache();
+        }
+
+        return TryResolveBridge();
+    }
+
+    private void ResetBridgeCache()
+    {
+        bridgeResolved = false;
+        bridge = null;
+    }
+
+    private static void TryStartBridgeService()
+    {
+        try
+        {
+            using var controller = new System.ServiceProcess.ServiceController(VpnBridgeConstants.ServiceName);
+            if (controller.Status == System.ServiceProcess.ServiceControllerStatus.Running)
+                return;
+
+            controller.Start();
+            controller.WaitForStatus(System.ServiceProcess.ServiceControllerStatus.Running, TimeSpan.FromSeconds(20));
+            VpnLog.Info("controller", "VPN bridge service started.");
+        }
+        catch (Exception error)
+        {
+            VpnLog.Warn("controller", $"Could not start VPN bridge service: {error.Message}");
         }
     }
 
