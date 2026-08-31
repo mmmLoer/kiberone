@@ -1,6 +1,7 @@
 #Requires -RunAsAdministrator
 param(
-    [string] $InstallDir = "$env:ProgramFiles\KIBERone\Student"
+    [string] $InstallDir = "$env:ProgramFiles\KIBERone\Student",
+    [string] $DesktopPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -16,20 +17,66 @@ if (-not (Test-Path -LiteralPath $serviceScript)) {
     throw "Installer package is incomplete: service\install-student-vpn-service.ps1 not found."
 }
 
-Write-Host "Installing KIBERone Student to $InstallDir ..."
-& $serviceScript -SourceDir $sourceDir -InstallDir $InstallDir
+function Get-DesktopPath([string] $Override) {
+    if (-not [string]::IsNullOrWhiteSpace($Override)) {
+        return $Override
+    }
 
-$desktop = [Environment]::GetFolderPath("Desktop")
-$shortcutPath = Join-Path $desktop "KIBERone Student.lnk"
-$wsh = New-Object -ComObject WScript.Shell
-$shortcut = $wsh.CreateShortcut($shortcutPath)
-$shortcut.TargetPath = Join-Path $InstallDir "Kiberone.Student.exe"
-$shortcut.WorkingDirectory = $InstallDir
-$shortcut.Description = "KIBERone Classroom Student"
-$shortcut.Save()
+    $desktop = [Environment]::GetFolderPath("Desktop")
+    if ([string]::IsNullOrWhiteSpace($desktop)) {
+        $desktop = Join-Path $env:USERPROFILE "Desktop"
+    }
+
+    New-Item -ItemType Directory -Force -Path $desktop | Out-Null
+    return $desktop
+}
+
+function New-DesktopShortcut(
+    [string] $Desktop,
+    [string] $Name,
+    [string] $TargetExe,
+    [string] $WorkDir,
+    [string] $Description
+) {
+    $shortcutPath = Join-Path $Desktop "$Name.lnk"
+    $wsh = New-Object -ComObject WScript.Shell
+    $shortcut = $wsh.CreateShortcut($shortcutPath)
+    $shortcut.TargetPath = $TargetExe
+    $shortcut.WorkingDirectory = $WorkDir
+    $shortcut.Description = $Description
+    $shortcut.Save()
+    return $shortcutPath
+}
+
+Write-Host "Installing KIBERone Student to $InstallDir ..."
+
+$vpnError = $null
+try {
+    & $serviceScript -SourceDir $sourceDir -InstallDir $InstallDir
+} catch {
+    $vpnError = $_
+    Write-Warning "VPN service setup failed: $($_.Exception.Message)"
+}
+
+$installedExe = Join-Path $InstallDir "Kiberone.Student.exe"
+if (-not (Test-Path -LiteralPath $installedExe)) {
+    throw "Installation incomplete: $installedExe not found."
+}
+
+$desktop = Get-DesktopPath $DesktopPath
+$shortcutPath = New-DesktopShortcut -Desktop $desktop -Name "KIBERone Student" `
+    -TargetExe $installedExe -WorkDir $InstallDir -Description "KIBERone Classroom Student"
 
 Write-Host ""
 Write-Host "Installation complete."
-Write-Host "  App:     $InstallDir\Kiberone.Student.exe"
+Write-Host "  App:      $installedExe"
 Write-Host "  Shortcut: $shortcutPath"
-Write-Host "  VPN service: KIBERoneStudentVpn (one-time setup, no UAC during lessons)"
+
+if ($null -eq $vpnError) {
+    Write-Host "  VPN service: KIBERoneStudentVpn (running)"
+} else {
+    Write-Host ""
+    Write-Warning "Student is installed, but VPN service is not running."
+    Write-Warning "Rerun Install-Student.cmd or service\install-student-vpn-service.ps1 as admin."
+    exit 1
+}
