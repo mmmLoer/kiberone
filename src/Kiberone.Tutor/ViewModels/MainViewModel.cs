@@ -98,6 +98,8 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [ObservableProperty] private string liveLessonName = "Практика класса";
     [ObservableProperty] private string liveLessonText = "for i in range(10): print(i)";
     [ObservableProperty] private string liveLessonState = "Урок не запущен";
+    [ObservableProperty] private bool hasLessonResultsNotification;
+    [ObservableProperty] private string lessonResultsSummary = string.Empty;
     [ObservableProperty] private int screenRefreshSeconds = 30;
     [ObservableProperty] private int syncIntervalSeconds = 15;
     [ObservableProperty] private bool autoApproveSafeFiles = true;
@@ -274,7 +276,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         2 => "Группы, ученики и персональные карточки", 3 => "Достижения, кибероны и товары",
         4 => "Версии проектов и восстановление", 5 => "Наблюдение за классом · LAN",
         6 => "Карточки команд: фокус, VPN, Watchdog", 7 => "Python · группа 01 · 10:00",
-        8 => "Сессия завершена тьютором · рейтинг открыт", 9 => "Редактор вопросов · экспорт JSON",
+        8 => "Итоги теперь в уведомлениях класса", 9 => "Редактор вопросов · экспорт JSON",
         10 => "Сводная прогрессия · Python", 11 => "Резервная копия · локальная база главная",
         12 => "Архивы разделены по учебным модулям", 13 => "Текстовый diff · snapshot перед восстановлением",
         14 => "Трекер накопления · баланс не списывается", 15 => "Общие параметры локации и класса",
@@ -400,6 +402,14 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         SendClassCommand(ClassroomCommandKinds.TypingFinish, new { });
         LiveLessonState = "Урок завершён · результаты зафиксированы";
         RefreshWinners();
+        HasLessonResultsNotification = Winners.Count > 0;
+        LessonResultsSummary = HasLessonResultsNotification
+            ? $"Три награды после «{LiveLessonName}» · показаны в классе"
+            : "Пока нет учеников для наград — добавьте состав класса.";
+        SelectedSectionIndex = 0;
+        StatusMessage = HasLessonResultsNotification
+            ? "Итоги урока добавлены в уведомления на «Класс сейчас»."
+            : LiveLessonState;
     }
 
     [RelayCommand]
@@ -410,6 +420,139 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         foreach (var student in Students.OrderByDescending(x => x.Xp).ThenBy(x => x.Name).Take(3))
             Winners.Add(new WinnerCardViewModel(place++, student.Name, student.Group, student.Xp));
         if (Winners.Count == 0) SettingsStatus = "Победители появятся после добавления учеников.";
+    }
+
+    [RelayCommand]
+    private void DismissLessonResults()
+    {
+        HasLessonResultsNotification = false;
+        LessonResultsSummary = string.Empty;
+    }
+
+    [RelayCommand] private void StudentLock(StudentCardViewModel? student) => SendStudentCommand(student, ClassroomCommandKinds.LockScreen, new { message = ClassroomMessage });
+    [RelayCommand] private void StudentUnlock(StudentCardViewModel? student) => SendStudentCommand(student, ClassroomCommandKinds.UnlockScreen, new { });
+    [RelayCommand] private void StudentWatchdogOn(StudentCardViewModel? student) => SendStudentCommand(student, ClassroomCommandKinds.WatchdogOn, new { });
+    [RelayCommand] private void StudentWatchdogOff(StudentCardViewModel? student) => SendStudentCommand(student, ClassroomCommandKinds.WatchdogOff, new { });
+    [RelayCommand] private void StudentFocusOn(StudentCardViewModel? student) => SendStudentCommand(student, ClassroomCommandKinds.FocusOn, new { });
+    [RelayCommand] private void StudentFocusOff(StudentCardViewModel? student) => SendStudentCommand(student, ClassroomCommandKinds.FocusOff, new { });
+    [RelayCommand] private void StudentSync(StudentCardViewModel? student) => SendStudentCommand(student, ClassroomCommandKinds.SyncNow, new { });
+    [RelayCommand] private void StudentMessage(StudentCardViewModel? student) => SendStudentCommand(student, ClassroomCommandKinds.Message, new { text = ClassroomMessage });
+
+    [RelayCommand]
+    private void OpenStudentFolder(StudentCardViewModel? student)
+    {
+        var clientId = ResolveStudentClientId(student);
+        if (clientId is null) { ShowSelectionError("ПК ученика ещё не подключался — папки на сервере нет."); return; }
+        OpenSyncFolder(clientId, student?.Name);
+    }
+
+    [RelayCommand]
+    private void OpenStudentFromClass(StudentCardViewModel? student)
+    {
+        if (student is null) return;
+        SelectedSectionIndex = 2;
+        SelectedGroup = Groups.FirstOrDefault(x => x.Id == student.GroupId) ?? SelectedGroup;
+        RebuildFilteredStudents();
+        BeginEditStudent(student);
+    }
+
+    [RelayCommand] private void PcLock(ScreenPreviewCardViewModel? pc) => SendPcCommand(pc, ClassroomCommandKinds.LockScreen, new { message = ClassroomMessage });
+    [RelayCommand] private void PcUnlock(ScreenPreviewCardViewModel? pc) => SendPcCommand(pc, ClassroomCommandKinds.UnlockScreen, new { });
+    [RelayCommand] private void PcWatchdogOn(ScreenPreviewCardViewModel? pc) => SendPcCommand(pc, ClassroomCommandKinds.WatchdogOn, new { });
+    [RelayCommand] private void PcWatchdogOff(ScreenPreviewCardViewModel? pc) => SendPcCommand(pc, ClassroomCommandKinds.WatchdogOff, new { });
+    [RelayCommand] private void PcFocusOn(ScreenPreviewCardViewModel? pc) => SendPcCommand(pc, ClassroomCommandKinds.FocusOn, new { });
+    [RelayCommand] private void PcFocusOff(ScreenPreviewCardViewModel? pc) => SendPcCommand(pc, ClassroomCommandKinds.FocusOff, new { });
+    [RelayCommand] private void PcSync(ScreenPreviewCardViewModel? pc) => SendPcCommand(pc, ClassroomCommandKinds.SyncNow, new { });
+    [RelayCommand] private void PcMessage(ScreenPreviewCardViewModel? pc) => SendPcCommand(pc, ClassroomCommandKinds.Message, new { text = ClassroomMessage });
+
+    [RelayCommand]
+    private void OpenPcFolder(ScreenPreviewCardViewModel? pc)
+    {
+        if (pc is null || string.IsNullOrWhiteSpace(pc.ClientId))
+        {
+            ShowSelectionError("Неизвестный ПК.");
+            return;
+        }
+
+        OpenSyncFolder(pc.ClientId, pc.Title);
+    }
+
+    private void SendStudentCommand(StudentCardViewModel? student, string kind, object payload)
+    {
+        var clientId = ResolveStudentClientId(student);
+        if (clientId is null)
+        {
+            ShowSelectionError(student is null
+                ? "Выберите ученика."
+                : $"ПК для {student.Name} не найден. Ученик должен быть онлайн хотя бы раз.");
+            return;
+        }
+
+        try
+        {
+            SendClientCommand(clientId, kind, payload);
+            HasError = false;
+            StatusMessage = $"{student!.Name}: команда {kind} · {clientId}";
+        }
+        catch (Exception error)
+        {
+            HasError = true;
+            StatusMessage = error.Message;
+        }
+    }
+
+    private void SendPcCommand(ScreenPreviewCardViewModel? pc, string kind, object payload)
+    {
+        if (pc is null || string.IsNullOrWhiteSpace(pc.ClientId))
+        {
+            ShowSelectionError("Выберите ПК.");
+            return;
+        }
+
+        try
+        {
+            SendClientCommand(pc.ClientId, kind, payload);
+            HasError = false;
+            StatusMessage = $"{pc.Title}: команда {kind}";
+        }
+        catch (Exception error)
+        {
+            HasError = true;
+            StatusMessage = error.Message;
+        }
+    }
+
+    private string? ResolveStudentClientId(StudentCardViewModel? student)
+    {
+        if (student is null) return null;
+        if (!string.IsNullOrWhiteSpace(student.ClientId)) return student.ClientId;
+        return clients.GetAll()
+            .Where(client => client.StudentId == student.Id)
+            .OrderByDescending(client => client.IsOnline)
+            .ThenByDescending(client => client.LastSeenAt)
+            .Select(client => client.ClientId)
+            .FirstOrDefault();
+    }
+
+    private void OpenSyncFolder(string clientId, string? label)
+    {
+        try
+        {
+            var path = fileSync.GetClientFolderPath(clientId);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"\"{path}\"",
+                UseShellExecute = true
+            });
+            HasError = false;
+            StatusMessage = $"Открыта папка {(string.IsNullOrWhiteSpace(label) ? clientId : label)}.";
+        }
+        catch (Exception error)
+        {
+            HasError = true;
+            StatusMessage = error.Message;
+        }
     }
 
     [RelayCommand]
@@ -1485,15 +1628,27 @@ public partial class StudentCardViewModel : ObservableObject
     [ObservableProperty] private string presenceColor = "#9AA7AE";
     [ObservableProperty] private string batteryLabel = "—";
     [ObservableProperty] private string detailsLine = "оффлайн · батарея —";
+    [ObservableProperty] private string? clientId;
+    [ObservableProperty] private string pcLabel = "ПК не привязан";
+    [ObservableProperty] private string watchFolder = string.Empty;
+    public bool HasLinkedPc => !string.IsNullOrWhiteSpace(ClientId);
+    public string QuickActionsTitle => HasLinkedPc ? $"{Name} · {PcLabel}" : $"{Name} · ПК не найден";
 
     public void ApplyPresence(ClassroomClientSnapshot? client)
     {
+        ClientId = client?.ClientId;
+        PcLabel = client is null
+            ? "ПК не привязан"
+            : $"ПК {client.PcNumber} · {client.Hostname}";
+        WatchFolder = client?.WatchFolder ?? string.Empty;
         IsOnline = client?.IsOnline == true;
         IsOffline = !IsOnline;
         PresenceLabel = IsOnline ? "онлайн" : "оффлайн";
         PresenceColor = IsOnline ? "#068F8A" : "#9AA7AE";
         BatteryLabel = client?.Extra.BatteryPercent is int pct ? $"{pct}%" : "—";
         DetailsLine = $"{PresenceLabel} · батарея {BatteryLabel}";
+        OnPropertyChanged(nameof(HasLinkedPc));
+        OnPropertyChanged(nameof(QuickActionsTitle));
     }
 
     public override string ToString() => Name;
@@ -1688,12 +1843,16 @@ public sealed class ScreenPreviewCardViewModel : IDisposable
         ClientId = client.ClientId;
         Title = $"ПК {client.PcNumber} · {client.Hostname}";
         Status = client.IsOnline ? "● онлайн" : $"не в сети · {client.LastSeenAt.ToLocalTime():t}";
+        WatchFolder = client.WatchFolder;
+        StudentId = client.StudentId;
         Preview = preview;
         HasPreview = preview is not null;
     }
     public string ClientId { get; }
     public string Title { get; }
     public string Status { get; }
+    public string WatchFolder { get; }
+    public Guid? StudentId { get; }
     public Bitmap? Preview { get; }
     public bool HasPreview { get; }
     public void Dispose() => Preview?.Dispose();

@@ -232,6 +232,13 @@ public sealed class FileSyncService
         return Path.Combine(root, key);
     }
 
+    public string GetClientFolderPath(string clientId)
+    {
+        var path = GetClientRoot(clientId);
+        Directory.CreateDirectory(path);
+        return path;
+    }
+
     private static void ValidateRelativePath(string path)
     {
         if (string.IsNullOrWhiteSpace(path) || Path.IsPathRooted(path)) throw new LessonValidationException(["Требуется относительный путь."]);
