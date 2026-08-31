@@ -81,29 +81,31 @@
         </Style>
 
         <Style Selector="Button">
+            <Setter Property="Cursor" Value="Hand" />
             <Setter Property="MinHeight" Value="40" />
             <Setter Property="Padding" Value="16,9" />
-            <Setter Property="CornerRadius" Value="9" />
+            <Setter Property="CornerRadius" Value="10" />
             <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
             <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
-        <Style Selector="Button:pointerover">
+        <Style Selector="Button:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource SurfaceSoftBrush}" />
             <Setter Property="BorderBrush" Value="#BFCED3" />
         </Style>
-        <Style Selector="Button:pressed">
+        <Style Selector="Button:pressed /template/ ContentPresenter">
             <Setter Property="Background" Value="#E8EEF0" />
         </Style>
-        <Style Selector="Button:focus-visible">
+        <Style Selector="Button:focus-visible /template/ ContentPresenter">
             <Setter Property="BorderBrush" Value="{DynamicResource TealBrush}" />
             <Setter Property="BorderThickness" Value="2" />
         </Style>
         <Style Selector="Button:disabled">
             <Setter Property="Opacity" Value="0.48" />
         </Style>
+
         <Style Selector="Button.primary">
             <Setter Property="Background" Value="{DynamicResource TealBrush}" />
             <Setter Property="Foreground" Value="White" />
@@ -111,13 +113,15 @@
             <Setter Property="FontWeight" Value="Bold" />
             <Setter Property="Padding" Value="18,10" />
         </Style>
-        <Style Selector="Button.primary:pointerover">
+        <Style Selector="Button.primary:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource TealHoverBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource TealHoverBrush}" />
+            <Setter Property="TextElement.Foreground" Value="White" />
         </Style>
-        <Style Selector="Button.primary:pressed">
+        <Style Selector="Button.primary:pressed /template/ ContentPresenter">
             <Setter Property="Background" Value="#046965" />
         </Style>
+
         <Style Selector="Button.accent">
             <Setter Property="Background" Value="{DynamicResource AmberBrush}" />
             <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
@@ -125,28 +129,116 @@
             <Setter Property="FontWeight" Value="Bold" />
             <Setter Property="Padding" Value="18,10" />
         </Style>
-        <Style Selector="Button.accent:pointerover">
+        <Style Selector="Button.accent:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="#F0AA00" />
             <Setter Property="BorderBrush" Value="#F0AA00" />
         </Style>
+
         <Style Selector="Button.danger">
             <Setter Property="Background" Value="{DynamicResource DangerBrush}" />
             <Setter Property="Foreground" Value="White" />
             <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+            <Setter Property="FontWeight" Value="Bold" />
         </Style>
-        <Style Selector="Button.danger:pointerover">
+        <Style Selector="Button.danger:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="#AD3037" />
             <Setter Property="BorderBrush" Value="#AD3037" />
+            <Setter Property="TextElement.Foreground" Value="White" />
+        </Style>
+
+        <Style Selector="Button.ghost">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
+        </Style>
+        <Style Selector="Button.ghost:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#EFF8F7" />
+            <Setter Property="BorderBrush" Value="#B9D8D5" />
+        </Style>
+
+        <Style Selector="Border.segmentBar">
+            <Setter Property="Background" Value="{DynamicResource SurfaceSoftBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="4" />
+        </Style>
+        <Style Selector="Button.segment">
+            <Setter Property="MinHeight" Value="36" />
+            <Setter Property="Padding" Value="14,8" />
+            <Setter Property="CornerRadius" Value="9" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+        <Style Selector="Button.segment:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#E7F3F1" />
+            <Setter Property="TextElement.Foreground" Value="{DynamicResource TealBrush}" />
+        </Style>
+        <Style Selector="Button.segment.active">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="Foreground" Value="{DynamicResource TealBrush}" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="BorderBrush" Value="#D5E3E6" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style Selector="Button.segment.active /template/ ContentPresenter">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="TextElement.Foreground" Value="{DynamicResource TealBrush}" />
+        </Style>
+
+        <Style Selector="Button.listCard">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+            <Setter Property="MinHeight" Value="0" />
+        </Style>
+        <Style Selector="Button.listCard:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="Border.listCardInner">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="14" />
+        </Style>
+        <Style Selector="Button.listCard:pointerover Border.listCardInner">
+            <Setter Property="BorderBrush" Value="#8CCBC6" />
+            <Setter Property="Background" Value="#F7FCFB" />
+        </Style>
+        <Style Selector="Border.listCardInner.selected">
+            <Setter Property="BorderBrush" Value="{DynamicResource TealBrush}" />
+            <Setter Property="Background" Value="{DynamicResource MintBrush}" />
+            <Setter Property="BoxShadow" Value="0 4 12 0 #14243239" />
+        </Style>
+
+        <Style Selector="Border.pill">
+            <Setter Property="CornerRadius" Value="100" />
+            <Setter Property="Padding" Value="10,5" />
+            <Setter Property="Background" Value="{DynamicResource AmberSoftBrush}" />
+        </Style>
+        <Style Selector="Border.pillOnline">
+            <Setter Property="CornerRadius" Value="100" />
+            <Setter Property="Padding" Value="10,5" />
+            <Setter Property="Background" Value="{DynamicResource MintBrush}" />
         </Style>
 
         <Style Selector="Button.nav">
+            <Setter Property="Cursor" Value="Hand" />
             <Setter Property="HorizontalContentAlignment" Value="Left" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="3,0,0,0" />
-            <Setter Property="CornerRadius" Value="9" />
+            <Setter Property="CornerRadius" Value="10" />
             <Setter Property="Padding" Value="13,9" />
             <Setter Property="MinHeight" Value="40" />
             <Setter Property="Margin" Value="0,0,0,2" />
@@ -155,16 +247,21 @@
         <Style Selector="Button.nav.compact">
             <Setter Property="FontSize" Value="13" />
         </Style>
-        <Style Selector="Button.nav:pointerover">
+        <Style Selector="Button.nav:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="#EFF8F7" />
-            <Setter Property="Foreground" Value="{DynamicResource TealBrush}" />
             <Setter Property="BorderBrush" Value="#BCE7E2" />
+            <Setter Property="TextElement.Foreground" Value="{DynamicResource TealBrush}" />
         </Style>
         <Style Selector="Button.nav.active">
             <Setter Property="Background" Value="{DynamicResource MintBrush}" />
             <Setter Property="Foreground" Value="{DynamicResource TealBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource TealBrush}" />
             <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+        <Style Selector="Button.nav.active /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource MintBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource TealBrush}" />
+            <Setter Property="TextElement.Foreground" Value="{DynamicResource TealBrush}" />
         </Style>
 
         <Style Selector="TextBox, ComboBox, NumericUpDown">

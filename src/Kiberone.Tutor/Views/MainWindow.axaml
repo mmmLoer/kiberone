@@ -90,8 +90,13 @@
               <TextBlock Text="{Binding ConnectedClientLabel}" Classes="muted" FontSize="14" />
             </StackPanel>
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-              <Button Content="{Binding ClassViewToggleLabel}" Command="{Binding ToggleClassScreensCommand}" Classes="accent" />
-              <Button Content="Обновить экраны" Command="{Binding RefreshScreenGridCommand}" IsVisible="{Binding ShowClassScreens}" />
+              <Border Classes="segmentBar">
+                <StackPanel Orientation="Horizontal" Spacing="2">
+                  <Button Content="Список" Command="{Binding ShowClassRosterViewCommand}" Classes="segment" Classes.active="{Binding IsClassRosterMode}" />
+                  <Button Content="Экраны" Command="{Binding ShowClassScreensViewCommand}" Classes="segment" Classes.active="{Binding IsClassScreensMode}" />
+                </StackPanel>
+              </Border>
+              <Button Content="Обновить" Command="{Binding RefreshScreenGridCommand}" Classes="ghost" IsVisible="{Binding ShowClassScreens}" />
             </StackPanel>
           </Grid>
 
@@ -108,17 +113,19 @@
                       <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:StudentCardViewModel">
                           <Border BorderBrush="#E0E5E8" BorderThickness="0,0,0,1" Padding="2,14">
-                            <Grid ColumnDefinitions="28,*,120,110,150">
-                              <Grid Width="9" Height="9" VerticalAlignment="Center">
-                                <Border Width="9" Height="9" CornerRadius="100" Background="#068F8A" IsVisible="{Binding IsOnline}" />
-                                <Border Width="9" Height="9" CornerRadius="100" Background="#9AA7AE" IsVisible="{Binding IsOffline}" />
+                            <Grid ColumnDefinitions="28,*,120,90,150">
+                              <Grid Width="10" Height="10" VerticalAlignment="Center">
+                                <Border Width="10" Height="10" CornerRadius="100" Background="#068F8A" IsVisible="{Binding IsOnline}" />
+                                <Border Width="10" Height="10" CornerRadius="100" Background="#C5CED3" IsVisible="{Binding IsOffline}" />
                               </Grid>
                               <StackPanel Grid.Column="1" Spacing="2">
                                 <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" />
-                                <TextBlock Text="{Binding DetailsLine}" Classes="muted" FontSize="12" />
+                                <TextBlock Text="{Binding PresenceLabel}" Classes="muted" FontSize="12" />
                               </StackPanel>
                               <TextBlock Grid.Column="2" Text="{Binding Group}" Foreground="#068F8A" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                              <TextBlock Grid.Column="3" Text="{Binding BatteryLabel, StringFormat={}{0}}" VerticalAlignment="Center" Classes="muted" />
+                              <Border Grid.Column="3" Classes="pill" VerticalAlignment="Center" HorizontalAlignment="Left">
+                                <TextBlock Text="{Binding BatteryLabel}" FontSize="12" FontWeight="Bold" />
+                              </Border>
                               <TextBlock Grid.Column="4" Text="{Binding Progress}" Classes="muted" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                             </Grid>
                           </Border>
@@ -199,7 +206,12 @@
           <TextBlock Text="Уроки печати" FontSize="22" FontWeight="Bold" />
           <TextBlock Text="Редактор маршрутов и статистика выбранной группы" Classes="muted" Margin="0,4,0,0" />
         </StackPanel>
-        <Button Grid.Column="1" Content="{Binding TypingViewToggleLabel}" Command="{Binding ToggleTypingStatisticsCommand}" Classes="accent" VerticalAlignment="Center" />
+        <Border Grid.Column="1" Classes="segmentBar" VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="2">
+            <Button Content="Редактор" Command="{Binding ShowTypingEditorViewCommand}" Classes="segment" Classes.active="{Binding IsTypingEditorMode}" />
+            <Button Content="Статистика" Command="{Binding ShowTypingStatsViewCommand}" Classes="segment" Classes.active="{Binding IsTypingStatsMode}" />
+          </StackPanel>
+        </Border>
       </Grid>
 
       <Grid Grid.Row="1" ColumnDefinitions="1.35*,*" IsVisible="{Binding ShowTypingEditor}">
@@ -338,13 +350,13 @@
             <Grid RowDefinitions="Auto,Auto,*">
               <StackPanel>
                 <TextBlock Text="Группы" Classes="h2" />
-                <TextBlock Text="Выберите группу — справа отфильтруются ученики" Classes="muted" Margin="0,4,0,14" />
+                <TextBlock Text="Нажмите группу — список справа отфильтруется" Classes="muted" Margin="0,4,0,14" />
               </StackPanel>
               <StackPanel Grid.Row="1" Spacing="8" Margin="0,0,0,16">
                 <TextBox Text="{Binding GroupName}" Watermark="Название группы" />
                 <TextBox Text="{Binding GroupModule}" Watermark="Текущий модуль" />
                 <TextBox Text="{Binding GroupTopics}" Watermark="Темы" />
-                <Button Content="Создать группу" Command="{Binding CreateGroupCommand}" Classes="accent" />
+                <Button Content="Создать группу" Command="{Binding CreateGroupCommand}" Classes="accent" HorizontalAlignment="Stretch" />
               </StackPanel>
               <ScrollViewer Grid.Row="2">
                 <ItemsControl ItemsSource="{Binding Groups}">
@@ -352,16 +364,11 @@
                     <DataTemplate x:DataType="vm:GroupCardViewModel">
                       <Button Command="{Binding #TutorRoot.DataContext.SelectGroupCommand}"
                               CommandParameter="{Binding}"
-                              HorizontalAlignment="Stretch"
-                              HorizontalContentAlignment="Left"
-                              Background="Transparent"
-                              BorderThickness="0"
-                              Padding="0"
-                              Margin="0,0,0,8">
-                        <Border BorderBrush="#DDE5E8" BorderThickness="1" CornerRadius="12" Padding="14">
-                          <StackPanel>
-                            <TextBlock Text="{Binding Name}" FontWeight="Bold" />
-                            <TextBlock Text="{Binding Details}" Classes="muted" Margin="0,4,0,0" />
+                              Classes="listCard">
+                        <Border Classes="listCardInner" Classes.selected="{Binding IsSelected}">
+                          <StackPanel Spacing="4">
+                            <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="15" />
+                            <TextBlock Text="{Binding Details}" Classes="muted" FontSize="12" />
                           </StackPanel>
                         </Border>
                       </Button>
@@ -376,7 +383,7 @@
             <Grid RowDefinitions="Auto,*">
               <StackPanel>
                 <TextBlock Text="Ученики группы" Classes="h2" />
-                <TextBlock Text="Онлайн · батарея · прогресс. Нажмите карточку для редактирования." Classes="muted" Margin="0,4,0,14" TextWrapping="Wrap" />
+                <TextBlock Text="Онлайн · батарея · прогресс. Клик — редактирование." Classes="muted" Margin="0,4,0,14" TextWrapping="Wrap" />
               </StackPanel>
               <Grid Grid.Row="1">
                 <ScrollViewer IsVisible="{Binding HasFilteredStudents}">
@@ -385,21 +392,26 @@
                       <DataTemplate x:DataType="vm:StudentCardViewModel">
                         <Button Command="{Binding #TutorRoot.DataContext.BeginEditStudentCommand}"
                                 CommandParameter="{Binding}"
-                                HorizontalAlignment="Stretch"
-                                HorizontalContentAlignment="Left"
-                                Background="Transparent"
-                                BorderThickness="0"
-                                Padding="0"
-                                Margin="0,0,0,8">
-                          <Border BorderBrush="#DDE5E8" BorderThickness="1" CornerRadius="12" Padding="14">
+                                Classes="listCard">
+                          <Border Classes="listCardInner" Classes.selected="{Binding IsSelected}">
                             <Grid ColumnDefinitions="*,Auto">
-                              <StackPanel>
+                              <StackPanel Spacing="4">
                                 <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="15" />
-                                <TextBlock Text="{Binding DetailsLine}" Foreground="#078F8A" Margin="0,3,0,0" />
-                                <TextBlock Text="{Binding Progress}" Classes="muted" Margin="0,3,0,0" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                  <Border Classes="pillOnline" IsVisible="{Binding IsOnline}">
+                                    <TextBlock Text="онлайн" Foreground="#068F8A" FontSize="11" FontWeight="Bold" />
+                                  </Border>
+                                  <Border Classes="pill" IsVisible="{Binding IsOffline}">
+                                    <TextBlock Text="оффлайн" Classes="muted" FontSize="11" FontWeight="Bold" />
+                                  </Border>
+                                  <Border Classes="pill">
+                                    <TextBlock Text="{Binding BatteryLabel, StringFormat=⚡ {0}}" FontSize="11" FontWeight="Bold" />
+                                  </Border>
+                                </StackPanel>
+                                <TextBlock Text="{Binding Progress}" Classes="muted" FontSize="12" />
                               </StackPanel>
-                              <Border Grid.Column="1" Background="#FFF7CE" CornerRadius="100" Padding="10,5" VerticalAlignment="Top">
-                                <TextBlock Text="{Binding Balance}" FontWeight="Bold" />
+                              <Border Grid.Column="1" Classes="pill" VerticalAlignment="Top">
+                                <TextBlock Text="{Binding Balance}" FontWeight="Bold" FontSize="12" />
                               </Border>
                             </Grid>
                           </Border>
@@ -416,24 +428,34 @@
           </Border>
 
           <Border Grid.Column="2" Classes="card" Margin="18,0,0,0">
-            <StackPanel Spacing="10">
-              <TextBlock Text="{Binding StudentFormTitle}" Classes="h2" />
-              <TextBlock Text="ФИО, возраст, ДР, уровень и кибероны" Classes="muted" Margin="0,0,0,6" />
-              <TextBox Text="{Binding StudentLastName}" Watermark="Фамилия" />
-              <TextBox Text="{Binding StudentFirstName}" Watermark="Имя" />
-              <NumericUpDown Value="{Binding StudentAge}" Minimum="5" Maximum="100" Watermark="Возраст" />
-              <TextBox Text="{Binding StudentBirthdayText}" Watermark="ДР: ДД.ММ.ГГГГ" />
-              <NumericUpDown Value="{Binding StudentLevel}" Minimum="1" Maximum="100" Watermark="Уровень" />
-              <NumericUpDown Value="{Binding StudentKiberons}" Minimum="0" Maximum="100000" Watermark="Кибероны" />
-              <ComboBox ItemsSource="{Binding Groups}" SelectedItem="{Binding SelectedGroup}" />
-              <TextBox Text="{Binding StudentComment}" Watermark="Комментарий тьютора" AcceptsReturn="True" MinHeight="70" />
-              <Button Content="{Binding StudentFormActionLabel}" Command="{Binding SaveStudentCommand}" Classes="primary" />
-              <Button Content="Новая карточка" Command="{Binding BeginCreateStudentCommand}" />
-              <Button Content="Удалить ученика" Command="{Binding DeleteStudentCommand}" Classes="accent" IsVisible="{Binding IsEditingStudent}" />
-              <Border Background="#F3F6F7" CornerRadius="10" Padding="12" Margin="0,8,0,0">
-                <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" />
-              </Border>
-            </StackPanel>
+            <ScrollViewer>
+              <StackPanel Spacing="10">
+                <TextBlock Text="{Binding StudentFormTitle}" Classes="h2" />
+                <TextBlock Text="ФИО, возраст, ДР, уровень и кибероны" Classes="muted" Margin="0,0,0,6" />
+                <TextBox Text="{Binding StudentLastName}" Watermark="Фамилия" />
+                <TextBox Text="{Binding StudentFirstName}" Watermark="Имя" />
+                <NumericUpDown Value="{Binding StudentAge}" Minimum="5" Maximum="100" Watermark="Возраст" />
+                <TextBox Text="{Binding StudentBirthdayText}" Watermark="ДР: ДД.ММ.ГГГГ" />
+                <Grid ColumnDefinitions="*,*" Margin="0,0,0,0">
+                  <StackPanel Spacing="4" Margin="0,0,6,0">
+                    <TextBlock Text="Уровень" FontSize="12" Classes="muted" />
+                    <NumericUpDown Value="{Binding StudentLevel}" Minimum="1" Maximum="100" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="1" Spacing="4" Margin="6,0,0,0">
+                    <TextBlock Text="Кибероны" FontSize="12" Classes="muted" />
+                    <NumericUpDown Value="{Binding StudentKiberons}" Minimum="0" Maximum="100000" />
+                  </StackPanel>
+                </Grid>
+                <ComboBox ItemsSource="{Binding Groups}" SelectedItem="{Binding SelectedGroup}" PlaceholderText="Группа" />
+                <TextBox Text="{Binding StudentComment}" Watermark="Комментарий тьютора" AcceptsReturn="True" MinHeight="70" />
+                <Button Content="{Binding StudentFormActionLabel}" Command="{Binding SaveStudentCommand}" Classes="primary" HorizontalAlignment="Stretch" />
+                <Button Content="Новая карточка" Command="{Binding BeginCreateStudentCommand}" Classes="ghost" HorizontalAlignment="Stretch" />
+                <Button Content="Удалить ученика" Command="{Binding DeleteStudentCommand}" Classes="danger" HorizontalAlignment="Stretch" IsVisible="{Binding IsEditingStudent}" />
+                <Border Classes="subcard" Margin="0,4,0,0">
+                  <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" FontSize="12" />
+                </Border>
+              </StackPanel>
+            </ScrollViewer>
           </Border>
         </Grid>
       </TabItem>
@@ -590,8 +612,8 @@
               <TextBox Text="{Binding ClassroomMessage}" Watermark="Сообщение ученикам" AcceptsReturn="True" MinHeight="90" />
               <Button Content="Отправить сообщение всем" Command="{Binding SendMessageAllCommand}" Classes="primary" />
               <Grid ColumnDefinitions="*,*">
-                <Button Content="Заблокировать экраны" Command="{Binding LockAllCommand}" Classes="accent" />
-                <Button Grid.Column="1" Content="Разблокировать" Command="{Binding UnlockAllCommand}" Margin="10,0,0,0" />
+                <Button Content="Заблокировать экраны" Command="{Binding LockAllCommand}" Classes="danger" />
+                <Button Grid.Column="1" Content="Разблокировать" Command="{Binding UnlockAllCommand}" Classes="ghost" Margin="10,0,0,0" />
               </Grid>
               <Grid ColumnDefinitions="*,*">
                 <Button Content="Включить режим фокуса" Command="{Binding FocusAllOnCommand}" Classes="accent" />

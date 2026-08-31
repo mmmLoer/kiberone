@@ -129,6 +129,10 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     public bool ShowTypingEditor => !ShowTypingStatistics;
     public string ClassViewToggleLabel => ShowClassScreens ? "Показать список" : "Показать экраны";
     public string TypingViewToggleLabel => ShowTypingStatistics ? "К редактору уроков" : "К статистике";
+    public bool IsClassRosterMode => !ShowClassScreens;
+    public bool IsClassScreensMode => ShowClassScreens;
+    public bool IsTypingEditorMode => !ShowTypingStatistics;
+    public bool IsTypingStatsMode => ShowTypingStatistics;
     public string StudentFormTitle => IsEditingStudent ? "Редактировать ученика" : "Новый ученик";
     public string StudentFormActionLabel => IsEditingStudent ? "Сохранить изменения" : "Добавить ученика";
     public bool HasAuditEvents => AuditEvents.Count > 0;
@@ -539,17 +543,56 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     private void ToggleClassScreens()
     {
         ShowClassScreens = !ShowClassScreens;
-        OnPropertyChanged(nameof(ShowClassRoster));
-        OnPropertyChanged(nameof(ClassViewToggleLabel));
+        NotifyViewModes();
         if (ShowClassScreens) _ = RefreshScreensAsync();
+    }
+
+    [RelayCommand]
+    private void ShowClassRosterView()
+    {
+        ShowClassScreens = false;
+        NotifyViewModes();
+    }
+
+    [RelayCommand]
+    private void ShowClassScreensView()
+    {
+        ShowClassScreens = true;
+        NotifyViewModes();
+        _ = RefreshScreensAsync();
     }
 
     [RelayCommand]
     private void ToggleTypingStatistics()
     {
         ShowTypingStatistics = !ShowTypingStatistics;
+        NotifyViewModes();
+    }
+
+    [RelayCommand]
+    private void ShowTypingEditorView()
+    {
+        ShowTypingStatistics = false;
+        NotifyViewModes();
+    }
+
+    [RelayCommand]
+    private void ShowTypingStatsView()
+    {
+        ShowTypingStatistics = true;
+        NotifyViewModes();
+    }
+
+    private void NotifyViewModes()
+    {
+        OnPropertyChanged(nameof(ShowClassRoster));
         OnPropertyChanged(nameof(ShowTypingEditor));
+        OnPropertyChanged(nameof(ClassViewToggleLabel));
         OnPropertyChanged(nameof(TypingViewToggleLabel));
+        OnPropertyChanged(nameof(IsClassRosterMode));
+        OnPropertyChanged(nameof(IsClassScreensMode));
+        OnPropertyChanged(nameof(IsTypingEditorMode));
+        OnPropertyChanged(nameof(IsTypingStatsMode));
     }
 
     [RelayCommand]
@@ -557,6 +600,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     {
         if (group is null) return;
         SelectedGroup = group;
+        MarkSelectedGroup();
         RebuildFilteredStudents();
         StatusMessage = $"Группа «{group.Name}»: {FilteredStudents.Count} учеников.";
     }
@@ -566,6 +610,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     {
         if (student is null) return;
         SelectedStudent = student;
+        MarkSelectedStudent();
         IsEditingStudent = true;
         StudentLastName = student.LastName;
         StudentFirstName = student.FirstName;
@@ -575,6 +620,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         StudentLevel = Math.Max(1, student.Level);
         StudentKiberons = student.Kiberons;
         SelectedGroup = Groups.FirstOrDefault(x => x.Id == student.GroupId) ?? SelectedGroup;
+        MarkSelectedGroup();
         OnPropertyChanged(nameof(StudentFormTitle));
         OnPropertyChanged(nameof(StudentFormActionLabel));
     }
@@ -587,8 +633,21 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         StudentAge = 10;
         StudentLevel = 1;
         StudentKiberons = 0;
+        MarkSelectedStudent();
         OnPropertyChanged(nameof(StudentFormTitle));
         OnPropertyChanged(nameof(StudentFormActionLabel));
+    }
+
+    private void MarkSelectedGroup()
+    {
+        foreach (var group in Groups)
+            group.IsSelected = SelectedGroup is not null && group.Id == SelectedGroup.Id;
+    }
+
+    private void MarkSelectedStudent()
+    {
+        foreach (var student in Students)
+            student.IsSelected = IsEditingStudent && SelectedStudent is not null && student.Id == SelectedStudent.Id;
     }
 
     [RelayCommand]
@@ -817,6 +876,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         Groups.Clear();
         foreach (var group in storedGroups) Groups.Add(new GroupCardViewModel(group));
         SelectedGroup = Groups.FirstOrDefault(x => x.Id == selectedId) ?? Groups.FirstOrDefault();
+        MarkSelectedGroup();
         var selectedStudentId = SelectedStudent?.Id;
         var storedStudents = await classroom.ListStudentsAsync();
         Students.Clear();
@@ -824,6 +884,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         SelectedStudent = Students.FirstOrDefault(x => x.Id == selectedStudentId) ?? Students.FirstOrDefault();
         ApplyPresence(clients.GetAll());
         RebuildFilteredStudents();
+        MarkSelectedStudent();
         RefreshWinners();
         var selectedAchievementId = SelectedAchievement?.Id;
         Achievements.Clear();
@@ -859,7 +920,11 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         OnPropertyChanged(nameof(HasNoFilteredStudents));
     }
 
-    partial void OnSelectedGroupChanged(GroupCardViewModel? value) => RebuildFilteredStudents();
+    partial void OnSelectedGroupChanged(GroupCardViewModel? value)
+    {
+        MarkSelectedGroup();
+        RebuildFilteredStudents();
+    }
 
     private void NotifyCollectionStates()
     {
@@ -875,10 +940,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         OnPropertyChanged(nameof(HasNoScreenPreviews));
         OnPropertyChanged(nameof(HasAuditEvents));
         OnPropertyChanged(nameof(HasNoAuditEvents));
-        OnPropertyChanged(nameof(ShowClassRoster));
-        OnPropertyChanged(nameof(ShowTypingEditor));
-        OnPropertyChanged(nameof(ClassViewToggleLabel));
-        OnPropertyChanged(nameof(TypingViewToggleLabel));
+        NotifyViewModes();
         OnPropertyChanged(nameof(StudentFormTitle));
         OnPropertyChanged(nameof(StudentFormActionLabel));
     }
@@ -901,11 +963,19 @@ public sealed class LessonCardViewModel(TypingLessonTemplate lesson)
     public string Version { get; } = $"v{lesson.Version}";
 }
 
-public sealed class GroupCardViewModel(ClassroomGroup group)
+public partial class GroupCardViewModel : ObservableObject
 {
-    public Guid Id { get; } = group.Id;
-    public string Name { get; } = group.Name;
-    public string Details { get; } = $"{group.Students.Count} учеников · {(string.IsNullOrWhiteSpace(group.Module) ? "модуль не задан" : group.Module)}";
+    public GroupCardViewModel(ClassroomGroup group)
+    {
+        Id = group.Id;
+        Name = group.Name;
+        Details = $"{group.Students.Count} учеников · {(string.IsNullOrWhiteSpace(group.Module) ? "модуль не задан" : group.Module)}";
+    }
+
+    public Guid Id { get; }
+    public string Name { get; }
+    public string Details { get; }
+    [ObservableProperty] private bool isSelected;
     public override string ToString() => Name;
 }
 
@@ -945,6 +1015,7 @@ public partial class StudentCardViewModel : ObservableObject
 
     [ObservableProperty] private bool isOnline;
     [ObservableProperty] private bool isOffline = true;
+    [ObservableProperty] private bool isSelected;
     [ObservableProperty] private string presenceLabel = "оффлайн";
     [ObservableProperty] private string presenceColor = "#9AA7AE";
     [ObservableProperty] private string batteryLabel = "—";

@@ -938,27 +938,45 @@
             </StackPanel>
           </Border>
 
-          <StackPanel Grid.Column="1" Margin="34" Spacing="16" VerticalAlignment="Center">
+          <StackPanel Grid.Column="1" Margin="34" Spacing="14" VerticalAlignment="Center">
             <StackPanel Spacing="5">
               <TextBlock Text="Добро пожаловать" Classes="h1"/>
-              <TextBlock Text="Сначала группа, затем имя из этой группы." Classes="muted"/>
+              <TextBlock Text="Два шага: группа, затем своё имя." Classes="muted"/>
             </StackPanel>
-            <TextBlock Text="Группа" FontWeight="SemiBold" Margin="0,8,0,0"/>
+
+            <Border Background="#F4F8F8" CornerRadius="12" Padding="12,10">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <Border Width="24" Height="24" CornerRadius="100" Background="#068F8A">
+                  <TextBlock Text="1" Foreground="White" FontWeight="Bold" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <TextBlock Text="Группа" FontWeight="SemiBold" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Border>
             <ComboBox ItemsSource="{Binding LoginGroups}"
                       SelectedItem="{Binding SelectedLoginGroup}"
                       PlaceholderText="Выбери группу"
                       HorizontalAlignment="Stretch"/>
-            <TextBlock Text="Ученик" FontWeight="SemiBold" Margin="0,8,0,0"/>
+
+            <Border Background="#F4F8F8" CornerRadius="12" Padding="12,10" Margin="0,4,0,0">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <Border Width="24" Height="24" CornerRadius="100" Background="#068F8A">
+                  <TextBlock Text="2" Foreground="White" FontWeight="Bold" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <TextBlock Text="Имя в группе" FontWeight="SemiBold" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Border>
             <ComboBox ItemsSource="{Binding LoginStudents}"
                       SelectedItem="{Binding SelectedStudent}"
                       PlaceholderText="Выбери себя"
                       HorizontalAlignment="Stretch"/>
-            <TextBlock Text="{Binding LoginMessage}" Classes="muted" FontSize="12" TextWrapping="Wrap"/>
+
+            <TextBlock Text="{Binding LoginMessage}" Classes="muted" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"/>
             <Button Content="Войти в класс"
                     Command="{Binding ConfirmStudentCommand}"
                     Classes="primary"
                     Height="48"
-                    HorizontalAlignment="Stretch"/>
+                    HorizontalAlignment="Stretch"
+                    Margin="0,6,0,0"/>
           </StackPanel>
         </Grid>
       </Border>
