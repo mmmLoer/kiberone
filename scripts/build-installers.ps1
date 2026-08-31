@@ -43,7 +43,7 @@ function New-TutorInstaller {
     if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
     New-Item -ItemType Directory -Force -Path (Join-Path $stage "app") | Out-Null
 
-    Copy-Item (Join-Path $PublishDir "Kiberone.Tutor.exe") (Join-Path $stage "app") -Force
+    Copy-Item -Path (Join-Path $PublishDir "*") -Destination (Join-Path $stage "app") -Recurse -Force
     Copy-Item (Join-Path $projectRoot "install\Setup-Tutor.ps1") $stage -Force
     Copy-Item (Join-Path $projectRoot "install\Install-Tutor.cmd") $stage -Force
     Copy-Item (Join-Path $projectRoot "install\README-Tutor.txt") $stage -Force

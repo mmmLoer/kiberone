@@ -4,7 +4,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 $packageRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$sourceExe = Join-Path $packageRoot "app\Kiberone.Tutor.exe"
+$sourceDir = Join-Path $packageRoot "app"
+$sourceExe = Join-Path $sourceDir "Kiberone.Tutor.exe"
 
 if (-not (Test-Path -LiteralPath $sourceExe)) {
     throw "Installer package is incomplete: app\Kiberone.Tutor.exe not found."
@@ -14,8 +15,11 @@ if ([string]::IsNullOrWhiteSpace($InstallDir)) {
     $InstallDir = Join-Path $env:LOCALAPPDATA "Programs\KIBERone\Tutor"
 }
 
+Write-Host "Installing KIBERone Tutor to $InstallDir ..."
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-Copy-Item -LiteralPath $sourceExe -Destination (Join-Path $InstallDir "Kiberone.Tutor.exe") -Force
+Get-ChildItem -LiteralPath $sourceDir -Force | ForEach-Object {
+    Copy-Item -LiteralPath $_.FullName -Destination $InstallDir -Recurse -Force
+}
 
 $desktop = [Environment]::GetFolderPath("Desktop")
 $shortcutPath = Join-Path $desktop "KIBERone Tutor.lnk"
