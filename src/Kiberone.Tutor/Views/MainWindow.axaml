@@ -318,29 +318,94 @@
       </Border>
     </Grid>
 
-      <Grid Grid.Row="1" ColumnDefinitions="*,*" IsVisible="{Binding ShowTypingStatistics}">
-          <Border Classes="card">
-            <StackPanel Spacing="14">
-              <TextBlock Text="Статистика группы" Classes="h2" />
-              <TextBlock Text="Сводка по оценкам, прогрессу и активности" Classes="muted" />
-              <ComboBox ItemsSource="{Binding Groups}" SelectedItem="{Binding SelectedGroup}" />
-              <Button Content="Рассчитать по группе" Command="{Binding LoadGroupStatisticsCommand}" Classes="primary" />
-              <Border Background="#F3F6F7" CornerRadius="12" Padding="20">
-                <TextBlock Text="{Binding GroupStatisticsText}" FontSize="17" LineHeight="28" TextWrapping="Wrap" />
+      <Grid Grid.Row="1" IsVisible="{Binding ShowTypingStatistics}">
+        <Border Classes="card">
+          <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
+            <StackPanel Spacing="10">
+              <TextBlock Text="{Binding StatsReportTitle}" Classes="h2" />
+              <TextBlock Text="Графики CPM и точности по урокам печати" Classes="muted" />
+              <Border Classes="segmentBar" HorizontalAlignment="Left">
+                <StackPanel Orientation="Horizontal" Spacing="2">
+                  <Button Content="Группа" Command="{Binding ShowStatsGroupScopeCommand}" Classes="segment" Classes.active="{Binding ShowStatsForGroup}" />
+                  <Button Content="Ученик" Command="{Binding ShowStatsStudentScopeCommand}" Classes="segment" Classes.active="{Binding ShowStatsForStudent}" />
+                </StackPanel>
               </Border>
             </StackPanel>
-          </Border>
-          <Border Grid.Column="1" Classes="card" Margin="18,0,0,0">
-            <StackPanel Spacing="14">
-              <TextBlock Text="Статистика ученика" Classes="h2" />
-              <TextBlock Text="Персональные оценки, XP, достижения и покупки" Classes="muted" />
-              <ComboBox ItemsSource="{Binding FilteredStudents}" SelectedItem="{Binding SelectedStudent}" />
-              <Button Content="Открыть карточку" Command="{Binding LoadStudentStatisticsCommand}" Classes="accent" />
-              <Border Background="#F3F6F7" CornerRadius="12" Padding="20">
-                <TextBlock Text="{Binding StudentStatisticsText}" FontSize="17" LineHeight="28" TextWrapping="Wrap" />
+
+            <Grid Grid.Row="1" ColumnDefinitions="*,*,Auto" Margin="0,16,0,0">
+              <StackPanel Spacing="6" IsVisible="{Binding ShowStatsForGroup}" Margin="0,0,12,0">
+                <TextBlock Text="Группа" FontWeight="SemiBold" FontSize="12" Classes="muted" />
+                <ComboBox ItemsSource="{Binding Groups}" SelectedItem="{Binding SelectedGroup}" HorizontalAlignment="Stretch" />
+              </StackPanel>
+              <StackPanel Spacing="6" IsVisible="{Binding ShowStatsForStudent}" Margin="0,0,12,0">
+                <TextBlock Text="Ученик" FontWeight="SemiBold" FontSize="12" Classes="muted" />
+                <ComboBox ItemsSource="{Binding FilteredStudents}" SelectedItem="{Binding SelectedStudent}" HorizontalAlignment="Stretch" />
+              </StackPanel>
+              <StackPanel Grid.Column="1" Spacing="6" Margin="0,0,12,0">
+                <TextBlock Text="Урок" FontWeight="SemiBold" FontSize="12" Classes="muted" />
+                <ComboBox ItemsSource="{Binding StatsLessonFilters}" SelectedItem="{Binding SelectedStatsLesson}" HorizontalAlignment="Stretch" />
+              </StackPanel>
+              <Button Grid.Column="2" Content="Показать" Command="{Binding RefreshTypingChartsCommand}" Classes="primary" VerticalAlignment="Bottom" MinWidth="120" />
+            </Grid>
+
+            <Border Grid.Row="2" Classes="subcard" Margin="0,16,0,0">
+              <TextBlock Text="{Binding StatsSummaryText}" TextWrapping="Wrap" LineHeight="22" />
+            </Border>
+
+            <Grid Grid.Row="3" ColumnDefinitions="*,*" Margin="0,18,0,0" IsVisible="{Binding HasStatsBars}">
+              <Border Classes="subcard" Margin="0,0,8,0">
+                <StackPanel Spacing="10">
+                  <TextBlock Text="Средний CPM по урокам" FontWeight="Bold" />
+                  <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding StatsCpmBars}">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Bottom" Height="180" />
+                        </ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ChartBarViewModel">
+                          <StackPanel Width="72" Spacing="6" VerticalAlignment="Bottom">
+                            <TextBlock Text="{Binding ValueLabel}" FontSize="11" FontWeight="Bold" HorizontalAlignment="Center" Foreground="#068F8A" />
+                            <Border Height="{Binding Height}" CornerRadius="8,8,4,4" Background="#068F8A" HorizontalAlignment="Stretch" MinHeight="8" />
+                            <TextBlock Text="{Binding Label}" FontSize="10" Classes="muted" TextWrapping="Wrap" TextAlignment="Center" MaxHeight="36" TextTrimming="CharacterEllipsis" />
+                          </StackPanel>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </ScrollViewer>
+                </StackPanel>
               </Border>
-            </StackPanel>
-          </Border>
+              <Border Grid.Column="1" Classes="subcard" Margin="8,0,0,0">
+                <StackPanel Spacing="10">
+                  <TextBlock Text="Средняя точность по урокам" FontWeight="Bold" />
+                  <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding StatsAccuracyBars}">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Bottom" Height="180" />
+                        </ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ChartBarViewModel">
+                          <StackPanel Width="72" Spacing="6" VerticalAlignment="Bottom">
+                            <TextBlock Text="{Binding ValueLabel}" FontSize="11" FontWeight="Bold" HorizontalAlignment="Center" Foreground="#1F9E61" />
+                            <Border Height="{Binding Height}" CornerRadius="8,8,4,4" Background="#1F9E61" HorizontalAlignment="Stretch" MinHeight="8" />
+                            <TextBlock Text="{Binding Label}" FontSize="10" Classes="muted" TextWrapping="Wrap" TextAlignment="Center" MaxHeight="36" TextTrimming="CharacterEllipsis" />
+                          </StackPanel>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </ScrollViewer>
+                </StackPanel>
+              </Border>
+            </Grid>
+
+            <Border Grid.Row="3" Classes="subcard" Margin="0,18,0,0" IsVisible="{Binding HasNoStatsBars}">
+              <TextBlock Text="Графиков пока нет — завершите уроки печати или снимите фильтр." Classes="muted" TextWrapping="Wrap" />
+            </Border>
+          </Grid>
+        </Border>
       </Grid>
     </Grid>
       </TabItem>
@@ -357,6 +422,7 @@
                 <TextBox Text="{Binding GroupModule}" Watermark="Текущий модуль" />
                 <TextBox Text="{Binding GroupTopics}" Watermark="Темы" />
                 <Button Content="Создать группу" Command="{Binding CreateGroupCommand}" Classes="accent" HorizontalAlignment="Stretch" />
+                <Button Content="Удалить выбранную группу" Command="{Binding DeleteGroupCommand}" Classes="danger" HorizontalAlignment="Stretch" />
               </StackPanel>
               <ScrollViewer Grid.Row="2">
                 <ItemsControl ItemsSource="{Binding Groups}">
@@ -380,12 +446,13 @@
           </Border>
 
           <Border Grid.Column="1" Classes="card" Margin="18,0,0,0">
-            <Grid RowDefinitions="Auto,*">
+            <Grid RowDefinitions="Auto,Auto,*">
               <StackPanel>
                 <TextBlock Text="Ученики группы" Classes="h2" />
-                <TextBlock Text="Онлайн · батарея · прогресс. Клик — редактирование." Classes="muted" Margin="0,4,0,14" TextWrapping="Wrap" />
+                <TextBlock Text="Онлайн · батарея · прогресс. Клик — редактирование." Classes="muted" Margin="0,4,0,10" TextWrapping="Wrap" />
               </StackPanel>
-              <Grid Grid.Row="1">
+              <Button Grid.Row="1" Content="+ Добавить ученика" Command="{Binding BeginCreateStudentCommand}" Classes="primary" HorizontalAlignment="Stretch" Margin="0,0,0,14" />
+              <Grid Grid.Row="2">
                 <ScrollViewer IsVisible="{Binding HasFilteredStudents}">
                   <ItemsControl ItemsSource="{Binding FilteredStudents}">
                     <ItemsControl.ItemTemplate>

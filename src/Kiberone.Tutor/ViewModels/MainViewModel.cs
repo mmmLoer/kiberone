@@ -80,6 +80,13 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [ObservableProperty] private string? selectedAuditCategory;
     [ObservableProperty] private string groupStatisticsText = "Выберите группу и загрузите статистику.";
     [ObservableProperty] private string studentStatisticsText = "Выберите ученика и загрузите статистику.";
+    [ObservableProperty] private bool showStatsForStudent;
+    [ObservableProperty] private LessonFilterOption? selectedStatsLesson;
+    [ObservableProperty] private string statsReportTitle = "Статистика печати";
+    [ObservableProperty] private string statsSummaryText = "Выберите область и нажмите «Показать».";
+    public ObservableCollection<LessonFilterOption> StatsLessonFilters { get; } = [];
+    public ObservableCollection<ChartBarViewModel> StatsCpmBars { get; } = [];
+    public ObservableCollection<ChartBarViewModel> StatsAccuracyBars { get; } = [];
     [ObservableProperty] private string liveLessonName = "Практика класса";
     [ObservableProperty] private string liveLessonText = "for i in range(10): print(i)";
     [ObservableProperty] private string liveLessonState = "Урок не запущен";
@@ -133,6 +140,9 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     public bool IsClassScreensMode => ShowClassScreens;
     public bool IsTypingEditorMode => !ShowTypingStatistics;
     public bool IsTypingStatsMode => ShowTypingStatistics;
+    public bool ShowStatsForGroup => !ShowStatsForStudent;
+    public bool HasStatsBars => StatsCpmBars.Count > 0;
+    public bool HasNoStatsBars => !HasStatsBars;
     public string StudentFormTitle => IsEditingStudent ? "Редактировать ученика" : "Новый ученик";
     public string StudentFormActionLabel => IsEditingStudent ? "Сохранить изменения" : "Добавить ученика";
     public bool HasAuditEvents => AuditEvents.Count > 0;
@@ -396,12 +406,27 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     }
 
     [RelayCommand]
+    private void ShowStatsGroupScope()
+    {
+        ShowStatsForStudent = false;
+        OnPropertyChanged(nameof(ShowStatsForGroup));
+    }
+
+    [RelayCommand]
+    private void ShowStatsStudentScope()
+    {
+        ShowStatsForStudent = true;
+        OnPropertyChanged(nameof(ShowStatsForGroup));
+    }
+
+    [RelayCommand]
     private async Task LoadGroupStatisticsAsync()
     {
         if (SelectedGroup is null) { ShowSelectionError("Выберите группу."); return; }
         var stats = await classroom.GetGroupStatisticsAsync(SelectedGroup.Id);
         GroupStatisticsText = stats is null ? "Группа не найдена." :
             $"{stats.GroupName}\nУченики: {stats.StudentCount}\nСредняя оценка: {stats.AverageGrade:0.##}\nВсего XP: {stats.TotalXp:N0}\nКибероны: {stats.TotalKiberons:N0}\nПосещения: {stats.SessionCount}\nДостижения: {stats.AchievementCount}";
+        await RefreshTypingChartsAsync();
     }
 
     [RelayCommand]
@@ -411,6 +436,67 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         var stats = await classroom.GetStudentStatisticsAsync(SelectedStudent.Id);
         StudentStatisticsText = stats is null ? "Ученик не найден." :
             $"{stats.DisplayName}\nГруппа: {stats.GroupName}\nУровень: {stats.Level} · {stats.Xp} XP\nБаланс: {stats.Kiberons} K\nСредняя оценка: {stats.AverageGrade:0.##} ({stats.GradeCount})\nПосещения: {stats.SessionCount}\nДостижения: {stats.AchievementCount}\nПокупки: {stats.PurchaseCount}";
+        await RefreshTypingChartsAsync();
+    }
+
+    [RelayCommand]
+    private async Task RefreshTypingChartsAsync()
+    {
+        try
+        {
+            Guid? groupId = ShowStatsForStudent ? null : SelectedGroup?.Id;
+            Guid? studentId = ShowStatsForStudent ? SelectedStudent?.Id : null;
+            if (ShowStatsForStudent && studentId is null) { ShowSelectionError("Выберите ученика."); return; }
+            if (!ShowStatsForStudent && groupId is null) { ShowSelectionError("Выберите группу."); return; }
+
+            var lessonId = SelectedStatsLesson?.Id;
+            var report = await lessons.GetTypingStatsAsync(groupId, studentId, lessonId);
+            StatsReportTitle = report.Title;
+            RebuildStatsBars(report.Points);
+
+            if (ShowStatsForStudent)
+            {
+                var card = await classroom.GetStudentStatisticsAsync(studentId!.Value);
+                StatsSummaryText = card is null
+                    ? "Нет данных по ученику."
+                    : $"{card.DisplayName} · ур. {card.Level} · {card.Xp} XP · {card.Kiberons} K\n" +
+                      $"Уроков в графике: {report.Points.Count} · попыток: {report.Points.Sum(x => x.Attempts)}";
+                StudentStatisticsText = StatsSummaryText;
+            }
+            else
+            {
+                var card = await classroom.GetGroupStatisticsAsync(groupId!.Value);
+                StatsSummaryText = card is null
+                    ? "Нет данных по группе."
+                    : $"{card.GroupName} · {card.StudentCount} уч. · XP {card.TotalXp:N0} · {card.TotalKiberons:N0} K\n" +
+                      $"Уроков в графике: {report.Points.Count} · попыток: {report.Points.Sum(x => x.Attempts)}";
+                GroupStatisticsText = StatsSummaryText;
+            }
+
+            if (report.Points.Count == 0)
+                StatsSummaryText += "\nПока нет завершённых уроков печати для выбранного фильтра.";
+        }
+        catch (Exception error)
+        {
+            HasError = true;
+            StatusMessage = error.Message;
+        }
+    }
+
+    private void RebuildStatsBars(IReadOnlyList<TypingLessonStatPoint> points)
+    {
+        StatsCpmBars.Clear();
+        StatsAccuracyBars.Clear();
+        var maxCpm = points.Count == 0 ? 1 : Math.Max(1, points.Max(x => x.AverageCpm));
+        foreach (var point in points)
+        {
+            var cpmHeight = Math.Clamp(point.AverageCpm / maxCpm * 140, 8, 140);
+            var accHeight = Math.Clamp(point.AverageAccuracy / 100.0 * 140, 8, 140);
+            StatsCpmBars.Add(new ChartBarViewModel(point.LessonName, $"{point.AverageCpm:0.#}", cpmHeight, "#068F8A"));
+            StatsAccuracyBars.Add(new ChartBarViewModel(point.LessonName, $"{point.AverageAccuracy:0.#}%", accHeight, "#1F9E61"));
+        }
+        OnPropertyChanged(nameof(HasStatsBars));
+        OnPropertyChanged(nameof(HasNoStatsBars));
     }
 
     private void SendClassCommand(string kind, object payload)
@@ -662,6 +748,25 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     }
 
     [RelayCommand]
+    private async Task DeleteGroupAsync()
+    {
+        if (SelectedGroup is null)
+        {
+            ShowSelectionError("Выберите группу для удаления.");
+            return;
+        }
+
+        var name = SelectedGroup.Name;
+        var id = SelectedGroup.Id;
+        await RunActionAsync(async () =>
+        {
+            if (!await classroom.DeleteGroupAsync(id))
+                throw new KeyNotFoundException("Группа не найдена.");
+            StatusMessage = $"Группа «{name}» удалена.";
+        });
+    }
+
+    [RelayCommand]
     private async Task SaveStudentAsync()
     {
         if (SelectedGroup is null)
@@ -871,6 +976,11 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         var stored = await lessons.ListLessonsAsync();
         Lessons.Clear();
         foreach (var lesson in stored) Lessons.Add(new LessonCardViewModel(lesson));
+        var selectedLessonFilter = SelectedStatsLesson?.Id;
+        StatsLessonFilters.Clear();
+        StatsLessonFilters.Add(new LessonFilterOption(null, "Все уроки"));
+        foreach (var lesson in stored) StatsLessonFilters.Add(new LessonFilterOption(lesson.Id, lesson.Name));
+        SelectedStatsLesson = StatsLessonFilters.FirstOrDefault(x => x.Id == selectedLessonFilter) ?? StatsLessonFilters.FirstOrDefault();
         var storedGroups = await classroom.ListGroupsAsync();
         var selectedId = SelectedGroup?.Id;
         Groups.Clear();
@@ -940,6 +1050,9 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         OnPropertyChanged(nameof(HasNoScreenPreviews));
         OnPropertyChanged(nameof(HasAuditEvents));
         OnPropertyChanged(nameof(HasNoAuditEvents));
+        OnPropertyChanged(nameof(HasStatsBars));
+        OnPropertyChanged(nameof(HasNoStatsBars));
+        OnPropertyChanged(nameof(ShowStatsForGroup));
         NotifyViewModes();
         OnPropertyChanged(nameof(StudentFormTitle));
         OnPropertyChanged(nameof(StudentFormActionLabel));
@@ -977,6 +1090,21 @@ public partial class GroupCardViewModel : ObservableObject
     public string Details { get; }
     [ObservableProperty] private bool isSelected;
     public override string ToString() => Name;
+}
+
+public sealed class LessonFilterOption(Guid? id, string name)
+{
+    public Guid? Id { get; } = id;
+    public string Name { get; } = name;
+    public override string ToString() => Name;
+}
+
+public sealed class ChartBarViewModel(string label, string valueLabel, double height, string color)
+{
+    public string Label { get; } = label;
+    public string ValueLabel { get; } = valueLabel;
+    public double Height { get; } = height;
+    public string Color { get; } = color;
 }
 
 public partial class StudentCardViewModel : ObservableObject

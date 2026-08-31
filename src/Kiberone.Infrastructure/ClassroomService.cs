@@ -141,6 +141,21 @@ public sealed class ClassroomService(DbContextOptions<ClassroomDbContext> option
         return new StudentProfile(student, grades, achievements, history, orders);
     }
 
+    public async Task<bool> DeleteGroupAsync(Guid id, CancellationToken ct = default)
+    {
+        await using var db = new ClassroomDbContext(options);
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var group = await db.Groups.Include(x => x.Students).SingleOrDefaultAsync(x => x.Id == id, ct);
+        if (group is null) return false;
+        if (group.Students.Count > 0)
+            throw new InvalidOperationException("Сначала удалите или переведите всех учеников группы.");
+
+        db.Groups.Remove(group);
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return true;
+    }
+
     public async Task<GroupStatistics?> GetGroupStatisticsAsync(Guid groupId, CancellationToken ct = default)
     {
         await using var db = new ClassroomDbContext(options);

@@ -112,3 +112,5 @@ public sealed record StudentProfile(Student Student, IReadOnlyList<Grade> Grades
 public sealed record PurchaseResult(StoreOrder Order, int BalanceAfter, int StockAfter);
 public sealed record GroupStatistics(Guid GroupId, string GroupName, int StudentCount, double AverageGrade, int TotalXp, int TotalKiberons, int SessionCount, int AchievementCount);
 public sealed record StudentStatistics(Guid StudentId, string DisplayName, string GroupName, int Level, int Xp, int Kiberons, double AverageGrade, int GradeCount, int SessionCount, int AchievementCount, int PurchaseCount);
+public sealed record TypingLessonStatPoint(Guid LessonId, string LessonName, double AverageCpm, double AverageAccuracy, int Attempts, int TotalCorrectKeys);
+public sealed record TypingStatsReport(string Title, string ScopeLabel, IReadOnlyList<TypingLessonStatPoint> Points);

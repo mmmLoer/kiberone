@@ -177,6 +177,74 @@ public sealed class TypingLessonService(DbContextOptions<ClassroomDbContext> opt
         return (MapSnapshot(session), winners);
     }
 
+    public async Task<TypingStatsReport> GetTypingStatsAsync(
+        Guid? groupId,
+        Guid? studentId,
+        Guid? lessonId,
+        CancellationToken cancellationToken = default)
+    {
+        await using var db = new ClassroomDbContext(options);
+        var query = db.TypingParticipants.AsNoTracking()
+            .Include(x => x.Session)!.ThenInclude(x => x!.Lesson)
+            .Include(x => x.Student)
+            .Where(x => x.Session != null && x.Session.Status == TypingSessionStatus.Finished);
+
+        if (groupId is not null)
+            query = query.Where(x => x.Session!.GroupId == groupId);
+        if (studentId is not null)
+            query = query.Where(x => x.StudentId == studentId);
+        if (lessonId is not null)
+            query = query.Where(x => x.Session!.LessonId == lessonId);
+
+        var rows = await query.ToListAsync(cancellationToken);
+        var points = rows
+            .Where(x => x.Session?.Lesson is not null)
+            .GroupBy(x => new { x.Session!.LessonId, Name = x.Session.Lesson!.Name })
+            .Select(g =>
+            {
+                var metrics = g.Select(p => (
+                    Cpm: TypingMetrics.Cpm(p.CorrectKeys, p.ActiveSeconds),
+                    Acc: TypingMetrics.Accuracy(p.CorrectKeys, p.WrongKeys),
+                    Keys: p.CorrectKeys)).ToList();
+                return new TypingLessonStatPoint(
+                    g.Key.LessonId,
+                    g.Key.Name,
+                    metrics.Count == 0 ? 0 : Math.Round(metrics.Average(m => m.Cpm), 1),
+                    metrics.Count == 0 ? 0 : Math.Round(metrics.Average(m => m.Acc), 1),
+                    metrics.Count,
+                    metrics.Sum(m => m.Keys));
+            })
+            .OrderBy(x => x.LessonName)
+            .ToList();
+
+        string title;
+        string scope;
+        if (studentId is not null)
+        {
+            var name = rows.FirstOrDefault()?.Student?.DisplayName
+                ?? (await db.Students.AsNoTracking().SingleOrDefaultAsync(x => x.Id == studentId, cancellationToken))?.DisplayName
+                ?? "Ученик";
+            title = $"Статистика печати · {name}";
+            scope = "Ученик";
+        }
+        else if (groupId is not null)
+        {
+            var groupName = (await db.Groups.AsNoTracking().SingleOrDefaultAsync(x => x.Id == groupId, cancellationToken))?.Name ?? "Группа";
+            title = $"Статистика печати · {groupName}";
+            scope = "Группа";
+        }
+        else
+        {
+            title = "Статистика печати";
+            scope = "Все";
+        }
+
+        if (lessonId is not null && points.Count == 1)
+            title += $" · {points[0].LessonName}";
+
+        return new TypingStatsReport(title, scope, points);
+    }
+
     private static Task<TypingSession?> LoadSessionAsync(ClassroomDbContext db, Guid sessionId, bool tracking, CancellationToken cancellationToken)
     {
         var query = db.TypingSessions
