@@ -10,7 +10,7 @@ $env:DOTNET_CLI_HOME = Join-Path $projectRoot ".dotnet-home"
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = "1"
 $env:NUGET_PACKAGES = Join-Path $projectRoot ".nuget\packages"
 
-$out = Join-Path $projectRoot "dist\Student-win-x64-new"
+$out = Join-Path $projectRoot "dist\Student-win-x64"
 $project = Join-Path $projectRoot "src\Kiberone.Student\Kiberone.Student.csproj"
 
 Write-Host "Publishing Student to $out (PublishSingleFile=false for VPN native DLLs) ..."
@@ -37,3 +37,4 @@ foreach ($dll in @("tunnel.dll", "wireguard.dll")) {
 Write-Host ""
 Write-Host "Published to $out"
 Write-Host "Next (admin, once per PC): .\scripts\restart-student-vpn-service.ps1 -SourceDir `"$out`""
+Write-Host "Or distribute: .\dist\installers\KIBERoneStudent-Setup-*.zip"

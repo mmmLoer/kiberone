@@ -573,7 +573,9 @@ public enum TypingGlyphState { Pending, Current, Correct, Wrong }
 
 public sealed class TypingGlyphViewModel(char character, TypingGlyphState state)
 {
-    public string Character { get; } = character == ' ' ? "·" : character.ToString();
+    public string Character { get; } = character.ToString();
+    public bool IsWhitespace { get; } = char.IsWhiteSpace(character);
+    public double GlyphMinWidth => IsWhitespace ? 16 : 0;
     public string Foreground => state switch { TypingGlyphState.Correct => "#087F5B", TypingGlyphState.Wrong => "#C9362B", TypingGlyphState.Current => "#13181D", _ => "#6B7880" };
     public string Background => state switch { TypingGlyphState.Correct => "#DDF7E9", TypingGlyphState.Wrong => "#FFE2DE", TypingGlyphState.Current => "#FFD52E", _ => "Transparent" };
     public string Decoration => state == TypingGlyphState.Wrong ? "Underline" : "None";

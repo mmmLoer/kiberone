@@ -519,7 +519,7 @@
                   </ItemsControl.ItemsPanel>
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:TypingGlyphViewModel">
-                      <Border Background="{Binding Background}" CornerRadius="5" Padding="3,2" Margin="1">
+                      <Border Background="{Binding Background}" CornerRadius="5" Padding="3,2" Margin="1" MinWidth="{Binding GlyphMinWidth}">
                         <TextBlock Text="{Binding Character}"
                                    Foreground="{Binding Foreground}"
                                    FontFamily="Cascadia Mono, Consolas"

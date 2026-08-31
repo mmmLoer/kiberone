@@ -1,6 +1,6 @@
 #Requires -RunAsAdministrator
 param(
-    [string] $SourceDir = "C:\Users\goroh\Downloads\kiberone\dist\Student-win-x64-new",
+    [string] $SourceDir = "C:\Users\goroh\Downloads\kiberone\dist\Student-win-x64",
     [string] $ServiceName = "KIBERoneStudentVpn"
 )
 

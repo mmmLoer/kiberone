@@ -350,7 +350,7 @@
                 <ItemsControl ItemsSource="{Binding Groups}">
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:GroupCardViewModel">
-                      <Button Command="{Binding #TutorRoot.((vm:MainViewModel)DataContext).SelectGroupCommand}"
+                      <Button Command="{Binding #TutorRoot.DataContext.SelectGroupCommand}"
                               CommandParameter="{Binding}"
                               HorizontalAlignment="Stretch"
                               HorizontalContentAlignment="Left"
@@ -383,7 +383,7 @@
                   <ItemsControl ItemsSource="{Binding FilteredStudents}">
                     <ItemsControl.ItemTemplate>
                       <DataTemplate x:DataType="vm:StudentCardViewModel">
-                        <Button Command="{Binding #TutorRoot.((vm:MainViewModel)DataContext).BeginEditStudentCommand}"
+                        <Button Command="{Binding #TutorRoot.DataContext.BeginEditStudentCommand}"
                                 CommandParameter="{Binding}"
                                 HorizontalAlignment="Stretch"
                                 HorizontalContentAlignment="Left"
