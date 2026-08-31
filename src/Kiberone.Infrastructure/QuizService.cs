@@ -17,13 +17,43 @@ public sealed class QuizService(DbContextOptions<ClassroomDbContext> options, Cl
         if (request.XpReward is < 0 or > 1000) errors.Add("Награда должна быть от 0 до 1000 XP.");
         if (request.ClientIds.Count == 0) errors.Add("Выберите хотя бы один компьютер.");
         if (errors.Count > 0) throw new LessonValidationException(errors);
-        var session = new QuizSession { Question = question, OptionsJson = JsonSerializer.Serialize(answers), CorrectIndex = request.CorrectIndex, XpReward = request.XpReward };
+
+        var launchOptions = answers.ToList();
+        var correctIndex = request.CorrectIndex;
+        if (request.ShuffleAnswers)
+        {
+            var correctText = launchOptions[correctIndex];
+            for (var i = launchOptions.Count - 1; i > 0; i--)
+            {
+                var j = Random.Shared.Next(i + 1);
+                (launchOptions[i], launchOptions[j]) = (launchOptions[j], launchOptions[i]);
+            }
+
+            correctIndex = launchOptions.IndexOf(correctText);
+        }
+
+        var session = new QuizSession
+        {
+            Question = question,
+            OptionsJson = JsonSerializer.Serialize(launchOptions),
+            CorrectIndex = correctIndex,
+            XpReward = request.XpReward
+        };
         await using (var db = new ClassroomDbContext(options))
         {
             db.QuizSessions.Add(session);
             await db.SaveChangesAsync(ct);
         }
-        var payload = JsonSerializer.SerializeToElement(new { session_id = session.Id, question, options = answers, xp_reward = request.XpReward });
+
+        var payload = JsonSerializer.SerializeToElement(new
+        {
+            session_id = session.Id,
+            question,
+            options = launchOptions,
+            xp_reward = request.XpReward,
+            time_limit_seconds = request.TimeLimitSeconds,
+            show_feedback = request.ShowFeedback
+        });
         commands.Enqueue(new EnqueueCommandRequest(request.ClientIds, ClassroomCommandKinds.QuizStart, payload, 600));
         return session;
     }

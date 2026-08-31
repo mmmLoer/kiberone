@@ -25,6 +25,7 @@
 
             <TextBlock Text="УПРАВЛЕНИЕ" Classes="eyebrow" Margin="13,14,0,6"/>
             <Button Content="Пульт класса" Command="{Binding NavigateCommand}" CommandParameter="6" Classes="nav compact" Classes.active="{Binding IsSection6}"/>
+            <Button Content="Викторины" Command="{Binding NavigateCommand}" CommandParameter="9" Classes="nav compact" Classes.active="{Binding IsSection9}"/>
             <Button Content="Живой урок" Command="{Binding NavigateCommand}" CommandParameter="7" Classes="nav compact" Classes.active="{Binding IsSection7}"/>
             <Button Content="Итоги урока" Command="{Binding NavigateCommand}" CommandParameter="8" Classes="nav compact" Classes.active="{Binding IsSection8}"/>
 
@@ -671,65 +672,120 @@
         </Grid>
       </TabItem>
       <TabItem Header="Пульт класса">
-        <Grid ColumnDefinitions="*,*" Margin="36,40">
-          <Border Classes="card">
-            <StackPanel Spacing="14">
-              <TextBlock Text="Управление вниманием" Classes="h2" />
-              <TextBlock Text="Команды отправляются всем известным ученическим ПК и требуют подтверждения выполнения." Classes="muted" TextWrapping="Wrap" />
-              <TextBox Text="{Binding ClassroomMessage}" Watermark="Сообщение ученикам" AcceptsReturn="True" MinHeight="90" />
-              <Button Content="Отправить сообщение всем" Command="{Binding SendMessageAllCommand}" Classes="primary" />
-              <Grid ColumnDefinitions="*,*">
-                <Button Content="Заблокировать экраны" Command="{Binding LockAllCommand}" Classes="danger" />
-                <Button Grid.Column="1" Content="Разблокировать" Command="{Binding UnlockAllCommand}" Classes="ghost" Margin="10,0,0,0" />
-              </Grid>
-              <Grid ColumnDefinitions="*,*">
-                <Button Content="Включить режим фокуса" Command="{Binding FocusAllOnCommand}" Classes="accent" />
-                <Button Grid.Column="1" Content="Выключить фокус" Command="{Binding FocusAllOffCommand}" Margin="10,0,0,0" />
-              </Grid>
-              <TextBlock Text="VPN (WireGuard)" Classes="eyebrow" Margin="0,8,0,0" />
-              <TextBlock Text="Укажите папку с .conf файлами. На каждом ПК ученика один раз установите VPN-службу (install-student-vpn.ps1). Дальше UAC не нужен." Classes="muted" TextWrapping="Wrap" />
-              <Grid ColumnDefinitions="*,Auto">
-                <TextBox Text="{Binding VpnConfigsFolder}" Watermark="Папка с VPN-конфигами" />
-                <Button Grid.Column="1" Content="Обзор…" Command="{Binding PickVpnConfigsFolderCommand}" Margin="10,0,0,0" />
-              </Grid>
-              <TextBlock Text="{Binding VpnDistributionStatus}" Classes="muted" TextWrapping="Wrap" />
-              <Grid ColumnDefinitions="*,*">
-                <Button Content="Включить VPN" Command="{Binding VpnAllOnCommand}" Classes="primary" />
-                <Button Grid.Column="1" Content="Выключить VPN" Command="{Binding VpnAllOffCommand}" Margin="10,0,0,0" />
-              </Grid>
+        <ScrollViewer Margin="28,28">
+          <StackPanel Spacing="18" MaxWidth="1100" HorizontalAlignment="Left">
+            <StackPanel Spacing="4">
+              <TextBlock Text="Карточки управления" Classes="h2" />
+              <TextBlock Text="Нажмите карточку, чтобы включить или выключить режим. Состояние подсвечивается." Classes="muted" TextWrapping="Wrap" />
             </StackPanel>
-          </Border>
-          <Border Grid.Column="1" Classes="card" Margin="18,0,0,0">
-            <StackPanel Spacing="14">
-              <TextBlock Text="Надёжность и синхронизация" Classes="h2" />
-              <TextBlock Text="Watchdog перезапускает закрытый Student. Функция включается только явной командой." Classes="muted" TextWrapping="Wrap" />
-              <Grid ColumnDefinitions="*,*">
-                <Button Content="Включить Watchdog" Command="{Binding WatchdogAllOnCommand}" Classes="accent" />
-                <Button Grid.Column="1" Content="Выключить Watchdog" Command="{Binding WatchdogAllOffCommand}" Margin="10,0,0,0" />
-              </Grid>
-              <Button Content="Синхронизировать сейчас" Command="{Binding SyncAllNowCommand}" Classes="primary" />
-              <Border BorderBrush="#DDE5E8" BorderThickness="1" CornerRadius="12" Padding="14" Margin="0,8,0,0">
-                <StackPanel Spacing="8">
-                  <TextBlock Text="Быстрая викторина" FontWeight="Bold" FontSize="16" />
-                  <TextBox Text="{Binding QuizQuestion}" Watermark="Вопрос" />
-                  <TextBox Text="{Binding QuizOptionsText}" Watermark="Каждый вариант с новой строки" AcceptsReturn="True" MinHeight="76" />
-                  <Grid ColumnDefinitions="*,*">
-                    <NumericUpDown Value="{Binding QuizCorrectAnswer}" Minimum="1" Maximum="6" Watermark="№ правильного" />
-                    <NumericUpDown Grid.Column="1" Value="{Binding QuizXpReward}" Minimum="0" Maximum="1000" Watermark="XP" Margin="8,0,0,0" />
+
+            <UniformGrid Columns="3">
+              <Button Command="{Binding ToggleScreensLockCommand}" Classes="toggleCard" Classes.on="{Binding IsScreensLocked}">
+                <StackPanel Spacing="10">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <Border Classes="toggleIcon">
+                      <TextBlock Text="🔒" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <Border Grid.Column="1" Classes="pill" VerticalAlignment="Top" IsVisible="{Binding IsScreensLocked}">
+                      <TextBlock Text="ВКЛ" FontSize="11" FontWeight="Bold" Foreground="#068F8A" />
+                    </Border>
                   </Grid>
-                  <Button Content="Запустить всем" Command="{Binding StartQuizCommand}" Classes="accent" />
-                  <TextBlock Text="{Binding QuizStatus}" Classes="muted" TextWrapping="Wrap" />
+                  <TextBlock Text="Экраны" FontWeight="Bold" FontSize="16" />
+                  <TextBlock Text="{Binding ScreensLockLabel}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
                 </StackPanel>
-              </Border>
-              <Border Background="#F3F6F7" CornerRadius="10" Padding="14" Margin="0,12,0,0">
-                <StackPanel>
-                  <TextBlock Text="Состояние команды" FontWeight="Bold" />
-                  <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" Margin="0,5,0,0" />
+              </Button>
+
+              <Button Command="{Binding ToggleFocusModeCommand}" Classes="toggleCard" Classes.on="{Binding IsFocusModeOn}">
+                <StackPanel Spacing="10">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <Border Classes="toggleIcon">
+                      <TextBlock Text="◎" FontSize="22" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#068F8A" />
+                    </Border>
+                    <Border Grid.Column="1" Classes="pill" VerticalAlignment="Top" IsVisible="{Binding IsFocusModeOn}">
+                      <TextBlock Text="ВКЛ" FontSize="11" FontWeight="Bold" Foreground="#068F8A" />
+                    </Border>
+                  </Grid>
+                  <TextBlock Text="Режим фокуса" FontWeight="Bold" FontSize="16" />
+                  <TextBlock Text="{Binding FocusModeLabel}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
                 </StackPanel>
-              </Border>
-            </StackPanel>
-          </Border>
-        </Grid>
+              </Button>
+
+              <Button Command="{Binding ToggleWatchdogCommand}" Classes="toggleCard" Classes.on="{Binding IsWatchdogOn}">
+                <StackPanel Spacing="10">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <Border Classes="toggleIcon">
+                      <TextBlock Text="🐕" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <Border Grid.Column="1" Classes="pill" VerticalAlignment="Top" IsVisible="{Binding IsWatchdogOn}">
+                      <TextBlock Text="ВКЛ" FontSize="11" FontWeight="Bold" Foreground="#068F8A" />
+                    </Border>
+                  </Grid>
+                  <TextBlock Text="Watchdog" FontWeight="Bold" FontSize="16" />
+                  <TextBlock Text="{Binding WatchdogLabel}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                </StackPanel>
+              </Button>
+
+              <Button Command="{Binding ToggleVpnCommand}" Classes="toggleCard" Classes.on="{Binding IsVpnOn}">
+                <StackPanel Spacing="10">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <Border Classes="toggleIcon">
+                      <TextBlock Text="🛡" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <Border Grid.Column="1" Classes="pill" VerticalAlignment="Top" IsVisible="{Binding IsVpnOn}">
+                      <TextBlock Text="ВКЛ" FontSize="11" FontWeight="Bold" Foreground="#068F8A" />
+                    </Border>
+                  </Grid>
+                  <TextBlock Text="VPN" FontWeight="Bold" FontSize="16" />
+                  <TextBlock Text="{Binding VpnToggleLabel}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                </StackPanel>
+              </Button>
+
+              <Button Command="{Binding SyncAllNowCommand}" Classes="toggleCard">
+                <StackPanel Spacing="10">
+                  <Border Classes="toggleIcon">
+                    <TextBlock Text="↻" FontSize="22" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#068F8A" />
+                  </Border>
+                  <TextBlock Text="Синхронизация" FontWeight="Bold" FontSize="16" />
+                  <TextBlock Text="Разовая команда: синхронизировать файлы на всех ПК сейчас." Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                </StackPanel>
+              </Button>
+
+              <Button Command="{Binding NavigateCommand}" CommandParameter="9" Classes="toggleCard">
+                <StackPanel Spacing="10">
+                  <Border Classes="toggleIcon">
+                    <TextBlock Text="?" FontSize="22" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#068F8A" />
+                  </Border>
+                  <TextBlock Text="Викторины" FontWeight="Bold" FontSize="16" />
+                  <TextBlock Text="Отдельный редактор вопросов, настройки и экспорт JSON." Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                </StackPanel>
+              </Button>
+            </UniformGrid>
+
+            <Border Classes="card">
+              <StackPanel Spacing="12">
+                <TextBlock Text="Сообщение классу" Classes="h2" />
+                <TextBox Text="{Binding ClassroomMessage}" Watermark="Инструкция или объявление ученикам" AcceptsReturn="True" MinHeight="88" TextWrapping="Wrap" />
+                <Button Content="Отправить всем" Command="{Binding SendMessageAllCommand}" Classes="primary" HorizontalAlignment="Left" MinWidth="180" />
+              </StackPanel>
+            </Border>
+
+            <Border Classes="card">
+              <StackPanel Spacing="10">
+                <TextBlock Text="VPN · папка конфигов WireGuard" FontWeight="Bold" />
+                <TextBlock Text="Нужна один раз: на каждом ПК установите службу, затем укажите папку с .conf." Classes="muted" TextWrapping="Wrap" />
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBox Text="{Binding VpnConfigsFolder}" Watermark="Папка с VPN-конфигами" />
+                  <Button Grid.Column="1" Content="Обзор…" Command="{Binding PickVpnConfigsFolderCommand}" Classes="ghost" Margin="10,0,0,0" />
+                </Grid>
+                <TextBlock Text="{Binding VpnDistributionStatus}" Classes="muted" TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+
+            <Border Classes="subcard">
+              <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" />
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
       </TabItem>
       <TabItem Header="Живой урок">
         <Grid Margin="32,32">
@@ -777,8 +833,119 @@
       <TabItem Header="Итоги урока">
         <Border Classes="card" Margin="36,40"><Grid RowDefinitions="Auto,*"><StackPanel><TextBlock Text="Три награды — три разных ученика" FontSize="22" FontWeight="Bold"/><TextBlock Text="Награды распределены по правилам точности, скорости и объёма" Classes="muted" FontSize="14" Margin="0,8,0,0"/></StackPanel><ItemsControl Grid.Row="1" ItemsSource="{Binding Winners}" Margin="0,58,0,0"><ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:WinnerCardViewModel"><Border Background="#FFF7DB" CornerRadius="12" Height="92" Padding="24" Margin="0,0,0,26"><Grid ColumnDefinitions="58,*,260,130"><TextBlock Text="{Binding Place}" Foreground="#6B7880" FontWeight="Bold"/><StackPanel Grid.Column="1"><TextBlock Text="Награда за результат" FontSize="16" FontWeight="Bold"/><TextBlock Text="{Binding Name}" Foreground="#068F8A" FontWeight="Bold" Margin="0,8,0,0"/></StackPanel><TextBlock Grid.Column="2" Text="{Binding Details}" FontSize="18" FontWeight="Bold"/><TextBlock Grid.Column="3" Text="+20 XP" Foreground="#FFB80D" FontWeight="Bold"/></Grid></Border></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></Grid></Border>
       </TabItem>
-      <TabItem Header="Статистика ученика">
-        <Grid ColumnDefinitions="1.8*,*" Margin="32,32"><Border Classes="card"><StackPanel Spacing="34"><TextBlock Text="Прогресс по урокам" FontSize="20" FontWeight="Bold"/><Grid ColumnDefinitions="162,130,160,*"><TextBlock Text="Буквы" FontWeight="Bold"/><TextBlock Grid.Column="1" Text="34 CPM" Foreground="#068F8A" FontWeight="Bold"/><TextBlock Grid.Column="2" Text="88% точность" Foreground="#1F9E61"/><ProgressBar Grid.Column="3" Value="45" Maximum="100" Height="8"/></Grid><Grid ColumnDefinitions="162,130,160,*"><TextBlock Text="Слова" FontWeight="Bold"/><TextBlock Grid.Column="1" Text="42 CPM" Foreground="#068F8A" FontWeight="Bold"/><TextBlock Grid.Column="2" Text="90% точность" Foreground="#1F9E61"/><ProgressBar Grid.Column="3" Value="57" Maximum="100" Height="8"/></Grid><Grid ColumnDefinitions="162,130,160,*"><TextBlock Text="Python" FontWeight="Bold"/><TextBlock Grid.Column="1" Text="50 CPM" Foreground="#068F8A" FontWeight="Bold"/><TextBlock Grid.Column="2" Text="92% точность" Foreground="#1F9E61"/><ProgressBar Grid.Column="3" Value="69" Maximum="100" Height="8"/></Grid><Grid ColumnDefinitions="162,130,160,*"><TextBlock Text="C#" FontWeight="Bold"/><TextBlock Grid.Column="1" Text="58 CPM" Foreground="#068F8A" FontWeight="Bold"/><TextBlock Grid.Column="2" Text="94% точность" Foreground="#1F9E61"/><ProgressBar Grid.Column="3" Value="81" Maximum="100" Height="8"/></Grid></StackPanel></Border><Border Grid.Column="1" Classes="card" Margin="22,0,0,0"><StackPanel Spacing="16"><TextBlock Text="Итог" FontSize="20" FontWeight="Bold"/><TextBlock Text="42 CPM" Foreground="#068F8A" FontSize="34" FontWeight="Bold" Margin="0,40,0,0"/><TextBlock Text="92% точность" Foreground="#1F9E61" FontWeight="Bold"/><TextBlock Text="Уровень 7" FontSize="24" FontWeight="Bold" Margin="0,42,0,0"/><TextBlock Text="640 / 700 XP" Classes="muted"/><ProgressBar Value="91" Maximum="100" Height="8" Foreground="#FFB80D"/></StackPanel></Border></Grid>
+      <TabItem Header="Викторины">
+        <Grid Margin="24,24" RowDefinitions="Auto,*">
+          <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,14">
+            <StackPanel Spacing="4">
+              <TextBlock Text="{Binding QuizTitle}" Classes="h2" />
+              <TextBlock Text="{Binding QuizStatus}" Classes="muted" TextWrapping="Wrap" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+              <Border Classes="segmentBar">
+                <StackPanel Orientation="Horizontal" Spacing="2">
+                  <Button Content="Вопросы" Command="{Binding ShowQuizQuestionsPaneCommand}" Classes="segment" Classes.active="{Binding ShowQuizQuestions}" />
+                  <Button Content="Настройки" Command="{Binding ShowQuizSettingsPaneCommand}" Classes="segment" Classes.active="{Binding ShowQuizSettings}" />
+                </StackPanel>
+              </Border>
+              <Button Content="Экспорт JSON" Command="{Binding ExportQuizCommand}" Classes="ghost" />
+              <Button Content="Импорт JSON" Command="{Binding ImportQuizCommand}" Classes="ghost" />
+              <Button Content="Сохранить" Command="{Binding SaveQuizDraftCommand}" Classes="primary" />
+              <Button Content="Запустить вопрос" Command="{Binding StartQuizCommand}" Classes="accent" />
+            </StackPanel>
+          </Grid>
+
+          <Grid Grid.Row="1" ColumnDefinitions="240,*" IsVisible="{Binding ShowQuizQuestions}">
+            <Border Classes="card" Padding="14">
+              <Grid RowDefinitions="Auto,*,Auto">
+                <TextBlock Text="Вопросы" FontWeight="Bold" Margin="0,0,0,10" />
+                <ScrollViewer Grid.Row="1">
+                  <ItemsControl ItemsSource="{Binding QuizQuestions}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:QuizQuestionEditorViewModel">
+                        <Button Command="{Binding #TutorRoot.DataContext.SelectQuizQuestionCommand}"
+                                CommandParameter="{Binding}"
+                                Classes="listCard">
+                          <Border Classes="listCardInner" Classes.selected="{Binding IsSelected}">
+                            <StackPanel Spacing="2">
+                              <TextBlock Text="{Binding NumberLabel}" FontWeight="Bold" FontSize="12" Foreground="#068F8A" />
+                              <TextBlock Text="{Binding Preview}" TextWrapping="Wrap" MaxHeight="40" TextTrimming="CharacterEllipsis" FontSize="13" />
+                            </StackPanel>
+                          </Border>
+                        </Button>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </ScrollViewer>
+                <StackPanel Grid.Row="2" Spacing="8" Margin="0,12,0,0">
+                  <Button Content="+ Добавить вопрос" Command="{Binding AddQuizQuestionCommand}" Classes="primary" HorizontalAlignment="Stretch" />
+                  <Button Content="Удалить вопрос" Command="{Binding RemoveQuizQuestionCommand}" Classes="danger" HorizontalAlignment="Stretch" />
+                </StackPanel>
+              </Grid>
+            </Border>
+
+            <Border Grid.Column="1" Classes="card" Margin="16,0,0,0" IsVisible="{Binding HasSelectedQuizQuestion}">
+              <ScrollViewer>
+                <StackPanel Spacing="14">
+                  <TextBlock Text="Текст вопроса" FontWeight="Bold" />
+                  <TextBox Text="{Binding SelectedQuizQuestion.Text}" Watermark="Введите вопрос" AcceptsReturn="True" MinHeight="72" TextWrapping="Wrap" />
+
+                  <TextBlock Text="Медиа (необязательно)" FontWeight="Bold" />
+                  <Border Classes="subcard">
+                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                      <TextBlock Text="{Binding SelectedQuizQuestion.MediaLabel}" Classes="muted" TextWrapping="Wrap" VerticalAlignment="Center" />
+                      <Button Grid.Column="1" Content="Загрузить…" Command="{Binding PickQuizMediaCommand}" Classes="ghost" Margin="10,0,0,0" />
+                      <Button Grid.Row="1" Grid.ColumnSpan="2" Content="Убрать медиа" Command="{Binding ClearQuizMediaCommand}" HorizontalAlignment="Left" Margin="0,8,0,0" Classes="ghost" />
+                    </Grid>
+                  </Border>
+
+                  <TextBlock Text="Варианты ответа · отметьте правильный" FontWeight="Bold" />
+                  <ItemsControl ItemsSource="{Binding SelectedQuizQuestion.Options}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:QuizOptionEditorViewModel">
+                        <Border Classes="subcard" Margin="0,0,0,8" Classes.selected="{Binding IsCorrect}">
+                          <Grid ColumnDefinitions="Auto,*,Auto">
+                            <Border Width="32" Height="32" CornerRadius="8" Background="#E0F5F2" Margin="0,0,10,0">
+                              <TextBlock Text="{Binding Letter}" FontWeight="Bold" Foreground="#068F8A" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <TextBox Text="{Binding Text}" Watermark="Вариант ответа" />
+                            <Button Grid.Column="2" Content="✓" Command="{Binding MarkCorrectCommand}" Width="40" Margin="8,0,0,0"
+                                    Classes.primary="{Binding IsCorrect}" Classes.ghost="{Binding IsIncorrect}" ToolTip.Tip="Правильный ответ" />
+                          </Grid>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                  <Button Content="+ Вариант" Command="{Binding AddQuizOptionCommand}" Classes="ghost" HorizontalAlignment="Left" />
+                </StackPanel>
+              </ScrollViewer>
+            </Border>
+            <Border Grid.Column="1" Classes="card" Margin="16,0,0,0" IsVisible="{Binding HasNoSelectedQuizQuestion}">
+              <TextBlock Text="Добавьте вопрос слева или выберите существующий." Classes="muted" VerticalAlignment="Center" HorizontalAlignment="Center" />
+            </Border>
+          </Grid>
+
+          <Border Grid.Row="1" Classes="card" IsVisible="{Binding ShowQuizSettings}" MaxWidth="640" HorizontalAlignment="Left">
+            <StackPanel Spacing="14">
+              <TextBlock Text="Параметры викторины" Classes="h2" />
+              <TextBlock Text="Как в myQuiz: название, время на вопрос, XP, перемешивание и подсказка после ответа." Classes="muted" TextWrapping="Wrap" />
+              <TextBlock Text="Название" FontWeight="Bold" />
+              <TextBox Text="{Binding QuizTitle}" Watermark="Название викторины" />
+              <Grid ColumnDefinitions="*,*" Margin="0,4,0,0">
+                <StackPanel Spacing="6" Margin="0,0,10,0">
+                  <TextBlock Text="Секунд на вопрос" FontWeight="Bold" />
+                  <NumericUpDown Value="{Binding QuizTimePerQuestion}" Minimum="5" Maximum="300" />
+                </StackPanel>
+                <StackPanel Spacing="6" Margin="10,0,0,0">
+                  <TextBlock Text="XP за правильный ответ" FontWeight="Bold" />
+                  <NumericUpDown Value="{Binding QuizXpReward}" Minimum="0" Maximum="1000" />
+                </StackPanel>
+              </Grid>
+              <CheckBox Content="Перемешивать варианты при запуске" IsChecked="{Binding QuizShuffleAnswers}" />
+              <CheckBox Content="Показывать ученику результат ответа" IsChecked="{Binding QuizShowFeedback}" />
+              <Button Content="Новая викторина" Command="{Binding NewQuizCommand}" Classes="ghost" HorizontalAlignment="Left" Margin="0,8,0,0" />
+            </StackPanel>
+          </Border>
+        </Grid>
       </TabItem>
       <TabItem Header="Статистика группы">
         <Border Classes="card" Margin="36,40"><Grid RowDefinitions="Auto,300,Auto"><StackPanel><TextBlock Text="Динамика класса" FontSize="22" FontWeight="Bold"/><TextBlock Text="Средний CPM и точность по завершённым сессиям" Classes="muted" Margin="0,8,0,0"/></StackPanel><Border Grid.Row="1" Background="#F7FAFA" CornerRadius="8" Margin="32,58"><Grid ColumnDefinitions="*,*,*,*,*,*,*" VerticalAlignment="Bottom"><Border Background="#068F8A" CornerRadius="6" Width="48" Height="55" VerticalAlignment="Bottom"/><Border Grid.Column="1" Background="#068F8A" CornerRadius="6" Width="48" Height="75" VerticalAlignment="Bottom"/><Border Grid.Column="2" Background="#068F8A" CornerRadius="6" Width="48" Height="88" VerticalAlignment="Bottom"/><Border Grid.Column="3" Background="#068F8A" CornerRadius="6" Width="48" Height="114" VerticalAlignment="Bottom"/><Border Grid.Column="4" Background="#068F8A" CornerRadius="6" Width="48" Height="139" VerticalAlignment="Bottom"/><Border Grid.Column="5" Background="#068F8A" CornerRadius="6" Width="48" Height="158" VerticalAlignment="Bottom"/><Border Grid.Column="6" Background="#068F8A" CornerRadius="6" Width="48" Height="183" VerticalAlignment="Bottom"/></Grid></Border><Grid Grid.Row="2" ColumnDefinitions="220,220,*" Margin="52,0"><StackPanel><TextBlock Text="Средний CPM" Classes="muted"/><TextBlock Text="44" Foreground="#068F8A" FontSize="28" FontWeight="Bold"/></StackPanel><StackPanel Grid.Column="1"><TextBlock Text="Точность" Classes="muted"/><TextBlock Text="91%" Foreground="#1F9E61" FontSize="28" FontWeight="Bold"/></StackPanel></Grid></Grid></Border>

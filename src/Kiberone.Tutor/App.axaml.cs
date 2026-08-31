@@ -71,6 +71,9 @@ public partial class App : Application
                 DataContext = viewModel,
             };
             viewModel.VpnConfigsFolderPicker = () => mainWindow.PickVpnConfigsFolderAsync();
+            viewModel.QuizExportPathPicker = () => mainWindow.PickQuizExportPathAsync();
+            viewModel.QuizImportPathPicker = () => mainWindow.PickQuizImportPathAsync();
+            viewModel.QuizMediaPathPicker = () => mainWindow.PickQuizMediaPathAsync();
             desktop.MainWindow = mainWindow;
             _ = viewModel.InitializeAsync();
             clientRefreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };

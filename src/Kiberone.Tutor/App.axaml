@@ -219,6 +219,44 @@
             <Setter Property="BoxShadow" Value="0 4 12 0 #14243239" />
         </Style>
 
+        <Style Selector="Button.toggleCard">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="Padding" Value="16" />
+            <Setter Property="MinHeight" Value="118" />
+            <Setter Property="Margin" Value="0,0,12,12" />
+        </Style>
+        <Style Selector="Button.toggleCard:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#F7FCFB" />
+            <Setter Property="BorderBrush" Value="#8CCBC6" />
+        </Style>
+        <Style Selector="Button.toggleCard.on">
+            <Setter Property="Background" Value="{DynamicResource MintBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource TealBrush}" />
+        </Style>
+        <Style Selector="Button.toggleCard.on /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource MintBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource TealBrush}" />
+        </Style>
+        <Style Selector="Border.toggleIcon">
+            <Setter Property="Width" Value="44" />
+            <Setter Property="Height" Value="44" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceSoftBrush}" />
+        </Style>
+        <Style Selector="Button.toggleCard.on Border.toggleIcon">
+            <Setter Property="Background" Value="White" />
+        </Style>
+
+        <Style Selector="Border.subcard.selected">
+            <Setter Property="BorderBrush" Value="{DynamicResource TealBrush}" />
+            <Setter Property="Background" Value="#E8F7F5" />
+        </Style>
+
         <Style Selector="Border.pill">
             <Setter Property="CornerRadius" Value="100" />
             <Setter Property="Padding" Value="10,5" />

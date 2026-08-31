@@ -71,11 +71,19 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [ObservableProperty] private SyncedFileCardViewModel? selectedSyncedFile;
     [ObservableProperty] private FileVersionCardViewModel? selectedFileVersion;
     [ObservableProperty] private string classroomMessage = "Внимание: следуйте инструкциям тьютора.";
-    [ObservableProperty] private string quizQuestion = string.Empty;
-    [ObservableProperty] private string quizOptionsText = "Вариант 1\nВариант 2";
-    [ObservableProperty] private int quizCorrectAnswer = 1;
+    [ObservableProperty] private bool isScreensLocked;
+    [ObservableProperty] private bool isFocusModeOn;
+    [ObservableProperty] private bool isWatchdogOn;
+    [ObservableProperty] private bool isVpnOn;
+    [ObservableProperty] private string quizTitle = "Новая викторина";
+    [ObservableProperty] private int quizTimePerQuestion = 30;
     [ObservableProperty] private int quizXpReward = 10;
-    [ObservableProperty] private string quizStatus = "Викторина ещё не запускалась.";
+    [ObservableProperty] private bool quizShuffleAnswers;
+    [ObservableProperty] private bool quizShowFeedback = true;
+    [ObservableProperty] private bool showQuizSettings;
+    [ObservableProperty] private string quizStatus = "Соберите вопросы и запустите выбранный класс.";
+    [ObservableProperty] private QuizQuestionEditorViewModel? selectedQuizQuestion;
+    public ObservableCollection<QuizQuestionEditorViewModel> QuizQuestions { get; } = [];
     [ObservableProperty] private string auditSearch = string.Empty;
     [ObservableProperty] private string? selectedAuditCategory;
     [ObservableProperty] private string groupStatisticsText = "Выберите группу и загрузите статистику.";
@@ -101,6 +109,9 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [ObservableProperty] private int selectedSectionIndex;
 
     public Func<Task<string?>>? VpnConfigsFolderPicker { get; set; }
+    public Func<Task<string?>>? QuizExportPathPicker { get; set; }
+    public Func<Task<string?>>? QuizImportPathPicker { get; set; }
+    public Func<Task<string?>>? QuizMediaPathPicker { get; set; }
 
     public bool IsSection0 => SelectedSectionIndex == 0;
     public bool IsSection1 => SelectedSectionIndex == 1;
@@ -143,6 +154,13 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     public bool ShowStatsForGroup => !ShowStatsForStudent;
     public bool HasStatsBars => StatsCpmBars.Count > 0;
     public bool HasNoStatsBars => !HasStatsBars;
+    public bool ShowQuizQuestions => !ShowQuizSettings;
+    public bool HasSelectedQuizQuestion => SelectedQuizQuestion is not null;
+    public bool HasNoSelectedQuizQuestion => !HasSelectedQuizQuestion;
+    public string ScreensLockLabel => IsScreensLocked ? "Экраны заблокированы. Нажмите, чтобы разблокировать." : "Заблокировать экраны учеников.";
+    public string FocusModeLabel => IsFocusModeOn ? "Фокус включён. Нажмите, чтобы выключить." : "Ограничить отвлекающие окна.";
+    public string WatchdogLabel => IsWatchdogOn ? "Watchdog следит за Student. Нажмите, чтобы выключить." : "Перезапуск Student, если его закрыли.";
+    public string VpnToggleLabel => IsVpnOn ? "VPN включён на классе. Нажмите, чтобы отключить." : "Подключить WireGuard на всех ПК.";
     public string StudentFormTitle => IsEditingStudent ? "Редактировать ученика" : "Новый ученик";
     public string StudentFormActionLabel => IsEditingStudent ? "Сохранить изменения" : "Добавить ученика";
     public bool HasAuditEvents => AuditEvents.Count > 0;
@@ -157,6 +175,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         try
         {
             LoadSettings();
+            EnsureQuizSeed();
             await RefreshCoreAsync();
             await RefreshScreensAsync();
             StatusMessage = Lessons.Count == 0
@@ -245,7 +264,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         0 => "Класс сейчас", 1 => "Настройка урока печати", 2 => "Ученики и группы",
         3 => "Награды и магазин", 4 => "Сохранения и версии", 5 => "Сетка экранов",
         6 => "Пульт класса", 7 => "Урок печати в эфире", 8 => "Итоги урока",
-        9 => "Статистика ученика", 10 => "Статистика группы", 11 => "Сервер и локация",
+        9 => "Викторины", 10 => "Статистика группы", 11 => "Сервер и локация",
         12 => "Модули и версии", 13 => "Сравнение и восстановление", 14 => "Цели и каталог",
         15 => "Настройки", 16 => "Достижения и награды", 17 => "Журнал аудита", _ => "Статистика"
     };
@@ -254,8 +273,8 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         0 => $"Текущий класс · {ConnectedClientLabel}", 1 => "Создание текста и запуск для группы",
         2 => "Группы, ученики и персональные карточки", 3 => "Достижения, кибероны и товары",
         4 => "Версии проектов и восстановление", 5 => "Наблюдение за классом · LAN",
-        6 => "Фокус, сообщения и управление компьютерами", 7 => "Python · группа 01 · 10:00",
-        8 => "Сессия завершена тьютором · рейтинг открыт", 9 => "Персональная история печати",
+        6 => "Карточки команд: фокус, VPN, Watchdog", 7 => "Python · группа 01 · 10:00",
+        8 => "Сессия завершена тьютором · рейтинг открыт", 9 => "Редактор вопросов · экспорт JSON",
         10 => "Сводная прогрессия · Python", 11 => "Резервная копия · локальная база главная",
         12 => "Архивы разделены по учебным модулям", 13 => "Текстовый diff · snapshot перед восстановлением",
         14 => "Трекер накопления · баланс не списывается", 15 => "Общие параметры локации и класса",
@@ -294,6 +313,58 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [RelayCommand] private Task VpnAllOnAsync() => EnableVpnForClassAsync();
     [RelayCommand] private void VpnAllOff() => SendClassCommand(ClassroomCommandKinds.VpnDisconnect, new { });
     [RelayCommand] private void SendMessageAll() => SendClassCommand(ClassroomCommandKinds.Message, new { text = ClassroomMessage });
+
+    [RelayCommand]
+    private void ToggleScreensLock()
+    {
+        if (IsScreensLocked) UnlockAll();
+        else LockAll();
+        IsScreensLocked = !IsScreensLocked;
+        NotifyConsoleToggles();
+    }
+
+    [RelayCommand]
+    private void ToggleFocusMode()
+    {
+        if (IsFocusModeOn) FocusAllOff();
+        else FocusAllOn();
+        IsFocusModeOn = !IsFocusModeOn;
+        NotifyConsoleToggles();
+    }
+
+    [RelayCommand]
+    private void ToggleWatchdog()
+    {
+        if (IsWatchdogOn) WatchdogAllOff();
+        else WatchdogAllOn();
+        IsWatchdogOn = !IsWatchdogOn;
+        NotifyConsoleToggles();
+    }
+
+    [RelayCommand]
+    private async Task ToggleVpnAsync()
+    {
+        if (IsVpnOn)
+        {
+            VpnAllOff();
+            IsVpnOn = false;
+        }
+        else
+        {
+            await VpnAllOnAsync();
+            IsVpnOn = true;
+        }
+
+        NotifyConsoleToggles();
+    }
+
+    private void NotifyConsoleToggles()
+    {
+        OnPropertyChanged(nameof(ScreensLockLabel));
+        OnPropertyChanged(nameof(FocusModeLabel));
+        OnPropertyChanged(nameof(WatchdogLabel));
+        OnPropertyChanged(nameof(VpnToggleLabel));
+    }
 
     [RelayCommand]
     private async Task PickVpnConfigsFolderAsync()
@@ -386,15 +457,281 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     {
         try
         {
-            var options = QuizOptionsText.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            var session = await quizzes.StartAsync(new StartQuizRequest(QuizQuestion, options, QuizCorrectAnswer - 1, QuizXpReward, ["__all__"]));
-            QuizStatus = $"Викторина запущена · {session.Id.ToString("N")[..8]} · вариантов: {options.Length}.";
+            if (SelectedQuizQuestion is null)
+            {
+                ShowSelectionError("Выберите вопрос для запуска.");
+                return;
+            }
+
+            var rawOptions = SelectedQuizQuestion.Options.ToList();
+            var trimmedCorrect = -1;
+            var trimmed = new List<string>();
+            for (var i = 0; i < rawOptions.Count; i++)
+            {
+                var text = rawOptions[i].Text.Trim();
+                if (string.IsNullOrWhiteSpace(text)) continue;
+                if (rawOptions[i].IsCorrect) trimmedCorrect = trimmed.Count;
+                trimmed.Add(text);
+            }
+
+            if (trimmedCorrect < 0 && trimmed.Count > 0) trimmedCorrect = 0;
+
+            var session = await quizzes.StartAsync(new StartQuizRequest(
+                SelectedQuizQuestion.Text,
+                trimmed,
+                trimmedCorrect,
+                QuizXpReward,
+                ["__all__"],
+                QuizTimePerQuestion,
+                QuizShuffleAnswers,
+                QuizShowFeedback));
+            QuizStatus = $"Вопрос запущен · {session.Id.ToString("N")[..8]} · вариантов: {trimmed.Count} · {QuizTimePerQuestion} с.";
             StatusMessage = QuizStatus;
             HasError = false;
         }
         catch (LessonValidationException validation) { HasError = true; QuizStatus = string.Join(" ", validation.Errors); }
         catch (Exception error) { HasError = true; QuizStatus = error.Message; }
     }
+
+    [RelayCommand]
+    private void ShowQuizQuestionsPane()
+    {
+        ShowQuizSettings = false;
+        OnPropertyChanged(nameof(ShowQuizQuestions));
+    }
+
+    [RelayCommand]
+    private void ShowQuizSettingsPane()
+    {
+        ShowQuizSettings = true;
+        OnPropertyChanged(nameof(ShowQuizQuestions));
+    }
+
+    [RelayCommand]
+    private void NewQuiz()
+    {
+        QuizTitle = "Новая викторина";
+        QuizTimePerQuestion = 30;
+        QuizXpReward = 10;
+        QuizShuffleAnswers = false;
+        QuizShowFeedback = true;
+        QuizQuestions.Clear();
+        SelectedQuizQuestion = null;
+        AddQuizQuestion();
+        QuizStatus = "Создана новая викторина.";
+        NotifyQuizSelection();
+    }
+
+    [RelayCommand]
+    private void AddQuizQuestion()
+    {
+        var question = QuizQuestionEditorViewModel.CreateBlank(QuizQuestions.Count + 1);
+        QuizQuestions.Add(question);
+        SelectQuizQuestion(question);
+        RenumberQuizQuestions();
+    }
+
+    [RelayCommand]
+    private void RemoveQuizQuestion()
+    {
+        if (SelectedQuizQuestion is null) return;
+        var index = QuizQuestions.IndexOf(SelectedQuizQuestion);
+        QuizQuestions.Remove(SelectedQuizQuestion);
+        SelectedQuizQuestion = QuizQuestions.ElementAtOrDefault(Math.Max(0, index - 1)) ?? QuizQuestions.FirstOrDefault();
+        foreach (var item in QuizQuestions) item.IsSelected = item == SelectedQuizQuestion;
+        RenumberQuizQuestions();
+        NotifyQuizSelection();
+        if (QuizQuestions.Count == 0) AddQuizQuestion();
+    }
+
+    [RelayCommand]
+    private void SelectQuizQuestion(QuizQuestionEditorViewModel? question)
+    {
+        if (question is null) return;
+        foreach (var item in QuizQuestions) item.IsSelected = item == question;
+        SelectedQuizQuestion = question;
+        NotifyQuizSelection();
+    }
+
+    [RelayCommand]
+    private void AddQuizOption()
+    {
+        SelectedQuizQuestion?.AddOption();
+    }
+
+    [RelayCommand]
+    private async Task PickQuizMediaAsync()
+    {
+        if (SelectedQuizQuestion is null || QuizMediaPathPicker is null) return;
+        var path = await QuizMediaPathPicker();
+        if (string.IsNullOrWhiteSpace(path)) return;
+        SelectedQuizQuestion.MediaPath = path;
+    }
+
+    [RelayCommand]
+    private void ClearQuizMedia()
+    {
+        if (SelectedQuizQuestion is null) return;
+        SelectedQuizQuestion.MediaPath = null;
+    }
+
+    [RelayCommand]
+    private void SaveQuizDraft()
+    {
+        try
+        {
+            var document = BuildQuizDocument();
+            var directory = GetQuizLibraryDirectory();
+            Directory.CreateDirectory(directory);
+            var fileName = SanitizeFileName(document.Title) + ".json";
+            var path = Path.Combine(directory, fileName);
+            File.WriteAllText(path, JsonSerializer.Serialize(document, QuizJsonOptions));
+            File.WriteAllText(Path.Combine(directory, "draft.json"), JsonSerializer.Serialize(document, QuizJsonOptions));
+            QuizStatus = $"Сохранено локально: {path}";
+            HasError = false;
+        }
+        catch (Exception error)
+        {
+            HasError = true;
+            QuizStatus = error.Message;
+        }
+    }
+
+    [RelayCommand]
+    private async Task ExportQuizAsync()
+    {
+        try
+        {
+            if (QuizExportPathPicker is null)
+            {
+                HasError = true;
+                QuizStatus = "Экспорт недоступен в этом окне.";
+                return;
+            }
+
+            var path = await QuizExportPathPicker();
+            if (string.IsNullOrWhiteSpace(path)) return;
+            if (!path.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+                path += ".json";
+            File.WriteAllText(path, JsonSerializer.Serialize(BuildQuizDocument(), QuizJsonOptions));
+            QuizStatus = $"Экспортировано: {path}";
+            HasError = false;
+        }
+        catch (Exception error)
+        {
+            HasError = true;
+            QuizStatus = error.Message;
+        }
+    }
+
+    [RelayCommand]
+    private async Task ImportQuizAsync()
+    {
+        try
+        {
+            if (QuizImportPathPicker is null)
+            {
+                HasError = true;
+                QuizStatus = "Импорт недоступен в этом окне.";
+                return;
+            }
+
+            var path = await QuizImportPathPicker();
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return;
+            var document = JsonSerializer.Deserialize<QuizDocument>(File.ReadAllText(path), QuizJsonOptions)
+                ?? throw new InvalidOperationException("Файл викторины пуст или повреждён.");
+            ApplyQuizDocument(document);
+            QuizStatus = $"Импортировано: {document.Title} · вопросов: {QuizQuestions.Count}";
+            HasError = false;
+            ShowQuizQuestionsPane();
+        }
+        catch (Exception error)
+        {
+            HasError = true;
+            QuizStatus = error.Message;
+        }
+    }
+
+    private void EnsureQuizSeed()
+    {
+        if (QuizQuestions.Count > 0) return;
+        var draftPath = Path.Combine(GetQuizLibraryDirectory(), "draft.json");
+        if (File.Exists(draftPath))
+        {
+            try
+            {
+                var document = JsonSerializer.Deserialize<QuizDocument>(File.ReadAllText(draftPath), QuizJsonOptions);
+                if (document is not null)
+                {
+                    ApplyQuizDocument(document);
+                    return;
+                }
+            }
+            catch { /* fall through to blank quiz */ }
+        }
+
+        NewQuiz();
+    }
+
+    private QuizDocument BuildQuizDocument() => new()
+    {
+        Title = string.IsNullOrWhiteSpace(QuizTitle) ? "Новая викторина" : QuizTitle.Trim(),
+        TimePerQuestionSeconds = Math.Clamp(QuizTimePerQuestion, 5, 300),
+        XpReward = Math.Clamp(QuizXpReward, 0, 1000),
+        ShuffleAnswers = QuizShuffleAnswers,
+        ShowFeedback = QuizShowFeedback,
+        Questions = QuizQuestions.Select(q => q.ToDocumentQuestion()).ToList()
+    };
+
+    private void ApplyQuizDocument(QuizDocument document)
+    {
+        QuizTitle = document.Title;
+        QuizTimePerQuestion = Math.Clamp(document.TimePerQuestionSeconds, 5, 300);
+        QuizXpReward = Math.Clamp(document.XpReward, 0, 1000);
+        QuizShuffleAnswers = document.ShuffleAnswers;
+        QuizShowFeedback = document.ShowFeedback;
+        QuizQuestions.Clear();
+        var index = 1;
+        foreach (var question in document.Questions)
+            QuizQuestions.Add(QuizQuestionEditorViewModel.FromDocument(question, index++));
+        SelectedQuizQuestion = QuizQuestions.FirstOrDefault();
+        foreach (var item in QuizQuestions) item.IsSelected = item == SelectedQuizQuestion;
+        if (QuizQuestions.Count == 0) AddQuizQuestion();
+        NotifyQuizSelection();
+    }
+
+    private void RenumberQuizQuestions()
+    {
+        for (var i = 0; i < QuizQuestions.Count; i++)
+            QuizQuestions[i].SetNumber(i + 1);
+    }
+
+    private void NotifyQuizSelection()
+    {
+        OnPropertyChanged(nameof(HasSelectedQuizQuestion));
+        OnPropertyChanged(nameof(HasNoSelectedQuizQuestion));
+        OnPropertyChanged(nameof(ShowQuizQuestions));
+    }
+
+    private static string GetQuizLibraryDirectory() =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KIBERone", "Tutor", "quizzes");
+
+    private static string SanitizeFileName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var cleaned = new string(name.Select(ch => invalid.Contains(ch) ? '_' : ch).ToArray()).Trim();
+        return string.IsNullOrWhiteSpace(cleaned) ? "quiz" : cleaned;
+    }
+
+    private static readonly JsonSerializerOptions QuizJsonOptions = new()
+    {
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true
+    };
+
+    partial void OnSelectedQuizQuestionChanged(QuizQuestionEditorViewModel? value) => NotifyQuizSelection();
+    partial void OnShowQuizSettingsChanged(bool value) => OnPropertyChanged(nameof(ShowQuizQuestions));
 
     [RelayCommand]
     private async Task RefreshAuditAsync()
@@ -1180,6 +1517,115 @@ public sealed record TutorLocalSettings(
     bool AutoApproveSafeFiles,
     bool EnableStudentUpdates,
     string? VpnConfigsFolder = "");
+
+public partial class QuizQuestionEditorViewModel : ObservableObject
+{
+    public Guid Id { get; private set; } = Guid.NewGuid();
+    [ObservableProperty] private string text = string.Empty;
+    [ObservableProperty] private string? mediaPath;
+    [ObservableProperty] private bool isSelected;
+    [ObservableProperty] private string numberLabel = "1";
+    [ObservableProperty] private string preview = "Новый вопрос";
+    public ObservableCollection<QuizOptionEditorViewModel> Options { get; } = [];
+
+    public string MediaLabel => string.IsNullOrWhiteSpace(MediaPath) ? "Изображение или видео не выбрано" : MediaPath;
+
+    public static QuizQuestionEditorViewModel CreateBlank(int number)
+    {
+        var question = new QuizQuestionEditorViewModel();
+        question.SetNumber(number);
+        question.Text = $"Вопрос {number}";
+        foreach (var letter in new[] { "A", "B", "C", "D" })
+            question.Options.Add(new QuizOptionEditorViewModel(question, letter, string.Empty, letter == "A"));
+        question.RefreshPreview();
+        return question;
+    }
+
+    public static QuizQuestionEditorViewModel FromDocument(QuizDocumentQuestion source, int number)
+    {
+        var question = new QuizQuestionEditorViewModel
+        {
+            Id = source.Id == Guid.Empty ? Guid.NewGuid() : source.Id,
+            Text = source.Text,
+            MediaPath = source.MediaPath
+        };
+        question.SetNumber(number);
+        var options = source.Options.Count == 0 ? new List<string> { "", "" } : source.Options;
+        for (var i = 0; i < options.Count; i++)
+        {
+            var letter = ((char)('A' + i)).ToString();
+            question.Options.Add(new QuizOptionEditorViewModel(question, letter, options[i], i == source.CorrectIndex));
+        }
+
+        question.RefreshPreview();
+        return question;
+    }
+
+    public void SetNumber(int number) => NumberLabel = number.ToString();
+
+    public void AddOption()
+    {
+        if (Options.Count >= 6) return;
+        var letter = ((char)('A' + Options.Count)).ToString();
+        Options.Add(new QuizOptionEditorViewModel(this, letter, string.Empty, false));
+    }
+
+    public void MarkCorrect(QuizOptionEditorViewModel option)
+    {
+        foreach (var item in Options)
+            item.IsCorrect = item == option;
+    }
+
+    public QuizDocumentQuestion ToDocumentQuestion()
+    {
+        var filled = Options.Where(x => !string.IsNullOrWhiteSpace(x.Text)).ToList();
+        var correct = filled.FindIndex(x => x.IsCorrect);
+        return new QuizDocumentQuestion
+        {
+            Id = Id,
+            Text = Text.Trim(),
+            MediaPath = string.IsNullOrWhiteSpace(MediaPath) ? null : MediaPath,
+            Options = filled.Select(x => x.Text.Trim()).ToList(),
+            CorrectIndex = correct < 0 ? 0 : correct
+        };
+    }
+
+    partial void OnTextChanged(string value) => RefreshPreview();
+    partial void OnMediaPathChanged(string? value)
+    {
+        OnPropertyChanged(nameof(MediaLabel));
+        RefreshPreview();
+    }
+
+    private void RefreshPreview()
+    {
+        var trimmed = Text.Trim();
+        Preview = string.IsNullOrWhiteSpace(trimmed) ? "Пустой вопрос" : trimmed;
+    }
+}
+
+public partial class QuizOptionEditorViewModel : ObservableObject
+{
+    private readonly QuizQuestionEditorViewModel owner;
+
+    public QuizOptionEditorViewModel(QuizQuestionEditorViewModel owner, string letter, string text, bool isCorrect)
+    {
+        this.owner = owner;
+        Letter = letter;
+        Text = text;
+        IsCorrect = isCorrect;
+    }
+
+    public string Letter { get; }
+    [ObservableProperty] private string text;
+    [ObservableProperty] private bool isCorrect;
+    public bool IsIncorrect => !IsCorrect;
+
+    [RelayCommand]
+    private void MarkCorrect() => owner.MarkCorrect(this);
+
+    partial void OnIsCorrectChanged(bool value) => OnPropertyChanged(nameof(IsIncorrect));
+}
 
 public sealed class WinnerCardViewModel(int place, string name, string group, int xp)
 {
