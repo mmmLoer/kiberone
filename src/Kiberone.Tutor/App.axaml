@@ -5,18 +5,68 @@
              RequestedThemeVariant="Light">
 
     <Application.Resources>
-        <SolidColorBrush x:Key="CanvasBrush" Color="#F6F8F9" />
-        <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF" />
-        <SolidColorBrush x:Key="SurfaceSoftBrush" Color="#F1F5F6" />
-        <SolidColorBrush x:Key="InkBrush" Color="#13181D" />
-        <SolidColorBrush x:Key="MutedBrush" Color="#6B7880" />
-        <SolidColorBrush x:Key="TealBrush" Color="#068F8A" />
-        <SolidColorBrush x:Key="TealHoverBrush" Color="#057B77" />
-        <SolidColorBrush x:Key="MintBrush" Color="#E0F5F2" />
-        <SolidColorBrush x:Key="AmberBrush" Color="#FFB80D" />
-        <SolidColorBrush x:Key="AmberSoftBrush" Color="#FFF4CF" />
-        <SolidColorBrush x:Key="LineBrush" Color="#DCE5E8" />
-        <SolidColorBrush x:Key="DangerBrush" Color="#C93E45" />
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="CanvasBrush" Color="#F6F8F9" />
+                    <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="SurfaceSoftBrush" Color="#F1F5F6" />
+                    <SolidColorBrush x:Key="SidebarBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="HeaderBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="InkBrush" Color="#13181D" />
+                    <SolidColorBrush x:Key="BrandInkBrush" Color="#172126" />
+                    <SolidColorBrush x:Key="MutedBrush" Color="#6B7880" />
+                    <SolidColorBrush x:Key="TealBrush" Color="#068F8A" />
+                    <SolidColorBrush x:Key="TealHoverBrush" Color="#057B77" />
+                    <SolidColorBrush x:Key="MintBrush" Color="#E0F5F2" />
+                    <SolidColorBrush x:Key="SoftHoverBrush" Color="#EFF8F7" />
+                    <SolidColorBrush x:Key="SoftSelectedBrush" Color="#E8F7F5" />
+                    <SolidColorBrush x:Key="AmberBrush" Color="#FFB80D" />
+                    <SolidColorBrush x:Key="AmberSoftBrush" Color="#FFF4CF" />
+                    <SolidColorBrush x:Key="LineBrush" Color="#DCE5E8" />
+                    <SolidColorBrush x:Key="InputBorderBrush" Color="#CBD7DB" />
+                    <SolidColorBrush x:Key="DangerBrush" Color="#C93E45" />
+                    <SolidColorBrush x:Key="DangerSoftBrush" Color="#FDEBEC" />
+                    <SolidColorBrush x:Key="DangerSoftBorderBrush" Color="#F2C7CA" />
+                    <SolidColorBrush x:Key="DangerTextBrush" Color="#A82F36" />
+                    <SolidColorBrush x:Key="ServerBadgeBrush" Color="#FFF4CF" />
+                    <SolidColorBrush x:Key="ServerBadgeBorderBrush" Color="#F4D675" />
+                    <SolidColorBrush x:Key="ProgressTrackBrush" Color="#DFE7E9" />
+                    <SolidColorBrush x:Key="PreviewPanelBrush" Color="#F0F5F5" />
+                    <SolidColorBrush x:Key="WinnerSoftBrush" Color="#FFF7DB" />
+                    <BoxShadows x:Key="CardShadow">0 6 18 0 #0D243239</BoxShadows>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="CanvasBrush" Color="#0F1418" />
+                    <SolidColorBrush x:Key="SurfaceBrush" Color="#1A2228" />
+                    <SolidColorBrush x:Key="SurfaceSoftBrush" Color="#232C33" />
+                    <SolidColorBrush x:Key="SidebarBrush" Color="#151C21" />
+                    <SolidColorBrush x:Key="HeaderBrush" Color="#151C21" />
+                    <SolidColorBrush x:Key="InkBrush" Color="#E8EEF1" />
+                    <SolidColorBrush x:Key="BrandInkBrush" Color="#F2F6F7" />
+                    <SolidColorBrush x:Key="MutedBrush" Color="#91A0A8" />
+                    <SolidColorBrush x:Key="TealBrush" Color="#2BB5AE" />
+                    <SolidColorBrush x:Key="TealHoverBrush" Color="#24A19B" />
+                    <SolidColorBrush x:Key="MintBrush" Color="#1D3A39" />
+                    <SolidColorBrush x:Key="SoftHoverBrush" Color="#243038" />
+                    <SolidColorBrush x:Key="SoftSelectedBrush" Color="#1F3F3D" />
+                    <SolidColorBrush x:Key="AmberBrush" Color="#FFB80D" />
+                    <SolidColorBrush x:Key="AmberSoftBrush" Color="#3A3018" />
+                    <SolidColorBrush x:Key="LineBrush" Color="#2E3941" />
+                    <SolidColorBrush x:Key="InputBorderBrush" Color="#3A4750" />
+                    <SolidColorBrush x:Key="DangerBrush" Color="#E15B62" />
+                    <SolidColorBrush x:Key="DangerSoftBrush" Color="#3A1F23" />
+                    <SolidColorBrush x:Key="DangerSoftBorderBrush" Color="#6B343A" />
+                    <SolidColorBrush x:Key="DangerTextBrush" Color="#F0A3A8" />
+                    <SolidColorBrush x:Key="ServerBadgeBrush" Color="#2E2918" />
+                    <SolidColorBrush x:Key="ServerBadgeBorderBrush" Color="#6B5A28" />
+                    <SolidColorBrush x:Key="ProgressTrackBrush" Color="#2A343B" />
+                    <SolidColorBrush x:Key="PreviewPanelBrush" Color="#232C33" />
+                    <SolidColorBrush x:Key="WinnerSoftBrush" Color="#332B16" />
+                    <BoxShadows x:Key="CardShadow">0 8 22 0 #66000000</BoxShadows>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
     </Application.Resources>
 
     <Application.DataTemplates>
@@ -58,6 +108,9 @@
             <Setter Property="FontFamily" Value="Cascadia Mono, Consolas" />
             <Setter Property="FontSize" Value="13" />
         </Style>
+        <Style Selector="TextBlock.teal">
+            <Setter Property="Foreground" Value="{DynamicResource TealBrush}" />
+        </Style>
 
         <Style Selector="Border.card">
             <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
@@ -65,7 +118,7 @@
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="14" />
             <Setter Property="Padding" Value="24" />
-            <Setter Property="BoxShadow" Value="0 6 18 0 #0D243239" />
+            <Setter Property="BoxShadow" Value="{DynamicResource CardShadow}" />
         </Style>
         <Style Selector="Border.subcard">
             <Setter Property="Background" Value="{DynamicResource SurfaceSoftBrush}" />
@@ -78,6 +131,14 @@
             <Setter Property="Background" Value="{DynamicResource MintBrush}" />
             <Setter Property="CornerRadius" Value="10" />
             <Setter Property="Padding" Value="14,12" />
+        </Style>
+        <Style Selector="Border.sidebar">
+            <Setter Property="Background" Value="{DynamicResource SidebarBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+        </Style>
+        <Style Selector="Border.headerBar">
+            <Setter Property="Background" Value="{DynamicResource HeaderBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
         </Style>
 
         <Style Selector="Button">
@@ -92,11 +153,11 @@
             <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
         <Style Selector="Button:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="{DynamicResource SurfaceSoftBrush}" />
-            <Setter Property="BorderBrush" Value="#BFCED3" />
+            <Setter Property="Background" Value="{DynamicResource SoftHoverBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource InputBorderBrush}" />
         </Style>
         <Style Selector="Button:pressed /template/ ContentPresenter">
-            <Setter Property="Background" Value="#E8EEF0" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceSoftBrush}" />
         </Style>
         <Style Selector="Button:focus-visible /template/ ContentPresenter">
             <Setter Property="BorderBrush" Value="{DynamicResource TealBrush}" />
@@ -119,7 +180,7 @@
             <Setter Property="TextElement.Foreground" Value="White" />
         </Style>
         <Style Selector="Button.primary:pressed /template/ ContentPresenter">
-            <Setter Property="Background" Value="#046965" />
+            <Setter Property="Background" Value="{DynamicResource TealHoverBrush}" />
         </Style>
 
         <Style Selector="Button.accent">
@@ -152,8 +213,8 @@
             <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
         </Style>
         <Style Selector="Button.ghost:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="#EFF8F7" />
-            <Setter Property="BorderBrush" Value="#B9D8D5" />
+            <Setter Property="Background" Value="{DynamicResource SoftHoverBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource TealBrush}" />
         </Style>
 
         <Style Selector="Border.segmentBar">
@@ -175,18 +236,18 @@
             <Setter Property="FontSize" Value="13" />
         </Style>
         <Style Selector="Button.segment:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="#E7F3F1" />
+            <Setter Property="Background" Value="{DynamicResource SoftHoverBrush}" />
             <Setter Property="TextElement.Foreground" Value="{DynamicResource TealBrush}" />
         </Style>
         <Style Selector="Button.segment.active">
-            <Setter Property="Background" Value="White" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
             <Setter Property="Foreground" Value="{DynamicResource TealBrush}" />
             <Setter Property="FontWeight" Value="Bold" />
-            <Setter Property="BorderBrush" Value="#D5E3E6" />
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
             <Setter Property="BorderThickness" Value="1" />
         </Style>
         <Style Selector="Button.segment.active /template/ ContentPresenter">
-            <Setter Property="Background" Value="White" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
             <Setter Property="TextElement.Foreground" Value="{DynamicResource TealBrush}" />
         </Style>
 
@@ -203,26 +264,26 @@
             <Setter Property="Background" Value="Transparent" />
         </Style>
         <Style Selector="Border.listCardInner">
-            <Setter Property="Background" Value="White" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="12" />
             <Setter Property="Padding" Value="14" />
         </Style>
         <Style Selector="Button.listCard:pointerover Border.listCardInner">
-            <Setter Property="BorderBrush" Value="#8CCBC6" />
-            <Setter Property="Background" Value="#F7FCFB" />
+            <Setter Property="BorderBrush" Value="{DynamicResource TealBrush}" />
+            <Setter Property="Background" Value="{DynamicResource SoftHoverBrush}" />
         </Style>
         <Style Selector="Border.listCardInner.selected">
             <Setter Property="BorderBrush" Value="{DynamicResource TealBrush}" />
             <Setter Property="Background" Value="{DynamicResource MintBrush}" />
-            <Setter Property="BoxShadow" Value="0 4 12 0 #14243239" />
+            <Setter Property="BoxShadow" Value="{DynamicResource CardShadow}" />
         </Style>
 
         <Style Selector="Button.toggleCard">
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="Background" Value="White" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="14" />
@@ -231,8 +292,8 @@
             <Setter Property="Margin" Value="0,0,12,12" />
         </Style>
         <Style Selector="Button.toggleCard:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="#F7FCFB" />
-            <Setter Property="BorderBrush" Value="#8CCBC6" />
+            <Setter Property="Background" Value="{DynamicResource SoftHoverBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource TealBrush}" />
         </Style>
         <Style Selector="Button.toggleCard.on">
             <Setter Property="Background" Value="{DynamicResource MintBrush}" />
@@ -249,12 +310,12 @@
             <Setter Property="Background" Value="{DynamicResource SurfaceSoftBrush}" />
         </Style>
         <Style Selector="Button.toggleCard.on Border.toggleIcon">
-            <Setter Property="Background" Value="White" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
         </Style>
 
         <Style Selector="Border.subcard.selected">
             <Setter Property="BorderBrush" Value="{DynamicResource TealBrush}" />
-            <Setter Property="Background" Value="#E8F7F5" />
+            <Setter Property="Background" Value="{DynamicResource SoftSelectedBrush}" />
         </Style>
 
         <Style Selector="Border.pill">
@@ -286,8 +347,8 @@
             <Setter Property="FontSize" Value="13" />
         </Style>
         <Style Selector="Button.nav:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="#EFF8F7" />
-            <Setter Property="BorderBrush" Value="#BCE7E2" />
+            <Setter Property="Background" Value="{DynamicResource SoftHoverBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource MintBrush}" />
             <Setter Property="TextElement.Foreground" Value="{DynamicResource TealBrush}" />
         </Style>
         <Style Selector="Button.nav.active">
@@ -306,12 +367,12 @@
             <Setter Property="MinHeight" Value="42" />
             <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
             <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
-            <Setter Property="BorderBrush" Value="#CBD7DB" />
+            <Setter Property="BorderBrush" Value="{DynamicResource InputBorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="8" />
         </Style>
         <Style Selector="TextBox:pointerover, ComboBox:pointerover, NumericUpDown:pointerover">
-            <Setter Property="BorderBrush" Value="#AFC2C8" />
+            <Setter Property="BorderBrush" Value="{DynamicResource MutedBrush}" />
         </Style>
         <Style Selector="TextBox:focus, ComboBox:focus, NumericUpDown:focus">
             <Setter Property="BorderBrush" Value="{DynamicResource TealBrush}" />
@@ -334,7 +395,7 @@
             <Setter Property="Margin" Value="0,0,0,2" />
         </Style>
         <Style Selector="ListBoxItem:pointerover">
-            <Setter Property="Background" Value="#EFF8F7" />
+            <Setter Property="Background" Value="{DynamicResource SoftHoverBrush}" />
         </Style>
         <Style Selector="ListBoxItem:selected">
             <Setter Property="Background" Value="{DynamicResource MintBrush}" />
@@ -342,7 +403,7 @@
         </Style>
         <Style Selector="ProgressBar">
             <Setter Property="Foreground" Value="{DynamicResource TealBrush}" />
-            <Setter Property="Background" Value="#DFE7E9" />
+            <Setter Property="Background" Value="{DynamicResource ProgressTrackBrush}" />
             <Setter Property="CornerRadius" Value="100" />
         </Style>
 

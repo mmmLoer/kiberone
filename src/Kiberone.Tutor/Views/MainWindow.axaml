@@ -7,12 +7,12 @@
         Title="KIBERone Classroom — Тьютор"
         x:Name="TutorRoot">
   <Grid ColumnDefinitions="208,*" RowDefinitions="76,*">
-    <Border Grid.RowSpan="2" Background="White" BorderBrush="#DCE4E7" BorderThickness="0,0,1,0">
+    <Border Grid.RowSpan="2" Classes="sidebar" BorderThickness="0,0,1,0">
       <Grid RowDefinitions="76,*,Auto" Margin="14,0,14,18">
         <StackPanel VerticalAlignment="Center" Margin="12,0,0,0" Spacing="2">
           <StackPanel Orientation="Horizontal" Spacing="4">
-            <TextBlock Text="KIBER" FontSize="20" FontWeight="ExtraBold" Foreground="#078F8A" />
-            <TextBlock Text="ONE" FontSize="20" FontWeight="ExtraBold" Foreground="#172126" />
+            <TextBlock Text="KIBER" FontSize="20" FontWeight="ExtraBold" Classes="teal" />
+            <TextBlock Text="ONE" FontSize="20" FontWeight="ExtraBold" Foreground="{DynamicResource BrandInkBrush}" />
           </StackPanel>
           <TextBlock Text="CLASSROOM · ТЬЮТОР" Classes="eyebrow" />
         </StackPanel>
@@ -26,7 +26,6 @@
             <TextBlock Text="УПРАВЛЕНИЕ" Classes="eyebrow" Margin="13,14,0,6"/>
             <Button Content="Пульт класса" Command="{Binding NavigateCommand}" CommandParameter="6" Classes="nav compact" Classes.active="{Binding IsSection6}"/>
             <Button Content="Викторины" Command="{Binding NavigateCommand}" CommandParameter="9" Classes="nav compact" Classes.active="{Binding IsSection9}"/>
-            <Button Content="Живой урок" Command="{Binding NavigateCommand}" CommandParameter="7" Classes="nav compact" Classes.active="{Binding IsSection7}"/>
 
             <TextBlock Text="АНАЛИТИКА" Classes="eyebrow" Margin="13,14,0,6"/>
             <Button Content="Награды и магазин" Command="{Binding NavigateCommand}" CommandParameter="3" Classes="nav compact" Classes.active="{Binding IsSection3}"/>
@@ -44,9 +43,9 @@
             <Button Content="Настройки" Command="{Binding NavigateCommand}" CommandParameter="15" Classes="nav compact" Classes.active="{Binding IsSection15}"/>
           </StackPanel>
         </ScrollViewer>
-        <Border Grid.Row="2" Background="#FFF4CF" BorderBrush="#F4D675" BorderThickness="1" CornerRadius="11" Padding="13,11">
+        <Border Grid.Row="2" Background="{DynamicResource ServerBadgeBrush}" BorderBrush="{DynamicResource ServerBadgeBorderBrush}" BorderThickness="1" CornerRadius="11" Padding="13,11">
           <Grid ColumnDefinitions="Auto,*">
-            <Border Width="9" Height="9" CornerRadius="100" Background="#068F8A" VerticalAlignment="Top" Margin="0,5,9,0" />
+            <Border Width="9" Height="9" CornerRadius="100" Background="{DynamicResource TealBrush}" VerticalAlignment="Top" Margin="0,5,9,0" />
             <StackPanel Grid.Column="1" Spacing="2">
               <TextBlock Text="Сервер · 8765" FontWeight="Bold" FontSize="13" />
               <TextBlock Text="{Binding ConnectedClientLabel}" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
@@ -56,25 +55,28 @@
       </Grid>
     </Border>
 
-    <Border Grid.Column="1" Background="White" BorderBrush="#E4EAEC" BorderThickness="0,0,0,1">
+    <Border Grid.Column="1" Classes="headerBar" BorderThickness="0,0,0,1">
       <Grid ColumnDefinitions="*,Auto" Margin="32,0">
         <StackPanel VerticalAlignment="Center">
           <TextBlock Text="КОНСОЛЬ ТЬЮТОРА" Classes="eyebrow" Margin="0,0,0,3" />
           <TextBlock Text="{Binding SectionTitle}" FontSize="23" FontWeight="Bold" />
           <TextBlock Text="{Binding SectionSubtitle}" Classes="muted" FontSize="12" TextTrimming="CharacterEllipsis" />
         </StackPanel>
-        <Border Grid.Column="1" VerticalAlignment="Center" Background="#E0F5F2" CornerRadius="100" Padding="12,7" IsVisible="{Binding !HasError}">
-          <StackPanel Orientation="Horizontal" Spacing="7">
-            <Border Width="8" Height="8" CornerRadius="100" Background="#068F8A" VerticalAlignment="Center" />
-            <TextBlock Text="Система готова" Foreground="#068F8A" FontWeight="Bold" FontSize="12" />
-          </StackPanel>
-        </Border>
-        <Border Grid.Column="1" VerticalAlignment="Center" Background="#FDEBEC" BorderBrush="#F2C7CA" BorderThickness="1" CornerRadius="100" Padding="12,7" IsVisible="{Binding HasError}" ToolTip.Tip="{Binding StatusMessage}">
-          <StackPanel Orientation="Horizontal" Spacing="7">
-            <Border Width="8" Height="8" CornerRadius="100" Background="#C93E45" VerticalAlignment="Center" />
-            <TextBlock Text="Требуется внимание" Foreground="#A82F36" FontWeight="Bold" FontSize="12" />
-          </StackPanel>
-        </Border>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+          <Button Content="{Binding ThemeToggleLabel}" Command="{Binding ToggleThemeCommand}" Classes="ghost" MinHeight="34" Padding="12,6" FontSize="12" />
+          <Border Background="{DynamicResource MintBrush}" CornerRadius="100" Padding="12,7" IsVisible="{Binding !HasError}">
+            <StackPanel Orientation="Horizontal" Spacing="7">
+              <Border Width="8" Height="8" CornerRadius="100" Background="{DynamicResource TealBrush}" VerticalAlignment="Center" />
+              <TextBlock Text="Система готова" Classes="teal" FontWeight="Bold" FontSize="12" />
+            </StackPanel>
+          </Border>
+          <Border Background="{DynamicResource DangerSoftBrush}" BorderBrush="{DynamicResource DangerSoftBorderBrush}" BorderThickness="1" CornerRadius="100" Padding="12,7" IsVisible="{Binding HasError}" ToolTip.Tip="{Binding StatusMessage}">
+            <StackPanel Orientation="Horizontal" Spacing="7">
+              <Border Width="8" Height="8" CornerRadius="100" Background="{DynamicResource DangerBrush}" VerticalAlignment="Center" />
+              <TextBlock Text="Требуется внимание" Foreground="{DynamicResource DangerTextBrush}" FontWeight="Bold" FontSize="12" />
+            </StackPanel>
+          </Border>
+        </StackPanel>
       </Grid>
     </Border>
 
@@ -82,8 +84,8 @@
       <TabItem Header="Класс">
         <Grid Margin="32,32" RowDefinitions="Auto,*">
           <Grid ColumnDefinitions="Auto,*,Auto">
-            <Border Width="58" Height="58" CornerRadius="14" Background="#E0F5F2">
-              <TextBlock Text="{Binding ConnectedClientCount}" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#068F8A" FontSize="26" FontWeight="ExtraBold" />
+            <Border Width="58" Height="58" CornerRadius="14" Background="{DynamicResource MintBrush}">
+              <TextBlock Text="{Binding ConnectedClientCount}" HorizontalAlignment="Center" VerticalAlignment="Center" Classes="teal" FontSize="26" FontWeight="ExtraBold" />
             </Border>
             <StackPanel Grid.Column="1" Margin="16,3,0,0" Spacing="3">
               <TextBlock Text="Класс готов к занятию" FontSize="22" FontWeight="Bold" />
@@ -1061,7 +1063,7 @@
             <Border Classes="card"><StackPanel Spacing="12"><TextBlock Text="Сервер локации" Classes="h2"/><TextBlock Text="Tutor принимает подключения только в локальной сети." Classes="muted"/><TextBlock Text="HTTP API" FontWeight="Bold"/><Border Background="#F3F6F7" CornerRadius="8" Padding="14"><TextBlock Text="{Binding ServerAddress}"/></Border><TextBlock Text="Обнаружение Student" FontWeight="Bold"/><Border Background="#F3F6F7" CornerRadius="8" Padding="14"><TextBlock Text="{Binding DiscoveryAddress}"/></Border><TextBlock Text="{Binding ConnectedClientLabel}" Foreground="#068F8A" FontWeight="Bold"/><TextBlock Text="{Binding VersionLabel}" Classes="muted"/></StackPanel></Border>
             <Border Classes="card"><StackPanel Spacing="12"><TextBlock Text="Безопасность" Classes="h2"/><TextBlock Text="Токен класса не показывается в интерфейсе и передаётся Student только через локальное обнаружение." Classes="muted" TextWrapping="Wrap"/><TextBlock Text="Опасные файлы всегда требуют отдельного подтверждения во вкладке «Сохранения и версии»." Foreground="#A34942" TextWrapping="Wrap"/></StackPanel></Border>
           </StackPanel>
-          <Border Grid.Column="1" Classes="card" Margin="18,0,0,0"><StackPanel Spacing="14"><TextBlock Text="Настройки Tutor" Classes="h2"/><TextBlock Text="Параметры текущей локации" Classes="muted"/><TextBlock Text="Название локации" FontWeight="Bold"/><TextBox Text="{Binding LocationName}"/><TextBlock Text="Обновление экранов, секунд" FontWeight="Bold"/><NumericUpDown Value="{Binding ScreenRefreshSeconds}" Minimum="5" Maximum="300"/><TextBlock Text="Интервал синхронизации, секунд" FontWeight="Bold"/><NumericUpDown Value="{Binding SyncIntervalSeconds}" Minimum="5" Maximum="600"/><CheckBox Content="Автоматически принимать безопасные файлы" IsChecked="{Binding AutoApproveSafeFiles}"/><CheckBox Content="Разрешить обновления Student" IsChecked="{Binding EnableStudentUpdates}"/><Button Content="Сохранить настройки" Command="{Binding SaveSettingsCommand}" Classes="primary" Margin="0,12,0,0"/><Border Background="#F3F6F7" CornerRadius="10" Padding="14"><TextBlock Text="{Binding SettingsStatus}" TextWrapping="Wrap"/></Border></StackPanel></Border>
+          <Border Grid.Column="1" Classes="card" Margin="18,0,0,0"><StackPanel Spacing="14"><TextBlock Text="Настройки Tutor" Classes="h2"/><TextBlock Text="Параметры текущей локации" Classes="muted"/><TextBlock Text="Название локации" FontWeight="Bold"/><TextBox Text="{Binding LocationName}"/><TextBlock Text="Обновление экранов, секунд" FontWeight="Bold"/><NumericUpDown Value="{Binding ScreenRefreshSeconds}" Minimum="5" Maximum="300"/><TextBlock Text="Интервал синхронизации, секунд" FontWeight="Bold"/><NumericUpDown Value="{Binding SyncIntervalSeconds}" Minimum="5" Maximum="600"/><CheckBox Content="Автоматически принимать безопасные файлы" IsChecked="{Binding AutoApproveSafeFiles}"/><CheckBox Content="Разрешить обновления Student" IsChecked="{Binding EnableStudentUpdates}"/><CheckBox Content="Тёмная тема" IsChecked="{Binding IsDarkTheme}"/><Button Content="Сохранить настройки" Command="{Binding SaveSettingsCommand}" Classes="primary" Margin="0,12,0,0"/><Border Classes="subcard"><TextBlock Text="{Binding SettingsStatus}" TextWrapping="Wrap"/></Border></StackPanel></Border>
         </Grid></ScrollViewer>
       </TabItem>
       <TabItem Header="Модули и версии">

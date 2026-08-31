@@ -104,6 +104,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [ObservableProperty] private int syncIntervalSeconds = 15;
     [ObservableProperty] private bool autoApproveSafeFiles = true;
     [ObservableProperty] private bool enableStudentUpdates = true;
+    [ObservableProperty] private bool isDarkTheme;
     [ObservableProperty] private string locationName = "KIBERone Classroom";
     [ObservableProperty] private string settingsStatus = "Настройки действуют только на этом Tutor.";
     [ObservableProperty] private string vpnConfigsFolder = string.Empty;
@@ -163,6 +164,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     public string FocusModeLabel => IsFocusModeOn ? "Фокус включён. Нажмите, чтобы выключить." : "Ограничить отвлекающие окна.";
     public string WatchdogLabel => IsWatchdogOn ? "Watchdog следит за Student. Нажмите, чтобы выключить." : "Перезапуск Student, если его закрыли.";
     public string VpnToggleLabel => IsVpnOn ? "VPN включён на классе. Нажмите, чтобы отключить." : "Подключить WireGuard на всех ПК.";
+    public string ThemeToggleLabel => IsDarkTheme ? "Светлая тема" : "Тёмная тема";
     public string StudentFormTitle => IsEditingStudent ? "Редактировать ученика" : "Новый ученик";
     public string StudentFormActionLabel => IsEditingStudent ? "Сохранить изменения" : "Добавить ученика";
     public bool HasAuditEvents => AuditEvents.Count > 0;
@@ -555,6 +557,27 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         }
     }
 
+    private bool loadingSettings;
+
+    [RelayCommand]
+    private void ToggleTheme() => IsDarkTheme = !IsDarkTheme;
+
+    partial void OnIsDarkThemeChanged(bool value)
+    {
+        ApplyThemeVariant(value);
+        OnPropertyChanged(nameof(ThemeToggleLabel));
+        if (!loadingSettings)
+            SaveSettings();
+    }
+
+    private static void ApplyThemeVariant(bool dark)
+    {
+        if (Avalonia.Application.Current is null) return;
+        Avalonia.Application.Current.RequestedThemeVariant = dark
+            ? Avalonia.Styling.ThemeVariant.Dark
+            : Avalonia.Styling.ThemeVariant.Light;
+    }
+
     [RelayCommand]
     private void SaveSettings()
     {
@@ -566,7 +589,8 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             SyncIntervalSeconds,
             AutoApproveSafeFiles,
             EnableStudentUpdates,
-            VpnConfigsFolder.Trim());
+            VpnConfigsFolder.Trim(),
+            IsDarkTheme);
         var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KIBERone", "Tutor");
         Directory.CreateDirectory(directory);
         File.WriteAllText(Path.Combine(directory, "settings.json"), JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
@@ -581,17 +605,23 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             if (!File.Exists(path)) return;
             var saved = JsonSerializer.Deserialize<TutorLocalSettings>(File.ReadAllText(path));
             if (saved is null) return;
+            loadingSettings = true;
             LocationName = saved.LocationName;
             ScreenRefreshSeconds = saved.ScreenRefreshSeconds;
             SyncIntervalSeconds = saved.SyncIntervalSeconds;
             AutoApproveSafeFiles = saved.AutoApproveSafeFiles;
             EnableStudentUpdates = saved.EnableStudentUpdates;
             VpnConfigsFolder = saved.VpnConfigsFolder ?? string.Empty;
+            IsDarkTheme = saved.PreferDarkTheme;
             SettingsStatus = "Локальные настройки загружены.";
         }
         catch (Exception error)
         {
             SettingsStatus = $"Настройки не загружены: {error.Message}";
+        }
+        finally
+        {
+            loadingSettings = false;
         }
     }
 
@@ -1671,7 +1701,8 @@ public sealed record TutorLocalSettings(
     int SyncIntervalSeconds,
     bool AutoApproveSafeFiles,
     bool EnableStudentUpdates,
-    string? VpnConfigsFolder = "");
+    string? VpnConfigsFolder = "",
+    bool PreferDarkTheme = false);
 
 public partial class QuizQuestionEditorViewModel : ObservableObject
 {
