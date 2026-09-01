@@ -6,6 +6,7 @@ namespace Kiberone.Infrastructure;
 public sealed class ClassroomDbContext(DbContextOptions<ClassroomDbContext> options) : DbContext(options)
 {
     public DbSet<ClassroomGroup> Groups => Set<ClassroomGroup>();
+    public DbSet<GroupProgramModule> GroupProgramModules => Set<GroupProgramModule>();
     public DbSet<Student> Students => Set<Student>();
     public DbSet<ClassroomSession> ClassroomSessions => Set<ClassroomSession>();
     public DbSet<Grade> Grades => Set<Grade>();
@@ -33,6 +34,26 @@ public sealed class ClassroomDbContext(DbContextOptions<ClassroomDbContext> opti
             entity.HasKey(x => x.Id);
             entity.HasIndex(x => x.Name).IsUnique();
             entity.Property(x => x.Name).HasMaxLength(120);
+            entity.HasMany(x => x.ProgramModules).WithOne(x => x.Group).HasForeignKey(x => x.GroupId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<GroupProgramModule>(entity =>
+        {
+            entity.ToTable("group_program_modules");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(240);
+            entity.Property(x => x.Id).HasColumnType("TEXT").HasConversion(
+                value => value.ToString("D").ToUpperInvariant(),
+                value => Guid.Parse(value));
+            entity.Property(x => x.GroupId).HasColumnType("TEXT").HasConversion(
+                value => value.ToString("D").ToUpperInvariant(),
+                value => Guid.Parse(value));
+            entity.Property(x => x.StartDate).HasColumnType("TEXT").HasConversion(
+                value => value.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+                value => DateOnly.Parse(value, System.Globalization.CultureInfo.InvariantCulture));
+            entity.Property(x => x.EndDate).HasColumnType("TEXT").HasConversion(
+                value => value.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+                value => DateOnly.Parse(value, System.Globalization.CultureInfo.InvariantCulture));
+            entity.HasIndex(x => new { x.GroupId, x.SortOrder });
         });
         modelBuilder.Entity<Student>(entity =>
         {

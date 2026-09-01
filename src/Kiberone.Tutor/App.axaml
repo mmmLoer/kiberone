@@ -34,6 +34,9 @@
                     <SolidColorBrush x:Key="ProgressTrackBrush" Color="#DFE7E9" />
                     <SolidColorBrush x:Key="PreviewPanelBrush" Color="#F0F5F5" />
                     <SolidColorBrush x:Key="WinnerSoftBrush" Color="#FFF7DB" />
+                    <SolidColorBrush x:Key="SuccessBrush" Color="#1F9E61" />
+                    <SolidColorBrush x:Key="OfflineDotBrush" Color="#C5CED3" />
+                    <SolidColorBrush x:Key="OnTealBrush" Color="#FFFFFF" />
                     <BoxShadows x:Key="CardShadow">0 6 18 0 #0D243239</BoxShadows>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
@@ -63,6 +66,9 @@
                     <SolidColorBrush x:Key="ProgressTrackBrush" Color="#2A343B" />
                     <SolidColorBrush x:Key="PreviewPanelBrush" Color="#232C33" />
                     <SolidColorBrush x:Key="WinnerSoftBrush" Color="#332B16" />
+                    <SolidColorBrush x:Key="SuccessBrush" Color="#4AD08A" />
+                    <SolidColorBrush x:Key="OfflineDotBrush" Color="#6A7A84" />
+                    <SolidColorBrush x:Key="OnTealBrush" Color="#08201F" />
                     <BoxShadows x:Key="CardShadow">0 8 22 0 #66000000</BoxShadows>
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
@@ -144,13 +150,15 @@
         <Style Selector="Button">
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="MinHeight" Value="40" />
-            <Setter Property="Padding" Value="16,9" />
+            <Setter Property="Padding" Value="16,8" />
             <Setter Property="CornerRadius" Value="10" />
             <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
             <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
         </Style>
         <Style Selector="Button:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource SoftHoverBrush}" />
@@ -169,15 +177,20 @@
 
         <Style Selector="Button.primary">
             <Setter Property="Background" Value="{DynamicResource TealBrush}" />
-            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Foreground" Value="{DynamicResource OnTealBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource TealBrush}" />
             <Setter Property="FontWeight" Value="Bold" />
-            <Setter Property="Padding" Value="18,10" />
+            <Setter Property="Padding" Value="18,8" />
+        </Style>
+        <Style Selector="Button.primary /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource TealBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource TealBrush}" />
+            <Setter Property="TextElement.Foreground" Value="{DynamicResource OnTealBrush}" />
         </Style>
         <Style Selector="Button.primary:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource TealHoverBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource TealHoverBrush}" />
-            <Setter Property="TextElement.Foreground" Value="White" />
+            <Setter Property="TextElement.Foreground" Value="{DynamicResource OnTealBrush}" />
         </Style>
         <Style Selector="Button.primary:pressed /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource TealHoverBrush}" />
@@ -185,14 +198,15 @@
 
         <Style Selector="Button.accent">
             <Setter Property="Background" Value="{DynamicResource AmberBrush}" />
-            <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
+            <Setter Property="Foreground" Value="#13181D" />
             <Setter Property="BorderBrush" Value="{DynamicResource AmberBrush}" />
             <Setter Property="FontWeight" Value="Bold" />
-            <Setter Property="Padding" Value="18,10" />
+            <Setter Property="Padding" Value="18,8" />
         </Style>
         <Style Selector="Button.accent:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="#F0AA00" />
             <Setter Property="BorderBrush" Value="#F0AA00" />
+            <Setter Property="TextElement.Foreground" Value="#13181D" />
         </Style>
 
         <Style Selector="Button.danger">
@@ -226,7 +240,7 @@
         </Style>
         <Style Selector="Button.segment">
             <Setter Property="MinHeight" Value="36" />
-            <Setter Property="Padding" Value="14,8" />
+            <Setter Property="Padding" Value="14,6" />
             <Setter Property="CornerRadius" Value="9" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
@@ -234,6 +248,7 @@
             <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="FontSize" Value="13" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
         <Style Selector="Button.segment:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource SoftHoverBrush}" />
@@ -254,6 +269,7 @@
         <Style Selector="Button.listCard">
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Padding" Value="0" />
@@ -279,10 +295,54 @@
             <Setter Property="Background" Value="{DynamicResource MintBrush}" />
             <Setter Property="BoxShadow" Value="{DynamicResource CardShadow}" />
         </Style>
+        <Style Selector="Border.notice">
+            <Setter Property="Background" Value="{DynamicResource AmberSoftBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+        </Style>
+        <Style Selector="Button.commandRow">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="MinHeight" Value="38" />
+            <Setter Property="Padding" Value="12,6" />
+        </Style>
 
+        <Style Selector="TextBox /template/ TextBlock#PART_Watermark">
+            <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+            <Setter Property="Opacity" Value="0.85" />
+        </Style>
+        <Style Selector="Button.choiceCard">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="Padding" Value="16" />
+            <Setter Property="MinHeight" Value="108" />
+            <Setter Property="Margin" Value="0,0,0,12" />
+        </Style>
+        <Style Selector="Button.choiceCard:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SoftHoverBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource TealBrush}" />
+        </Style>
+        <Style Selector="Button.choiceCard.on">
+            <Setter Property="Background" Value="{DynamicResource MintBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource TealBrush}" />
+        </Style>
+        <Style Selector="Button.choiceCard.on /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource MintBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource TealBrush}" />
+        </Style>
         <Style Selector="Button.toggleCard">
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
             <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
             <Setter Property="BorderThickness" Value="1" />
@@ -308,6 +368,14 @@
             <Setter Property="Height" Value="44" />
             <Setter Property="CornerRadius" Value="12" />
             <Setter Property="Background" Value="{DynamicResource SurfaceSoftBrush}" />
+        </Style>
+        <Style Selector="Border.modeIcon">
+            <Setter Property="Width" Value="26" />
+            <Setter Property="Height" Value="26" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Background" Value="{DynamicResource MintBrush}" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
         <Style Selector="Button.toggleCard.on Border.toggleIcon">
             <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
@@ -338,10 +406,11 @@
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="3,0,0,0" />
             <Setter Property="CornerRadius" Value="10" />
-            <Setter Property="Padding" Value="13,9" />
+            <Setter Property="Padding" Value="13,8" />
             <Setter Property="MinHeight" Value="40" />
             <Setter Property="Margin" Value="0,0,0,2" />
             <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
         <Style Selector="Button.nav.compact">
             <Setter Property="FontSize" Value="13" />
@@ -371,6 +440,30 @@
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="8" />
         </Style>
+        <Style Selector="ComboBox">
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Padding" Value="12,0" />
+        </Style>
+        <Style Selector="ComboBox /template/ ContentPresenter">
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="NumericUpDown">
+            <Setter Property="Padding" Value="8,0" />
+        </Style>
+        <Style Selector="NumericUpDown TextBox">
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Padding" Value="8,0" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="TextBox">
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Padding" Value="12,8" />
+        </Style>
+        <Style Selector="TextBox[AcceptsReturn=True]">
+            <Setter Property="VerticalContentAlignment" Value="Top" />
+            <Setter Property="Padding" Value="12,10" />
+        </Style>
         <Style Selector="TextBox:pointerover, ComboBox:pointerover, NumericUpDown:pointerover">
             <Setter Property="BorderBrush" Value="{DynamicResource MutedBrush}" />
         </Style>
@@ -381,6 +474,9 @@
         <Style Selector="CheckBox">
             <Setter Property="MinHeight" Value="32" />
             <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Padding" Value="8,0,0,0" />
         </Style>
         <Style Selector="ListBox">
             <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
@@ -393,6 +489,7 @@
             <Setter Property="Padding" Value="12,10" />
             <Setter Property="CornerRadius" Value="7" />
             <Setter Property="Margin" Value="0,0,0,2" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
         <Style Selector="ListBoxItem:pointerover">
             <Setter Property="Background" Value="{DynamicResource SoftHoverBrush}" />
@@ -401,15 +498,60 @@
             <Setter Property="Background" Value="{DynamicResource MintBrush}" />
             <Setter Property="Foreground" Value="{DynamicResource TealBrush}" />
         </Style>
+        <Style Selector="ComboBoxItem">
+            <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
+            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="MinHeight" Value="36" />
+        </Style>
+        <Style Selector="ComboBoxItem:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SoftHoverBrush}" />
+        </Style>
+        <Style Selector="ComboBoxItem:selected">
+            <Setter Property="Background" Value="{DynamicResource MintBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TealBrush}" />
+        </Style>
+        <Style Selector="MenuFlyoutPresenter">
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
+        </Style>
+        <Style Selector="MenuItem">
+            <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
+        </Style>
+        <Style Selector="MenuItem:pointerover /template/ Border#PART_LayoutRoot">
+            <Setter Property="Background" Value="{DynamicResource SoftHoverBrush}" />
+        </Style>
         <Style Selector="ProgressBar">
             <Setter Property="Foreground" Value="{DynamicResource TealBrush}" />
             <Setter Property="Background" Value="{DynamicResource ProgressTrackBrush}" />
             <Setter Property="CornerRadius" Value="100" />
         </Style>
 
+        <Style Selector="Border.pill TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Border.pillOnline TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TealBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBlock.success">
+            <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+        </Style>
+        <Style Selector="ToolTip">
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+        </Style>
+        <Style Selector="SplitView">
+            <Setter Property="CompactPaneLength" Value="0" />
+        </Style>
         <Style Selector="TabControl.contentOnly">
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="VerticalContentAlignment" Value="Stretch" />
+            <Setter Property="ClipToBounds" Value="True" />
+            <Setter Property="Padding" Value="0" />
         </Style>
         <Style Selector="TabControl.contentOnly /template/ ItemsPresenter#PART_ItemsPresenter">
             <Setter Property="Height" Value="0" />

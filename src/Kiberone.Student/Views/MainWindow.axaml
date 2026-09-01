@@ -217,8 +217,8 @@
                 <StackPanel Spacing="14">
                   <Grid ColumnDefinitions="*,Auto">
                     <TextBlock Text="Моя цель" Classes="h2"/>
-                    <Border Grid.Column="1" Background="#FFF3C9" CornerRadius="999" Padding="9,5">
-                      <TextBlock Text="ЦЕЛЬ" FontSize="9" FontWeight="Bold" Foreground="#8B6500"/>
+                    <Border Grid.Column="1" Background="#FFF3C9" CornerRadius="999" Padding="9,5" VerticalAlignment="Center">
+                      <TextBlock Text="ЦЕЛЬ" FontSize="9" FontWeight="Bold" Foreground="#8B6500" VerticalAlignment="Center"/>
                     </Border>
                   </Grid>
                   <TextBlock Text="Наушники" FontSize="17" FontWeight="SemiBold"/>
@@ -448,7 +448,8 @@
                            Foreground="White"
                            FontFamily="Cascadia Mono, Consolas"
                            FontSize="20"
-                           FontWeight="Bold"/>
+                           FontWeight="Bold"
+                           VerticalAlignment="Center"/>
               </Border>
               <Button Grid.Column="2"
                       Content="Пауза"

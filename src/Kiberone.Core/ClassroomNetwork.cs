@@ -22,14 +22,18 @@ public sealed record ClientRuntimeInfo(
     bool FocusModeActive,
     string ActiveApp,
     int? BatteryPercent,
-    bool VpnConnected = false);
+    bool VpnConnected = false,
+    bool ScreenLocked = false);
 
 public sealed record HeartbeatResponse(
     bool Ok,
     DateTimeOffset ServerTime,
     int HeartbeatSeconds,
     int SyncSeconds,
-    StudentUpdateInfo? StudentUpdate);
+    StudentUpdateInfo? StudentUpdate,
+    string? PreferredGroupName = null,
+    string? SaveModule = null,
+    string? SaveStudentName = null);
 
 public sealed record StudentUpdateInfo(string Version, string Sha256, long Size);
 

@@ -121,6 +121,30 @@ public sealed class ClassroomServiceTests : IAsyncLifetime
         Assert.Equal(4.5, group.AverageGrade);
     }
 
+    [Fact]
+    public async Task StudentAndShop_RejectInvalidEdgeInputs()
+    {
+        var group = (await service.ListGroupsAsync()).Single();
+        await Assert.ThrowsAsync<LessonValidationException>(() =>
+            service.CreateStudentAsync(new StudentDraft("", "Максим", 12, group.Id, "", "", "")));
+        await Assert.ThrowsAsync<LessonValidationException>(() =>
+            service.CreateStudentAsync(new StudentDraft("Иванов", "Максим", 4, group.Id, "", "", "")));
+        await Assert.ThrowsAsync<LessonValidationException>(() =>
+            service.AddGradeAsync(new GradeDraft(studentId, null, 6, "")));
+        await Assert.ThrowsAsync<LessonValidationException>(() =>
+            service.AdjustKiberonsAsync(new AdjustKiberonsRequest(studentId, 0, "ноль")));
+        await Assert.ThrowsAsync<LessonValidationException>(() =>
+            service.TriggerSystemAchievementAsync(studentId, "unknown_event"));
+
+        var item = await service.CreateStoreItemAsync(new StoreItemDraft("pen", "Ручка", "", 40, 1, false));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.PurchaseAsync(new PurchaseRequest(studentId, item.Id)));
+        Assert.Contains("Недостаточно", error.Message);
+        await using var db = new ClassroomDbContext(options);
+        Assert.Equal(1, await db.StoreItems.Where(x => x.Id == item.Id).Select(x => x.Stock).SingleAsync());
+        Assert.Equal(0, await db.Students.Where(x => x.Id == studentId).Select(x => x.Kiberons).SingleAsync());
+    }
+
     public async Task DisposeAsync()
     {
         await Task.Yield();

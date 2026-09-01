@@ -36,6 +36,32 @@ public sealed class FileSyncServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public void EnsureGroupFolder_CreatesGroupAndStudentDirectories()
+    {
+        var groupPath = service.EnsureGroupFolder("Python 01");
+        var studentPath = service.EnsureStudentFolder("Python 01", "Иванов", "Артём");
+
+        Assert.True(Directory.Exists(groupPath));
+        Assert.True(Directory.Exists(studentPath));
+        Assert.Equal("Python 01", Path.GetFileName(groupPath));
+        Assert.Equal("Иванов Артём", Path.GetFileName(studentPath));
+        Assert.Equal(groupPath, Directory.GetParent(studentPath)?.FullName);
+    }
+
+    [Fact]
+    public void EnsureGroupFolder_SanitizesEmptyAndPathCharacters()
+    {
+        var empty = service.EnsureGroupFolder("   ");
+        var nested = service.EnsureGroupFolder("Python/01");
+
+        Assert.True(Directory.Exists(empty));
+        Assert.Equal("без имени", Path.GetFileName(empty));
+        Assert.True(Directory.Exists(nested));
+        Assert.Equal("Python_01", Path.GetFileName(nested));
+        Assert.DoesNotContain(Path.DirectorySeparatorChar, Path.GetFileName(nested));
+    }
+
+    [Fact]
     public async Task ModifiedFile_IsVersionedAndCanBeRestored()
     {
         await PrepareSafe("pc-02", "project/main.cs", SyncChangeKind.Created);
@@ -59,6 +85,10 @@ public sealed class FileSyncServiceTests : IAsyncLifetime
     [InlineData(".git/config")]
     [InlineData("node_modules/pkg.js")]
     [InlineData("C:/Windows/win.ini")]
+    [InlineData("D:\\secret.txt")]
+    [InlineData("//server/share/file.txt")]
+    [InlineData("   ")]
+    [InlineData("")]
     public async Task UnsafeOrExcludedPaths_AreRejected(string path)
     {
         await Assert.ThrowsAsync<LessonValidationException>(() => service.PrepareAsync(
@@ -74,6 +104,67 @@ public sealed class FileSyncServiceTests : IAsyncLifetime
         Assert.True(prepared.Required);
         Assert.Contains("больше 5", prepared.Reason);
         Assert.Contains("стала пустой", prepared.Reason);
+    }
+
+    [Fact]
+    public async Task StudentFolder_IsUnderGroupAndModule_AndPullsExistingSave()
+    {
+        var classroom = new ClassroomService(options);
+        var group = await classroom.CreateGroupAsync(new GroupDraft("Python 01", "Python", "циклы"));
+        var student = await classroom.CreateStudentAsync(new StudentDraft("Иванов", "Артём", 12, group.Id, "", "", ""));
+        service.BindClient("pc-student", student.Id);
+
+        var moduleFolder = service.EnsureStudentModuleFolder("Python 01", "Иванов", "Артём", "Python");
+        await File.WriteAllTextAsync(Path.Combine(moduleFolder, "save.dat"), "урок 1");
+
+        var prepared = await service.PrepareAsync(new SyncPrepareRequest(
+            "pc-student", [], false, true, 5, student.Id, []));
+
+        Assert.False(prepared.Required);
+        Assert.Contains("save.dat", prepared.DownloadPaths ?? []);
+        Assert.Empty(prepared.UploadPaths ?? []);
+        Assert.Equal("save.dat", (await service.ListFilesAsync("pc-student")).Single().Path);
+        Assert.Contains(Path.Combine("Python 01", "Иванов Артём", "Python"), service.GetClientFolderPath("pc-student"));
+        var home = await service.ResolveStudentHomeAsync(student.Id);
+        Assert.Equal("Иванов Артём", home?.DisplayName);
+        Assert.Equal("Python", home?.Module);
+        var desktop = FileSyncService.StudentDesktopFolder(home!.DisplayName, home.Module);
+        Assert.Contains("Иванов Артём", desktop);
+        Assert.EndsWith("Python", desktop);
+    }
+
+    [Fact]
+    public async Task ConflictingSave_WaitsForTutor_UpdateKeepsStudent_RestoreKeepsTutor()
+    {
+        var classroom = new ClassroomService(options);
+        var group = await classroom.CreateGroupAsync(new GroupDraft("Unity 01", "Unity", ""));
+        var student = await classroom.CreateStudentAsync(new StudentDraft("Петрова", "Софья", 11, group.Id, "", "", ""));
+        service.BindClient("pc-conflict", student.Id);
+
+        await service.PrepareAsync(new SyncPrepareRequest("pc-conflict", [new SyncChange("progress.json", SyncChangeKind.Created, 4)], false, false, 5, student.Id));
+        await Upload("pc-conflict", "progress.json", "tutor-copy");
+        await service.CompleteAsync("pc-conflict");
+
+        var studentHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData("student-copy"u8));
+        var conflict = await service.PrepareAsync(new SyncPrepareRequest(
+            "pc-conflict",
+            [new SyncChange("progress.json", SyncChangeKind.Modified, 12)],
+            true, false, 5, student.Id,
+            [new SyncFileFingerprint("progress.json", 12, studentHash)]));
+
+        Assert.True(conflict.Required);
+        Assert.Equal(SyncApprovalStatus.Pending, conflict.Status);
+        Assert.Contains("версии различаются", conflict.Reason);
+
+        var restored = await service.DecideAsync(conflict.Id, "restore");
+        Assert.Equal(SyncApprovalStatus.Restore, restored?.Status);
+        Assert.Contains("progress.json", restored?.DownloadPaths ?? []);
+        Assert.DoesNotContain("progress.json", restored?.UploadPaths ?? []);
+
+        await service.CompleteAsync("pc-conflict");
+        await using var tutorCopy = await service.OpenDownloadAsync("pc-conflict", "progress.json");
+        using var reader = new StreamReader(tutorCopy!);
+        Assert.Equal("tutor-copy", await reader.ReadToEndAsync());
     }
 
     private async Task PrepareSafe(string clientId, string path, SyncChangeKind kind) =>

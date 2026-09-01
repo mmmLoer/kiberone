@@ -21,6 +21,12 @@ public sealed record ClassroomServerOptions(string SyncToken, int Port = 8765)
     }
 }
 
+public sealed class ClassroomLiveState
+{
+    public string? PreferredGroupName { get; set; }
+    public int SyncSeconds { get; set; } = 300;
+}
+
 public sealed class ClassroomServer(
     ClassroomServerOptions serverOptions,
     TypingLessonService lessons,
@@ -33,6 +39,9 @@ public sealed class ClassroomServer(
     ReliableCommandQueue commands) : IAsyncDisposable
 {
     private WebApplication? app;
+    private readonly StudentCommandSockets commandSockets = new();
+    private Action<ClassroomCommand, IReadOnlyList<string>>? queuedHandler;
+    public ClassroomLiveState LiveState { get; set; } = new();
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
@@ -72,7 +81,10 @@ public sealed class ClassroomServer(
                 await next(context);
                 return;
             }
-            if (!TokensMatch(context.Request.Headers["X-Sync-Token"].ToString(), serverOptions.SyncToken))
+            var supplied = context.Request.Headers["X-Sync-Token"].ToString();
+            if (string.IsNullOrEmpty(supplied) && context.Request.Path == "/ws")
+                supplied = context.Request.Query["token"].ToString();
+            if (!TokensMatch(supplied, serverOptions.SyncToken))
             {
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 await context.Response.WriteAsJsonAsync(new { error = "unauthorized" }, cancellationToken);
@@ -80,17 +92,39 @@ public sealed class ClassroomServer(
             }
             await next(context);
         });
+        app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(30) });
+        queuedHandler = (command, targets) => commandSockets.Push(targets, command);
+        commands.CommandQueued += queuedHandler;
         MapRoutes(app);
         await app.StartAsync(cancellationToken);
     }
 
     private void MapRoutes(WebApplication application)
     {
-        application.MapGet("/health", () => Results.Ok(new { ok = true, service = "KIBERone Classroom", version = BuildInfo.Version }));
-        application.MapPost("/heartbeat", ([FromBody] HeartbeatRequest request) =>
+        application.MapGet("/health", () => Results.Ok(new
+        {
+            ok = true,
+            service = "KIBERone Classroom",
+            version = BuildInfo.Version,
+            preferred_group = LiveState.PreferredGroupName,
+            command_push = true
+        }));
+        application.MapPost("/heartbeat", async ([FromBody] HeartbeatRequest request, CancellationToken ct) =>
         {
             clients.Heartbeat(request);
-            return Results.Ok(new HeartbeatResponse(true, DateTimeOffset.UtcNow, 3, 300, assets.GetUpdateFor(request.AppVersion)));
+            fileSync.BindClient(request.ClientId, request.StudentId);
+            var home = request.StudentId is Guid studentId
+                ? await fileSync.ResolveStudentHomeAsync(studentId, ct)
+                : null;
+            return Results.Ok(new HeartbeatResponse(
+                true,
+                DateTimeOffset.UtcNow,
+                3,
+                Math.Clamp(LiveState.SyncSeconds, 5, 3600),
+                assets.GetUpdateFor(request.AppVersion),
+                LiveState.PreferredGroupName,
+                home?.Module,
+                home?.DisplayName));
         });
         application.MapGet("/clients", (HttpContext context) =>
             IsTutor(context) ? Results.Ok(clients.GetAll()) : Results.Unauthorized());
@@ -105,6 +139,7 @@ public sealed class ClassroomServer(
         });
         application.MapGet("/command-receipts", (HttpContext context, int? limit) =>
             IsTutor(context) ? Results.Ok(commands.GetReceipts(limit ?? 200)) : Results.Unauthorized());
+        application.Map("/ws", HandleCommandSocketAsync);
         application.MapGet("/typing/lessons", (CancellationToken ct) => lessons.ListLessonsAsync(ct));
         application.MapGet("/typing/lessons/{id:guid}", async (Guid id, CancellationToken ct) =>
             await lessons.GetLessonAsync(id, ct) is { } lesson ? Results.Ok(lesson) : Results.NotFound());
@@ -173,7 +208,7 @@ public sealed class ClassroomServer(
         application.MapGet("/sync/approvals", async (HttpContext context, CancellationToken ct) =>
             IsTutor(context) ? Results.Ok(await fileSync.ListPendingApprovalsAsync(ct)) : Results.Unauthorized());
         application.MapPost("/sync/approval/{id:guid}", async (HttpContext context, Guid id, [FromBody] SyncDecisionRequest request, CancellationToken ct) =>
-            !IsTutor(context) ? Results.Unauthorized() : await fileSync.DecideAsync(id, request.Approved, ct) is { } decision ? Results.Ok(decision) : Results.NotFound());
+            !IsTutor(context) ? Results.Unauthorized() : await fileSync.DecideAsync(id, string.IsNullOrWhiteSpace(request.Action) ? (request.Approved ? "update" : "restore") : request.Action, ct) is { } decision ? Results.Ok(decision) : Results.NotFound());
         application.MapPost("/sync/complete", async ([FromBody] SyncCompleteRequest request, CancellationToken ct) =>
         {
             await fileSync.CompleteAsync(request.ClientId, ct);
@@ -234,6 +269,28 @@ public sealed class ClassroomServer(
             IsTutor(context) ? Results.Ok(await audit.ListAsync(new AuditQuery(category, search, limit ?? 300), ct)) : Results.Unauthorized());
     }
 
+    private async Task HandleCommandSocketAsync(HttpContext context)
+    {
+        if (!context.WebSockets.IsWebSocketRequest)
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            await context.Response.WriteAsJsonAsync(new { error = "expected_websocket" });
+            return;
+        }
+
+        var clientId = context.Request.Query["client_id"].ToString();
+        if (string.IsNullOrWhiteSpace(clientId))
+            clientId = context.Request.Headers["X-Client-Id"].ToString();
+        if (string.IsNullOrWhiteSpace(clientId) || clientId.Length > 160)
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            await context.Response.WriteAsJsonAsync(new { error = "client_id_required" });
+            return;
+        }
+
+        await commandSockets.AcceptAsync(context, clientId, commands, context.RequestAborted);
+    }
+
     private static bool ShouldAudit(HttpRequest request)
     {
         if (request.Method is "GET" or "HEAD" or "OPTIONS") return false;
@@ -279,6 +336,12 @@ public sealed class ClassroomServer(
 
     public async ValueTask DisposeAsync()
     {
+        if (queuedHandler is not null)
+        {
+            commands.CommandQueued -= queuedHandler;
+            queuedHandler = null;
+        }
+        await commandSockets.DisposeAsync();
         if (app is null) return;
         using var stopTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
         try

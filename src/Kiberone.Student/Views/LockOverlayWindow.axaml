@@ -1,0 +1,40 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Kiberone.Student.ViewModels"
+        x:Class="Kiberone.Student.Views.LockOverlayWindow"
+        x:DataType="vm:MainViewModel"
+        Title="KIBERone — экран заблокирован"
+        SystemDecorations="None"
+        WindowState="FullScreen"
+        WindowStartupLocation="Manual"
+        Topmost="True"
+        ShowInTaskbar="False"
+        CanResize="False"
+        Background="#F2172126"
+        Focusable="True">
+  <Panel>
+    <StackPanel HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Spacing="18"
+                MaxWidth="720">
+      <Border Width="64" Height="64" CornerRadius="20" Background="#26FFFFFF" HorizontalAlignment="Center">
+        <TextBlock Text="■" Foreground="#FFD52E" FontSize="22" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+      </Border>
+      <TextBlock Text="ЭКРАН ЗАБЛОКИРОВАН"
+                 Foreground="#FFD52E"
+                 FontSize="30"
+                 FontWeight="Bold"
+                 HorizontalAlignment="Center"/>
+      <TextBlock Text="{Binding LockMessage}"
+                 Foreground="White"
+                 FontSize="18"
+                 TextWrapping="Wrap"
+                 TextAlignment="Center"/>
+      <TextBlock Text="Разблокирует только тьютор"
+                 Foreground="#B8C4C8"
+                 FontSize="14"
+                 HorizontalAlignment="Center"
+                 Margin="0,8,0,0"/>
+    </StackPanel>
+  </Panel>
+</Window>

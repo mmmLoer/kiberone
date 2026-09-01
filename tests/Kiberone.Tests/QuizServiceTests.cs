@@ -54,6 +54,20 @@ public sealed class QuizServiceTests : IAsyncLifetime
         Assert.Empty(commands.GetPending("pc-quiz"));
     }
 
+    [Fact]
+    public async Task WrongAnswer_AwardsNoXp_AndRejectsOutOfRangeIndex()
+    {
+        var quiz = await service.StartAsync(new StartQuizRequest("Столица Франции?", ["Берлин", "Париж", "Рим"], 1, 10, ["pc-quiz"]));
+        var wrong = await service.SubmitAsync(new SubmitQuizAnswerRequest(quiz.Id, "pc-quiz", 0));
+
+        Assert.False(wrong.Correct);
+        Assert.Equal(0, wrong.XpAwarded);
+        await Assert.ThrowsAsync<LessonValidationException>(() =>
+            service.SubmitAsync(new SubmitQuizAnswerRequest(quiz.Id, "other-pc", 9)));
+        await using var db = new ClassroomDbContext(options);
+        Assert.Equal(0, await db.Students.Where(x => x.Id == studentId).Select(x => x.Xp).SingleAsync());
+    }
+
     public async Task DisposeAsync()
     {
         await Task.Yield();

@@ -76,6 +76,15 @@ public sealed class AssetDistributionServiceTests : IDisposable
         Assert.Contains(archive.Entries, x => x.FullName == "src/main.py");
     }
 
+    [Fact]
+    public void UnsafeDeployName_IsRejected()
+    {
+        Assert.Throws<LessonValidationException>(() => service.OpenDeployAsset("../secret.exe"));
+        Assert.Throws<LessonValidationException>(() => service.OpenStarterAsset("../pack"));
+        Assert.Throws<LessonValidationException>(() => service.OpenStarterAsset(""));
+        Assert.Null(service.OpenStarterAsset("missing-pack"));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(root)) Directory.Delete(root, true);

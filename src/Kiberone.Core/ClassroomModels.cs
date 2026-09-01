@@ -8,6 +8,20 @@ public sealed class ClassroomGroup
     public string Topics { get; set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public List<Student> Students { get; set; } = [];
+    public List<GroupProgramModule> ProgramModules { get; set; } = [];
+}
+
+public sealed class GroupProgramModule
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid GroupId { get; set; }
+    public ClassroomGroup? Group { get; set; }
+    public required string Name { get; set; }
+    public DateOnly StartDate { get; set; }
+    public DateOnly EndDate { get; set; }
+    public int LessonCount { get; set; }
+    public string Comment { get; set; } = string.Empty;
+    public int SortOrder { get; set; }
 }
 
 public sealed class Student

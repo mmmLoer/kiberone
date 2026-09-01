@@ -77,6 +77,14 @@ public sealed class DiscoveryAnnouncer(
             {
                 break;
             }
+            catch (SocketException)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+            }
+            catch (ObjectDisposedException)
+            {
+                break;
+            }
         }
     }
 

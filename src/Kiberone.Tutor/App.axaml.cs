@@ -33,8 +33,16 @@ public partial class App : Application
             var databaseOptions = ClassroomDatabase.CreateOptions(Path.Combine(dataDirectory, "classroom.db"));
             ClassroomDatabase.InitializeAsync(databaseOptions).GetAwaiter().GetResult();
             ClassroomDatabase.SeedDefaultsAsync(databaseOptions).GetAwaiter().GetResult();
-            var lessonService = new TypingLessonService(databaseOptions);
             var classroomService = new ClassroomService(databaseOptions);
+            try
+            {
+                classroomService.ImportShbProgramAsync().GetAwaiter().GetResult();
+            }
+            catch (Exception error)
+            {
+                CrashLog.Write("ImportShbProgram", error);
+            }
+            var lessonService = new TypingLessonService(databaseOptions);
             var fileSyncService = new FileSyncService(databaseOptions, Path.Combine(dataDirectory, "sync"));
             var assetService = new AssetDistributionService(AppContext.BaseDirectory, dataDirectory);
             var tokenPath = Path.Combine(dataDirectory, "sync-token.txt");
@@ -45,7 +53,11 @@ public partial class App : Application
             var commandQueue = new ReliableCommandQueue(clientRegistry);
             var quizService = new QuizService(databaseOptions, clientRegistry, commandQueue);
             var auditService = new AuditService(databaseOptions);
-            server = new ClassroomServer(serverOptions, lessonService, classroomService, fileSyncService, assetService, quizService, auditService, clientRegistry, commandQueue);
+            var liveState = new ClassroomLiveState();
+            server = new ClassroomServer(serverOptions, lessonService, classroomService, fileSyncService, assetService, quizService, auditService, clientRegistry, commandQueue)
+            {
+                LiveState = liveState
+            };
             try
             {
                 server.StartAsync().GetAwaiter().GetResult();
@@ -65,7 +77,10 @@ public partial class App : Application
             if (!File.Exists(serverIdPath)) File.WriteAllText(serverIdPath, serverId);
             discovery = new DiscoveryAnnouncer(serverOptions, serverId);
             discovery.Start();
-            var viewModel = new MainViewModel(lessonService, classroomService, fileSyncService, assetService, clientRegistry, commandQueue, quizService, auditService);
+            var viewModel = new MainViewModel(lessonService, classroomService, fileSyncService, assetService, clientRegistry, commandQueue, quizService, auditService)
+            {
+                LiveState = liveState
+            };
             var mainWindow = new MainWindow
             {
                 DataContext = viewModel,
@@ -77,10 +92,18 @@ public partial class App : Application
             desktop.MainWindow = mainWindow;
             _ = viewModel.InitializeAsync();
             clientRefreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
-            clientRefreshTimer.Tick += async (_, _) =>
+            clientRefreshTimer.Tick += (_, _) =>
             {
-                viewModel.RefreshClients();
-                await viewModel.RefreshScreensAsync();
+                if (isShuttingDown) return;
+                try
+                {
+                    viewModel.RefreshClients();
+                    _ = viewModel.RefreshScreensAsync();
+                }
+                catch (Exception error)
+                {
+                    CrashLog.Write("ClientRefreshTimer", error);
+                }
             };
             clientRefreshTimer.Start();
             viewModel.RefreshClients();
@@ -113,7 +136,5 @@ public partial class App : Application
 
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             desktop.Shutdown();
-
-        Environment.Exit(0);
     }
 }

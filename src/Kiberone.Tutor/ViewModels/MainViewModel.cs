@@ -12,8 +12,12 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
 {
     public ObservableCollection<LessonCardViewModel> Lessons { get; } = [];
     public ObservableCollection<GroupCardViewModel> Groups { get; } = [];
+    public ObservableCollection<ProgramModuleCardViewModel> SelectedGroupModules { get; } = [];
     public ObservableCollection<StudentCardViewModel> Students { get; } = [];
     public ObservableCollection<StudentCardViewModel> FilteredStudents { get; } = [];
+    public ObservableCollection<StudentCardViewModel> ClassRosterStudents { get; } = [];
+    public ObservableCollection<RosterFilterOption> RosterGroupFilters { get; } = [];
+    public ObservableCollection<ClassNoticeViewModel> ClassNotices { get; } = [];
     public ObservableCollection<AchievementCardViewModel> Achievements { get; } = [];
     public ObservableCollection<StoreItemCardViewModel> StoreItems { get; } = [];
     public ObservableCollection<SyncApprovalCardViewModel> SyncApprovals { get; } = [];
@@ -44,7 +48,16 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [ObservableProperty] private string groupName = string.Empty;
     [ObservableProperty] private string groupModule = string.Empty;
     [ObservableProperty] private string groupTopics = string.Empty;
+    [ObservableProperty] private string currentModuleSchedule = "Выберите группу, чтобы увидеть модуль по дате";
+    [ObservableProperty] private string groupsWorkspaceMode = "none";
+    [ObservableProperty] private bool showCreateGroupForm;
+    [ObservableProperty] private bool isGroupsChoiceOpen;
     [ObservableProperty] private GroupCardViewModel? selectedGroup;
+    [ObservableProperty] private GroupCardViewModel? activeClassGroup;
+    [ObservableProperty] private RosterFilterOption? selectedRosterGroupFilter;
+    [ObservableProperty] private string selectedRosterPresenceFilter = "Все";
+    [ObservableProperty] private StudentCardViewModel? selectedClassStudent;
+    [ObservableProperty] private bool isClassPanelOpen;
     [ObservableProperty] private string studentLastName = string.Empty;
     [ObservableProperty] private string studentFirstName = string.Empty;
     [ObservableProperty] private int studentAge = 10;
@@ -111,6 +124,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [ObservableProperty] private string vpnDistributionStatus = "Укажите папку с .conf файлами — конфиги раздадутся ученикам автоматически.";
     [ObservableProperty] private int selectedSectionIndex;
 
+    public ClassroomLiveState LiveState { get; set; } = new();
     public Func<Task<string?>>? VpnConfigsFolderPicker { get; set; }
     public Func<Task<string?>>? QuizExportPathPicker { get; set; }
     public Func<Task<string?>>? QuizImportPathPicker { get; set; }
@@ -136,6 +150,17 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     public bool IsSection17 => SelectedSectionIndex == 17;
     public bool IsSection18 => SelectedSectionIndex == 18;
 
+    public IReadOnlyList<string> RosterPresenceFilters { get; } = ["Все", "Онлайн", "Оффлайн"];
+    public bool HasClassRosterStudents => ClassRosterStudents.Count > 0;
+    public bool HasNoClassRosterStudents => !HasClassRosterStudents;
+    public bool HasClassNotices => ClassNotices.Count > 0;
+    public bool HasSelectedClassStudent => SelectedClassStudent is not null;
+    public string ClassPanelTitle => SelectedClassStudent is null
+        ? "Команды класса"
+        : SelectedClassStudent.Name;
+    public string ClassPanelSubtitle => SelectedClassStudent is null
+        ? "Быстрые команды для всех ПК"
+        : SelectedClassStudent.QuickActionsTitle;
     public bool HasLessons => Lessons.Count > 0;
     public bool HasNoLessons => !HasLessons;
     public bool HasStudents => Students.Count > 0;
@@ -144,6 +169,12 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     public bool HasNoFilteredStudents => !HasFilteredStudents;
     public bool HasGroups => Groups.Count > 0;
     public bool HasNoGroups => !HasGroups;
+    public bool HasSelectedGroup => SelectedGroup is not null;
+    public bool ShowGroupsWorkspace => IsGroupsChoiceOpen && SelectedGroup is not null;
+    public bool IsGroupWorkspaceOpen => GroupsWorkspaceMode is "modules" or "students";
+    public bool ShowGroupModulesWorkspace => GroupsWorkspaceMode == "modules";
+    public bool ShowGroupStudentsWorkspace => GroupsWorkspaceMode == "students";
+    public double GroupsWorkspaceWidth => IsGroupWorkspaceOpen ? 920 : 340;
     public bool HasScreenPreviews => ScreenPreviews.Count > 0;
     public bool HasNoScreenPreviews => !HasScreenPreviews;
     public bool ShowClassRoster => !ShowClassScreens;
@@ -198,7 +229,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         var all = clients.GetAll();
         var online = all.Where(client => client.IsOnline).ToList();
         ConnectedClientCount = online.Count;
-        var vpnCount = online.Count(client => client.Extra.VpnConnected);
+        var vpnCount = online.Count(client => client.Extra?.VpnConnected == true);
         ConnectedClientLabel = ConnectedClientCount switch
         {
             0 => "Нет учеников",
@@ -209,6 +240,8 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         };
         ApplyPresence(all);
         RefreshVpnDistributionStatus(online);
+        RebuildClassRoster();
+        RebuildClassNotices();
         OnPropertyChanged(nameof(SectionSubtitle));
     }
 
@@ -235,7 +268,17 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             return;
         }
 
-        var configCount = Directory.GetFiles(VpnConfigsFolder, "*.conf", SearchOption.TopDirectoryOnly).Length;
+        int configCount;
+        try
+        {
+            configCount = Directory.GetFiles(VpnConfigsFolder, "*.conf", SearchOption.TopDirectoryOnly).Length;
+        }
+        catch (Exception error)
+        {
+            VpnDistributionStatus = $"Не удалось прочитать папку VPN: {error.Message}";
+            return;
+        }
+
         var assignments = VpnConfigDistributor.Assign(onlineClients, VpnConfigsFolder);
         VpnDistributionStatus = VpnConfigDistributor.DescribeAssignments(assignments, onlineClients.Count, configCount);
     }
@@ -244,19 +287,32 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
 
     public Task RefreshScreensAsync()
     {
-        foreach (var card in ScreenPreviews) card.Dispose();
-        ScreenPreviews.Clear();
-        foreach (var client in clients.GetAll().OrderBy(x => x.PcNumber))
+        try
         {
-            using var stream = assets.OpenScreen(client.ClientId);
-            Bitmap? preview = null;
-            if (stream is not null)
+            var previous = ScreenPreviews.ToList();
+            ScreenPreviews.Clear();
+            foreach (var card in previous)
             {
-                try { preview = new Bitmap(stream); } catch { preview = null; }
+                try { card.Dispose(); } catch { }
             }
-            ScreenPreviews.Add(new ScreenPreviewCardViewModel(client, preview));
+
+            foreach (var client in clients.GetAll().OrderBy(x => x.PcNumber))
+            {
+                using var stream = assets.OpenScreen(client.ClientId);
+                Bitmap? preview = null;
+                if (stream is not null)
+                {
+                    try { preview = new Bitmap(stream); } catch { preview = null; }
+                }
+                ScreenPreviews.Add(new ScreenPreviewCardViewModel(client, preview));
+            }
+            NotifyCollectionStates();
         }
-        NotifyCollectionStates();
+        catch (Exception error)
+        {
+            CrashLog.Write("RefreshScreens", error);
+        }
+
         return Task.CompletedTask;
     }
 
@@ -275,7 +331,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     public string SectionSubtitle => SelectedSectionIndex switch
     {
         0 => $"Текущий класс · {ConnectedClientLabel}", 1 => "Создание текста и запуск для группы",
-        2 => "Группы, ученики и персональные карточки", 3 => "Достижения, кибероны и товары",
+        2 => "Сначала группа, затем модули или ученики", 3 => "Достижения, кибероны и товары",
         4 => "Версии проектов и восстановление", 5 => "Наблюдение за классом · LAN",
         6 => "Карточки команд: фокус, VPN, Watchdog", 7 => "Python · группа 01 · 10:00",
         8 => "Итоги теперь в уведомлениях класса", 9 => "Редактор вопросов · экспорт JSON",
@@ -429,6 +485,46 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     {
         HasLessonResultsNotification = false;
         LessonResultsSummary = string.Empty;
+        RebuildClassNotices();
+    }
+
+    [RelayCommand]
+    private void SelectClassStudent(StudentCardViewModel? student)
+    {
+        SelectedClassStudent = student;
+        IsClassPanelOpen = true;
+        foreach (var card in Students)
+            card.IsClassSelected = student is not null && card.Id == student.Id;
+        OnPropertyChanged(nameof(HasSelectedClassStudent));
+        OnPropertyChanged(nameof(ClassPanelTitle));
+        OnPropertyChanged(nameof(ClassPanelSubtitle));
+    }
+
+    [RelayCommand]
+    private void CloseClassPanel()
+    {
+        IsClassPanelOpen = false;
+    }
+
+    [RelayCommand]
+    private void DismissClassNotice(ClassNoticeViewModel? notice)
+    {
+        if (notice is null) return;
+        if (notice.Kind == "error")
+        {
+            HasError = false;
+        }
+        else if (notice.Kind == "lesson")
+        {
+            HasLessonResultsNotification = false;
+            LessonResultsSummary = string.Empty;
+        }
+        else if (notice.Kind == "sync")
+        {
+            dismissedSyncNotice = true;
+        }
+
+        RebuildClassNotices();
     }
 
     [RelayCommand] private void StudentLock(StudentCardViewModel? student) => SendStudentCommand(student, ClassroomCommandKinds.LockScreen, new { message = ClassroomMessage });
@@ -443,9 +539,13 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [RelayCommand]
     private void OpenStudentFolder(StudentCardViewModel? student)
     {
-        var clientId = ResolveStudentClientId(student);
-        if (clientId is null) { ShowSelectionError("ПК ученика ещё не подключался — папки на сервере нет."); return; }
-        OpenSyncFolder(clientId, student?.Name);
+        if (student is null)
+        {
+            ShowSelectionError("Выберите ученика.");
+            return;
+        }
+
+        OpenRosterFolder(fileSync.EnsureStudentFolder(student.Group, student.LastName, student.FirstName), student.Name);
     }
 
     [RelayCommand]
@@ -493,8 +593,9 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         try
         {
             SendClientCommand(clientId, kind, payload);
+            student!.ApplyCommandedMode(kind);
             HasError = false;
-            StatusMessage = $"{student!.Name}: команда {kind} · {clientId}";
+            StatusMessage = $"{student.Name}: команда {kind} · {clientId}";
         }
         catch (Exception error)
         {
@@ -514,6 +615,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         try
         {
             SendClientCommand(pc.ClientId, kind, payload);
+            ApplyCommandedModeToClient(pc.ClientId, kind);
             HasError = false;
             StatusMessage = $"{pc.Title}: команда {kind}";
         }
@@ -522,6 +624,12 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             HasError = true;
             StatusMessage = error.Message;
         }
+    }
+
+    private void ApplyCommandedModeToClient(string clientId, string kind)
+    {
+        var student = Students.FirstOrDefault(item => item.ClientId == clientId);
+        student?.ApplyCommandedMode(kind);
     }
 
     private string? ResolveStudentClientId(StudentCardViewModel? student)
@@ -538,17 +646,16 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
 
     private void OpenSyncFolder(string clientId, string? label)
     {
+        OpenRosterFolder(fileSync.GetClientFolderPath(clientId), label ?? clientId);
+    }
+
+    private void OpenRosterFolder(string path, string label)
+    {
         try
         {
-            var path = fileSync.GetClientFolderPath(clientId);
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "explorer.exe",
-                Arguments = $"\"{path}\"",
-                UseShellExecute = true
-            });
+            OpenFolderInOs(path);
             HasError = false;
-            StatusMessage = $"Открыта папка {(string.IsNullOrWhiteSpace(label) ? clientId : label)}.";
+            StatusMessage = $"Открыта папка {label}.";
         }
         catch (Exception error)
         {
@@ -557,7 +664,41 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         }
     }
 
+    private static void OpenFolderInOs(string path)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"\"{path}\"",
+                UseShellExecute = true
+            });
+            return;
+        }
+
+        if (OperatingSystem.IsMacOS())
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "open",
+                ArgumentList = { path },
+                UseShellExecute = false
+            });
+            return;
+        }
+
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "xdg-open",
+            ArgumentList = { path },
+            UseShellExecute = false
+        });
+    }
+
     private bool loadingSettings;
+    private bool dismissedSyncNotice;
+    private Guid? pendingActiveClassGroupId;
 
     [RelayCommand]
     private void ToggleTheme() => IsDarkTheme = !IsDarkTheme;
@@ -590,10 +731,12 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             AutoApproveSafeFiles,
             EnableStudentUpdates,
             VpnConfigsFolder.Trim(),
-            IsDarkTheme);
+            IsDarkTheme,
+            ActiveClassGroup?.Id);
         var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KIBERone", "Tutor");
         Directory.CreateDirectory(directory);
         File.WriteAllText(Path.Combine(directory, "settings.json"), JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
+        PublishPreferredGroup();
         SettingsStatus = $"Настройки сохранены · {DateTime.Now:t}";
     }
 
@@ -613,6 +756,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             EnableStudentUpdates = saved.EnableStudentUpdates;
             VpnConfigsFolder = saved.VpnConfigsFolder ?? string.Empty;
             IsDarkTheme = saved.PreferDarkTheme;
+            pendingActiveClassGroupId = saved.ActiveClassGroupId;
             SettingsStatus = "Локальные настройки загружены.";
         }
         catch (Exception error)
@@ -1015,6 +1159,8 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         {
             using var document = JsonDocument.Parse(JsonSerializer.Serialize(payload));
             var command = commandQueue.Enqueue(new EnqueueCommandRequest(["__all__"], kind, document.RootElement));
+            foreach (var student in Students)
+                student.ApplyCommandedMode(kind);
             HasError = false;
             StatusMessage = $"Команда {kind} поставлена в очередь · {command.Id.ToString("N")[..8]}.";
         }
@@ -1066,6 +1212,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
                             source_name = assignment.ConfigFileName,
                             auto_connect = true
                         });
+                    ApplyCommandedModeToClient(assignment.ClientId, ClassroomCommandKinds.VpnInstallConfig);
                 }
 
                 var configCount = Directory.GetFiles(VpnConfigsFolder, "*.conf", SearchOption.TopDirectoryOnly).Length;
@@ -1195,11 +1342,53 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     private void SelectGroup(GroupCardViewModel? group)
     {
         if (group is null) return;
+        IsGroupsChoiceOpen = true;
         SelectedGroup = group;
+        if (GroupsWorkspaceMode is not "modules" and not "students")
+            GroupsWorkspaceMode = "none";
+        StatusMessage = $"Группа «{group.Name}»: {FilteredStudents.Count} учеников. Выберите, что настроить.";
+    }
+
+    [RelayCommand]
+    private void OpenGroupModulesWorkspace()
+    {
+        if (SelectedGroup is null) return;
+        GroupsWorkspaceMode = "modules";
+        StatusMessage = $"Модули группы «{SelectedGroup.Name}».";
+    }
+
+    [RelayCommand]
+    private void OpenGroupStudentsWorkspace()
+    {
+        if (SelectedGroup is null) return;
+        GroupsWorkspaceMode = "students";
+        StatusMessage = $"Ученики группы «{SelectedGroup.Name}».";
+    }
+
+    [RelayCommand]
+    private void CloseGroupWorkspace()
+    {
+        GroupsWorkspaceMode = "none";
+        StatusMessage = SelectedGroup is null
+            ? "Выберите группу."
+            : $"Группа «{SelectedGroup.Name}». Настройте модули или учеников.";
+    }
+
+    [RelayCommand]
+    private void CloseGroupChoice()
+    {
+        GroupsWorkspaceMode = "none";
+        IsGroupsChoiceOpen = false;
+        SelectedGroup = null;
         MarkSelectedGroup();
         RebuildFilteredStudents();
-        StatusMessage = $"Группа «{group.Name}»: {FilteredStudents.Count} учеников.";
+        CurrentModuleSchedule = "Выберите группу, чтобы увидеть модуль по дате";
+        SelectedGroupModules.Clear();
+        StatusMessage = "Выберите группу.";
     }
+
+    [RelayCommand]
+    private void ToggleCreateGroupForm() => ShowCreateGroupForm = !ShowCreateGroupForm;
 
     [RelayCommand]
     private void BeginEditStudent(StudentCardViewModel? student)
@@ -1208,6 +1397,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         SelectedStudent = student;
         MarkSelectedStudent();
         IsEditingStudent = true;
+        GroupsWorkspaceMode = "students";
         StudentLastName = student.LastName;
         StudentFirstName = student.FirstName;
         StudentAge = student.Age ?? 10;
@@ -1252,8 +1442,10 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         await RunActionAsync(async () =>
         {
             var group = await classroom.CreateGroupAsync(new GroupDraft(GroupName, GroupModule, GroupTopics));
+            fileSync.EnsureGroupFolder(group.Name);
             GroupName = GroupModule = GroupTopics = string.Empty;
-            StatusMessage = $"Группа «{group.Name}» создана.";
+            ShowCreateGroupForm = false;
+            StatusMessage = $"Группа «{group.Name}» создана. Папка группы готова на сервере.";
         });
     }
 
@@ -1319,12 +1511,14 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             {
                 var updated = await classroom.UpdateStudentAsync(SelectedStudent.Id, draft)
                     ?? throw new KeyNotFoundException("Ученик не найден.");
+                fileSync.EnsureStudentModuleFolder(SelectedGroup.Name, updated.LastName, updated.FirstName, SelectedGroup.Module);
                 StatusMessage = $"Карточка {updated.DisplayName} обновлена.";
             }
             else
             {
                 var student = await classroom.CreateStudentAsync(draft);
-                StatusMessage = $"Ученик {student.DisplayName} добавлен.";
+                fileSync.EnsureStudentModuleFolder(SelectedGroup.Name, student.LastName, student.FirstName, SelectedGroup.Module);
+                StatusMessage = $"Ученик {student.DisplayName} добавлен. Папка создана.";
             }
             BeginCreateStudent();
         });
@@ -1405,7 +1599,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         await RunActionAsync(async () =>
         {
             await fileSync.DecideAsync(SelectedSyncApproval.Id, true);
-            StatusMessage = $"Синхронизация {SelectedSyncApproval.ClientId} разрешена.";
+            StatusMessage = $"Принята версия ученика для {SelectedSyncApproval.ClientId}.";
         });
     }
 
@@ -1416,7 +1610,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         await RunActionAsync(async () =>
         {
             await fileSync.DecideAsync(SelectedSyncApproval.Id, false);
-            StatusMessage = $"Синхронизация {SelectedSyncApproval.ClientId} отклонена.";
+            StatusMessage = $"Восстановлена версия тьютора для {SelectedSyncApproval.ClientId}.";
         });
     }
 
@@ -1494,9 +1688,28 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         var storedGroups = await classroom.ListGroupsAsync();
         var selectedId = SelectedGroup?.Id;
         Groups.Clear();
-        foreach (var group in storedGroups) Groups.Add(new GroupCardViewModel(group));
+        foreach (var group in storedGroups)
+        {
+            Groups.Add(new GroupCardViewModel(group));
+            try
+            {
+                fileSync.EnsureGroupFolder(group.Name);
+                foreach (var student in group.Students)
+                    fileSync.EnsureStudentModuleFolder(group.Name, student.LastName, student.FirstName, group.Module);
+            }
+            catch
+            {
+            }
+        }
         SelectedGroup = Groups.FirstOrDefault(x => x.Id == selectedId) ?? Groups.FirstOrDefault();
         MarkSelectedGroup();
+        await LoadGroupProgramAsync();
+        RebuildRosterGroupFilters();
+        ActiveClassGroup = Groups.FirstOrDefault(x => x.Id == (pendingActiveClassGroupId ?? ActiveClassGroup?.Id))
+            ?? ActiveClassGroup
+            ?? Groups.FirstOrDefault();
+        pendingActiveClassGroupId = null;
+        PublishPreferredGroup();
         var selectedStudentId = SelectedStudent?.Id;
         var storedStudents = await classroom.ListStudentsAsync();
         Students.Clear();
@@ -1504,6 +1717,8 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         SelectedStudent = Students.FirstOrDefault(x => x.Id == selectedStudentId) ?? Students.FirstOrDefault();
         ApplyPresence(clients.GetAll());
         RebuildFilteredStudents();
+        RebuildClassRoster();
+        RebuildClassNotices();
         MarkSelectedStudent();
         RefreshWinners();
         var selectedAchievementId = SelectedAchievement?.Id;
@@ -1542,8 +1757,119 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
 
     partial void OnSelectedGroupChanged(GroupCardViewModel? value)
     {
+        if (value is null)
+            GroupsWorkspaceMode = "none";
         MarkSelectedGroup();
         RebuildFilteredStudents();
+        NotifyGroupWorkspace();
+        _ = LoadGroupProgramAsync();
+    }
+
+    partial void OnIsGroupsChoiceOpenChanged(bool value) => NotifyGroupWorkspace();
+    partial void OnGroupsWorkspaceModeChanged(string value) => NotifyGroupWorkspace();
+
+    private void NotifyGroupWorkspace()
+    {
+        OnPropertyChanged(nameof(HasSelectedGroup));
+        OnPropertyChanged(nameof(ShowGroupsWorkspace));
+        OnPropertyChanged(nameof(IsGroupWorkspaceOpen));
+        OnPropertyChanged(nameof(ShowGroupModulesWorkspace));
+        OnPropertyChanged(nameof(ShowGroupStudentsWorkspace));
+        OnPropertyChanged(nameof(GroupsWorkspaceWidth));
+    }
+
+    private async Task LoadGroupProgramAsync()
+    {
+        SelectedGroupModules.Clear();
+        if (SelectedGroup is null)
+        {
+            CurrentModuleSchedule = "Выберите группу, чтобы увидеть модуль по дате";
+            return;
+        }
+
+        var current = await classroom.ApplyCurrentModuleAsync(SelectedGroup.Id);
+        var modules = await classroom.ListProgramModulesAsync(SelectedGroup.Id);
+        foreach (var module in modules)
+            SelectedGroupModules.Add(new ProgramModuleCardViewModel(module, current is not null && current.Id == module.Id));
+        if (current is null)
+        {
+            CurrentModuleSchedule = "В программе этой группы нет модулей с датами";
+            return;
+        }
+
+        SelectedGroup.SetCurrentModule(current.Name);
+        CurrentModuleSchedule = $"Сейчас: {current.Name} · {current.StartDate:dd.MM.yyyy}–{current.EndDate:dd.MM.yyyy}";
+        fileSync.EnsureGroupFolder(SelectedGroup.Name);
+    }
+
+    partial void OnActiveClassGroupChanged(GroupCardViewModel? value)
+    {
+        PublishPreferredGroup();
+        if (value is not null)
+        {
+            SelectedRosterGroupFilter = RosterGroupFilters.FirstOrDefault(x => x.GroupId == value.Id)
+                ?? SelectedRosterGroupFilter;
+        }
+
+        if (!loadingSettings)
+            SaveSettings();
+    }
+
+    partial void OnSelectedRosterGroupFilterChanged(RosterFilterOption? value) => RebuildClassRoster();
+    partial void OnSelectedRosterPresenceFilterChanged(string value) => RebuildClassRoster();
+
+    private void PublishPreferredGroup()
+    {
+        LiveState.PreferredGroupName = ActiveClassGroup?.Name;
+        LiveState.SyncSeconds = Math.Clamp(SyncIntervalSeconds, 5, 3600);
+    }
+
+    private void RebuildRosterGroupFilters()
+    {
+        var selectedId = SelectedRosterGroupFilter?.GroupId;
+        RosterGroupFilters.Clear();
+        RosterGroupFilters.Add(new RosterFilterOption(null, "Все группы"));
+        foreach (var group in Groups)
+            RosterGroupFilters.Add(new RosterFilterOption(group.Id, group.Name));
+        SelectedRosterGroupFilter = RosterGroupFilters.FirstOrDefault(x => x.GroupId == selectedId)
+            ?? RosterGroupFilters.FirstOrDefault();
+    }
+
+    private void RebuildClassRoster()
+    {
+        ClassRosterStudents.Clear();
+        IEnumerable<StudentCardViewModel> source = Students;
+        if (SelectedRosterGroupFilter?.GroupId is Guid groupId)
+            source = source.Where(x => x.GroupId == groupId);
+        source = SelectedRosterPresenceFilter switch
+        {
+            "Онлайн" => source.Where(x => x.IsOnline),
+            "Оффлайн" => source.Where(x => x.IsOffline),
+            _ => source
+        };
+        foreach (var student in source.OrderByDescending(x => x.IsOnline).ThenBy(x => x.Name))
+            ClassRosterStudents.Add(student);
+        if (SelectedClassStudent is not null && ClassRosterStudents.All(x => x.Id != SelectedClassStudent.Id))
+            SelectedClassStudent = ClassRosterStudents.FirstOrDefault();
+        OnPropertyChanged(nameof(HasClassRosterStudents));
+        OnPropertyChanged(nameof(HasNoClassRosterStudents));
+        OnPropertyChanged(nameof(HasSelectedClassStudent));
+        OnPropertyChanged(nameof(ClassPanelTitle));
+        OnPropertyChanged(nameof(ClassPanelSubtitle));
+    }
+
+    private void RebuildClassNotices()
+    {
+        ClassNotices.Clear();
+        if (HasError && !string.IsNullOrWhiteSpace(StatusMessage))
+            ClassNotices.Add(new ClassNoticeViewModel("error", StatusMessage));
+        if (HasLessonResultsNotification && !string.IsNullOrWhiteSpace(LessonResultsSummary))
+            ClassNotices.Add(new ClassNoticeViewModel("lesson", LessonResultsSummary));
+        if (!dismissedSyncNotice && SyncApprovals.Count > 0)
+            ClassNotices.Add(new ClassNoticeViewModel("sync", SyncApprovals.Count == 1
+                ? "1 файл ждёт подтверждения тьютора"
+                : $"{SyncApprovals.Count} файлов ждут подтверждения"));
+        OnPropertyChanged(nameof(HasClassNotices));
     }
 
     private void NotifyCollectionStates()
@@ -1554,8 +1880,13 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         OnPropertyChanged(nameof(HasNoStudents));
         OnPropertyChanged(nameof(HasFilteredStudents));
         OnPropertyChanged(nameof(HasNoFilteredStudents));
+        OnPropertyChanged(nameof(HasClassRosterStudents));
+        OnPropertyChanged(nameof(HasNoClassRosterStudents));
+        OnPropertyChanged(nameof(HasClassNotices));
+        OnPropertyChanged(nameof(HasSelectedClassStudent));
         OnPropertyChanged(nameof(HasGroups));
         OnPropertyChanged(nameof(HasNoGroups));
+        NotifyGroupWorkspace();
         OnPropertyChanged(nameof(HasScreenPreviews));
         OnPropertyChanged(nameof(HasNoScreenPreviews));
         OnPropertyChanged(nameof(HasAuditEvents));
@@ -1567,6 +1898,19 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         OnPropertyChanged(nameof(StudentFormTitle));
         OnPropertyChanged(nameof(StudentFormActionLabel));
     }
+}
+
+public sealed class RosterFilterOption(Guid? groupId, string name)
+{
+    public Guid? GroupId { get; } = groupId;
+    public string Name { get; } = name;
+    public override string ToString() => Name;
+}
+
+public sealed class ClassNoticeViewModel(string kind, string text)
+{
+    public string Kind { get; } = kind;
+    public string Text { get; } = text;
 }
 
 public partial class LessonStepEditorViewModel : ObservableObject
@@ -1592,13 +1936,33 @@ public partial class GroupCardViewModel : ObservableObject
     {
         Id = group.Id;
         Name = group.Name;
+        Module = group.Module;
         Details = $"{group.Students.Count} учеников · {(string.IsNullOrWhiteSpace(group.Module) ? "модуль не задан" : group.Module)}";
     }
 
     public Guid Id { get; }
     public string Name { get; }
-    public string Details { get; }
+    public string Module { get; private set; }
+    public string Details { get; private set; }
     [ObservableProperty] private bool isSelected;
+
+    public void SetCurrentModule(string module)
+    {
+        Module = module;
+        var split = Details.LastIndexOf(" · ", StringComparison.Ordinal);
+        Details = split >= 0 ? $"{Details[..split]} · {module}" : module;
+        OnPropertyChanged(nameof(Module));
+        OnPropertyChanged(nameof(Details));
+    }
+    public override string ToString() => Name;
+}
+
+public sealed class ProgramModuleCardViewModel(GroupProgramModule module, bool isCurrent)
+{
+    public Guid Id { get; } = module.Id;
+    public string Name { get; } = module.Name;
+    public bool IsCurrent { get; } = isCurrent;
+    public string Dates { get; } = $"{module.StartDate:dd.MM.yyyy} – {module.EndDate:dd.MM.yyyy} · {module.LessonCount} ур.";
     public override string ToString() => Name;
 }
 
@@ -1654,15 +2018,24 @@ public partial class StudentCardViewModel : ObservableObject
     [ObservableProperty] private bool isOnline;
     [ObservableProperty] private bool isOffline = true;
     [ObservableProperty] private bool isSelected;
+    [ObservableProperty] private bool isClassSelected;
     [ObservableProperty] private string presenceLabel = "оффлайн";
     [ObservableProperty] private string presenceColor = "#9AA7AE";
     [ObservableProperty] private string batteryLabel = "—";
     [ObservableProperty] private string detailsLine = "оффлайн · батарея —";
+    [ObservableProperty] private string lastUpdateLabel = "нет обновлений";
     [ObservableProperty] private string? clientId;
     [ObservableProperty] private string pcLabel = "ПК не привязан";
     [ObservableProperty] private string watchFolder = string.Empty;
+    [ObservableProperty] private bool isScreenLocked;
+    [ObservableProperty] private bool isWatchdogOn;
+    [ObservableProperty] private bool isFocusOn;
+    [ObservableProperty] private bool isVpnOn;
     public bool HasLinkedPc => !string.IsNullOrWhiteSpace(ClientId);
     public string QuickActionsTitle => HasLinkedPc ? $"{Name} · {PcLabel}" : $"{Name} · ПК не найден";
+    public bool HasActiveModes => IsScreenLocked || IsWatchdogOn || IsFocusOn || IsVpnOn;
+
+    private bool? commandedScreenLocked;
 
     public void ApplyPresence(ClassroomClientSnapshot? client)
     {
@@ -1677,11 +2050,72 @@ public partial class StudentCardViewModel : ObservableObject
         PresenceColor = IsOnline ? "#068F8A" : "#9AA7AE";
         BatteryLabel = client?.Extra.BatteryPercent is int pct ? $"{pct}%" : "—";
         DetailsLine = $"{PresenceLabel} · батарея {BatteryLabel}";
+        LastUpdateLabel = FormatLastUpdate(client?.LastSeenAt);
+        IsVpnOn = client?.Extra.VpnConnected == true;
+        IsWatchdogOn = client?.Extra.WatchdogActive == true;
+        IsFocusOn = client?.Extra.FocusModeActive == true;
+        var reportedLock = client?.Extra.ScreenLocked == true;
+        if (reportedLock)
+        {
+            commandedScreenLocked = null;
+            IsScreenLocked = true;
+        }
+        else if (commandedScreenLocked is bool commanded)
+            IsScreenLocked = commanded;
+        else
+            IsScreenLocked = false;
         OnPropertyChanged(nameof(HasLinkedPc));
         OnPropertyChanged(nameof(QuickActionsTitle));
+        OnPropertyChanged(nameof(HasActiveModes));
+    }
+
+    public void ApplyCommandedMode(string kind)
+    {
+        switch (kind)
+        {
+            case ClassroomCommandKinds.LockScreen:
+                commandedScreenLocked = true;
+                IsScreenLocked = true;
+                break;
+            case ClassroomCommandKinds.UnlockScreen:
+                commandedScreenLocked = false;
+                IsScreenLocked = false;
+                break;
+            case ClassroomCommandKinds.WatchdogOn:
+                IsWatchdogOn = true;
+                break;
+            case ClassroomCommandKinds.WatchdogOff:
+                IsWatchdogOn = false;
+                break;
+            case ClassroomCommandKinds.FocusOn:
+                IsFocusOn = true;
+                break;
+            case ClassroomCommandKinds.FocusOff:
+                IsFocusOn = false;
+                break;
+            case ClassroomCommandKinds.VpnConnect:
+            case ClassroomCommandKinds.VpnInstallConfig:
+                IsVpnOn = true;
+                break;
+            case ClassroomCommandKinds.VpnDisconnect:
+                IsVpnOn = false;
+                break;
+            default:
+                return;
+        }
+        OnPropertyChanged(nameof(HasActiveModes));
     }
 
     public override string ToString() => Name;
+
+    private static string FormatLastUpdate(DateTimeOffset? lastSeenAt)
+    {
+        if (lastSeenAt is null) return "нет обновлений";
+        var local = lastSeenAt.Value.ToLocalTime();
+        return local.Date == DateTime.Today
+            ? local.ToString("HH:mm")
+            : local.ToString("dd.MM HH:mm");
+    }
 
     private static (string Last, string First) SplitName(string displayName)
     {
@@ -1702,7 +2136,8 @@ public sealed record TutorLocalSettings(
     bool AutoApproveSafeFiles,
     bool EnableStudentUpdates,
     string? VpnConfigsFolder = "",
-    bool PreferDarkTheme = false);
+    bool PreferDarkTheme = false,
+    Guid? ActiveClassGroupId = null);
 
 public partial class QuizQuestionEditorViewModel : ObservableObject
 {
@@ -1886,7 +2321,10 @@ public sealed class ScreenPreviewCardViewModel : IDisposable
     public Guid? StudentId { get; }
     public Bitmap? Preview { get; }
     public bool HasPreview { get; }
-    public void Dispose() => Preview?.Dispose();
+    public void Dispose()
+    {
+        try { Preview?.Dispose(); } catch { }
+    }
 }
 
 public sealed class AuditEventCardViewModel(AuditEvent entry)

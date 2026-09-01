@@ -1,17 +1,33 @@
 namespace Kiberone.Core;
 
 public enum SyncChangeKind { Created, Modified, Deleted }
-public enum SyncApprovalStatus { NotRequired, Pending, Approved, Rejected, Completed }
+public enum SyncApprovalStatus { NotRequired, Pending, Approved, Restore, Rejected, Completed }
 
 public sealed record SyncChange(string Path, SyncChangeKind Kind, long Size);
-public sealed record SyncPrepareRequest(string ClientId, IReadOnlyList<SyncChange> Changes, bool AcceptedWasNonempty, bool ResultingIsEmpty, int? Threshold);
-public sealed record SyncPrepareResult(Guid Id, bool Required, SyncApprovalStatus Status, string Reason, DateTimeOffset CreatedAt);
-public sealed record SyncDecisionRequest(bool Approved);
+public sealed record SyncFileFingerprint(string Path, long Size, string Sha256);
+public sealed record SyncPrepareRequest(
+    string ClientId,
+    IReadOnlyList<SyncChange> Changes,
+    bool AcceptedWasNonempty,
+    bool ResultingIsEmpty,
+    int? Threshold,
+    Guid? StudentId = null,
+    IReadOnlyList<SyncFileFingerprint>? LocalFiles = null);
+public sealed record SyncPrepareResult(
+    Guid Id,
+    bool Required,
+    SyncApprovalStatus Status,
+    string Reason,
+    DateTimeOffset CreatedAt,
+    IReadOnlyList<string>? UploadPaths = null,
+    IReadOnlyList<string>? DownloadPaths = null);
+public sealed record SyncDecisionRequest(bool Approved, string? Action = null);
 public sealed record SyncCompleteRequest(string ClientId);
 public sealed record DeleteFileRequest(string ClientId, string Path);
 public sealed record RestoreVersionRequest(string ClientId, string Path, string VersionId);
 public sealed record SyncedFileInfo(string Path, long Size, DateTimeOffset ModifiedAt, string Sha256);
 public sealed record FileVersionInfo(string Id, string Path, long Size, string Sha256, DateTimeOffset CreatedAt, string Label);
+public sealed record StudentSaveHome(string DisplayName, string Module);
 
 public sealed class SyncApproval
 {

@@ -9,6 +9,8 @@ public sealed class ReliableCommandQueue(ClientRegistry registry, TimeProvider? 
     private readonly ConcurrentQueue<CommandReceipt> receipts = [];
     private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
 
+    public event Action<ClassroomCommand, IReadOnlyList<string>>? CommandQueued;
+
     public ClassroomCommand Enqueue(EnqueueCommandRequest request)
     {
         if (!ClassroomCommandKinds.SafeKnownKinds.Contains(request.Kind))
@@ -29,6 +31,7 @@ public sealed class ReliableCommandQueue(ClientRegistry registry, TimeProvider? 
         if (!pending.TryAdd(command.Id, new PendingCommand(command, targetIds.ToHashSet(StringComparer.OrdinalIgnoreCase))))
             throw new InvalidOperationException("Не удалось добавить команду.");
         CleanupExpired();
+        CommandQueued?.Invoke(command, targetIds);
         return command;
     }
 

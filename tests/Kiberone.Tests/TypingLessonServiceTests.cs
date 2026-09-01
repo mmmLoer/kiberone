@@ -73,6 +73,35 @@ public sealed class TypingLessonServiceTests : IAsyncLifetime
         Assert.Contains(lessons, x => x.Id == second.Id);
     }
 
+    [Fact]
+    public async Task Telemetry_RejectsDecreasingCountersAndEmptyStudentList()
+    {
+        var service = new TypingLessonService(options);
+        Guid groupId;
+        Guid studentId;
+        await using (var db = new ClassroomDbContext(options))
+        {
+            var group = new ClassroomGroup { Name = "Edge" };
+            var student = new Student { FirstName = "Ева", LastName = "Ким", GroupId = group.Id };
+            group.Students.Add(student);
+            db.Groups.Add(group);
+            await db.SaveChangesAsync();
+            groupId = group.Id;
+            studentId = student.Id;
+        }
+
+        var lesson = await service.CreateLessonAsync(new CreateLessonRequest(
+            "Край", "Проверка", LessonContentKind.Custom, "ru-RU", 10, 5,
+            [new LessonStepDraft("Шаг", "текст", 10, 80)]));
+        await Assert.ThrowsAsync<LessonValidationException>(() =>
+            service.StartSessionAsync(new StartTypingSessionRequest(lesson.Id, groupId, [])));
+        var session = await service.StartSessionAsync(new StartTypingSessionRequest(lesson.Id, groupId, [studentId]));
+        await service.RecordTelemetryAsync(session.Id,
+            new TelemetryUpdateRequest(studentId, 0, 10, 1, 10, 0, ParticipantStatus.Typing, new Dictionary<string, int>()));
+        await Assert.ThrowsAsync<LessonValidationException>(() => service.RecordTelemetryAsync(session.Id,
+            new TelemetryUpdateRequest(studentId, 0, 5, 1, 10, 0, ParticipantStatus.Typing, new Dictionary<string, int>())));
+    }
+
     public async Task DisposeAsync()
     {
         await Task.Yield();

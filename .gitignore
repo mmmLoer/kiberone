@@ -5,6 +5,8 @@
 **/obj/
 dist/
 data/
+!src/Kiberone.Infrastructure/Data/
+!src/Kiberone.Infrastructure/Data/**
 *.db
 *.db-shm
 *.db-wal

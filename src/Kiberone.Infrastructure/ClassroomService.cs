@@ -385,4 +385,80 @@ public sealed class ClassroomService(DbContextOptions<ClassroomDbContext> option
         var result = value?.Trim() ?? string.Empty;
         return result.Length <= max ? result : result[..max];
     }
+
+    public async Task<IReadOnlyList<GroupProgramModule>> ListProgramModulesAsync(Guid groupId, CancellationToken ct = default)
+    {
+        await using var db = new ClassroomDbContext(options);
+        return await db.GroupProgramModules.AsNoTracking()
+            .Where(x => x.GroupId == groupId)
+            .OrderBy(x => x.SortOrder)
+            .ToListAsync(ct);
+    }
+
+    public async Task<GroupProgramModule?> ApplyCurrentModuleAsync(Guid groupId, DateOnly? today = null, CancellationToken ct = default)
+    {
+        var day = today ?? DateOnly.FromDateTime(DateTime.Today);
+        await using var db = new ClassroomDbContext(options);
+        var group = await db.Groups.SingleOrDefaultAsync(x => x.Id == groupId, ct);
+        if (group is null) return null;
+        var modules = await db.GroupProgramModules.Where(x => x.GroupId == groupId).ToListAsync(ct);
+        var current = ProgramCalendar.Pick(modules, day);
+        if (current is null) return null;
+        if (!string.Equals(group.Module, current.Name, StringComparison.Ordinal))
+        {
+            group.Module = current.Name;
+            await db.SaveChangesAsync(ct);
+        }
+        return current;
+    }
+
+    public async Task<int> ImportShbProgramAsync(CancellationToken ct = default)
+    {
+        var catalog = ProgramCatalog.LoadShb2026();
+        await using var db = new ClassroomDbContext(options);
+        var imported = 0;
+        foreach (var item in catalog)
+        {
+            var name = Required(item.Name, "Название группы", 120);
+            var group = await db.Groups.SingleOrDefaultAsync(x => x.Name == name, ct);
+            if (group is null)
+            {
+                group = new ClassroomGroup { Name = name, Module = string.Empty, Topics = "ШБ 2026-2027" };
+                db.Groups.Add(group);
+                await db.SaveChangesAsync(ct);
+            }
+            else if (string.IsNullOrWhiteSpace(group.Topics))
+                group.Topics = "ШБ 2026-2027";
+
+            await db.Database.ExecuteSqlRawAsync(
+                "DELETE FROM group_program_modules WHERE upper(GroupId) = upper({0})",
+                [group.Id.ToString()],
+                ct);
+
+            var modules = new List<GroupProgramModule>();
+            var order = 0;
+            foreach (var module in item.Modules)
+            {
+                if (!DateOnly.TryParse(module.Start, out var start) || !DateOnly.TryParse(module.End, out var end))
+                    continue;
+                modules.Add(new GroupProgramModule
+                {
+                    GroupId = group.Id,
+                    Name = Trim(module.Name, 240),
+                    StartDate = start,
+                    EndDate = end,
+                    LessonCount = Math.Max(0, module.Lessons ?? 0),
+                    Comment = Trim(module.Comment, 500),
+                    SortOrder = order++
+                });
+            }
+            db.GroupProgramModules.AddRange(modules);
+            var current = ProgramCalendar.Pick(modules, DateOnly.FromDateTime(DateTime.Today));
+            if (current is not null)
+                group.Module = current.Name;
+            imported++;
+        }
+        await db.SaveChangesAsync(ct);
+        return imported;
+    }
 }

@@ -17,6 +17,7 @@ public partial class App : Avalonia.Application
     private WatchdogManager? watchdog;
     private VpnController? vpn;
     private MainViewModel? viewModel;
+    private ScreenLockManager? screenLock;
 
     public override void Initialize()
     {
@@ -32,6 +33,13 @@ public partial class App : Avalonia.Application
             {
                 DataContext = viewModel,
             };
+            screenLock = new ScreenLockManager();
+            viewModel.ScreenLockChanged = locked => Dispatcher.UIThread.Post(() =>
+            {
+                if (desktop.MainWindow is null || screenLock is null || viewModel is null) return;
+                if (locked) screenLock.Show(desktop.MainWindow, viewModel);
+                else screenLock.Hide();
+            });
             agent = new StudentAgent();
             vpn = new VpnController();
             agent.VpnStateProvider = () => vpn.IsConnected;
@@ -52,11 +60,12 @@ public partial class App : Avalonia.Application
             agent.ScreenProvider = ScreenCapture.CaptureJpeg;
             agent.FocusModeStateProvider = () => focusMode.IsActive;
             agent.WatchdogStateProvider = () => watchdog.IsActive;
+            agent.ScreenLockStateProvider = () => viewModel.IsScreenLocked;
             agent.ConnectionChanged += state => Dispatcher.UIThread.Post(() => viewModel.SetConnection(state));
             agent.SyncStateChanged += state => Dispatcher.UIThread.Post(() => viewModel.SetSyncState(state));
             agent.UpdateAvailable += update => Dispatcher.UIThread.Post(() => viewModel.SetUpdate(update));
             agent.UpdateStateChanged += state => Dispatcher.UIThread.Post(() => viewModel.SetUpdateState(state));
-            agent.StudentsAvailable += students => Dispatcher.UIThread.Post(() => viewModel.SetStudents(students));
+            agent.StudentsAvailable += students => Dispatcher.UIThread.Post(() => viewModel.SetStudents(students, agent.PreferredGroupName));
             viewModel.UpdateRequested = agent.RequestUpdateInstallation;
             viewModel.QuizAnswerRequested = agent.SubmitQuizAnswer;
             viewModel.StudentSelected = agent.AssignStudent;
@@ -64,6 +73,7 @@ public partial class App : Avalonia.Application
             agent.Start();
             desktop.Exit += (_, _) =>
             {
+                screenLock?.Hide();
                 focusMode?.DisposeAsync().AsTask().GetAwaiter().GetResult();
                 agent?.DisposeAsync().AsTask().GetAwaiter().GetResult();
             };

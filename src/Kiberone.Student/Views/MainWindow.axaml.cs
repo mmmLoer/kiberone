@@ -10,6 +10,13 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         KeyDown += OnKeyDown;
+        Closing += OnClosing;
+    }
+
+    private void OnClosing(object? sender, WindowClosingEventArgs eventArgs)
+    {
+        if (DataContext is MainViewModel viewModel && viewModel.IsScreenLocked)
+            eventArgs.Cancel = true;
     }
 
     private void OnKeyDown(object? sender, Avalonia.Input.KeyEventArgs eventArgs)

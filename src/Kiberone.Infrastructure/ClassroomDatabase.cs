@@ -110,6 +110,8 @@ public static class ClassroomDatabase
             ,"""CREATE UNIQUE INDEX IF NOT EXISTS IX_quiz_answers_SessionId_ClientId ON quiz_answers (SessionId, ClientId);"""
             ,"""CREATE TABLE IF NOT EXISTS audit_events (Id TEXT NOT NULL PRIMARY KEY, Category TEXT NOT NULL, Action TEXT NOT NULL, Actor TEXT NOT NULL, Target TEXT NOT NULL, Details TEXT NOT NULL, StatusCode INTEGER NOT NULL, DurationMs INTEGER NOT NULL, CreatedAt TEXT NOT NULL);"""
             ,"""CREATE INDEX IF NOT EXISTS IX_audit_events_CreatedAt ON audit_events (CreatedAt);"""
+            ,"""CREATE TABLE IF NOT EXISTS group_program_modules (Id TEXT NOT NULL PRIMARY KEY, GroupId TEXT NOT NULL, Name TEXT NOT NULL, StartDate TEXT NOT NULL, EndDate TEXT NOT NULL, LessonCount INTEGER NOT NULL, Comment TEXT NOT NULL, SortOrder INTEGER NOT NULL, FOREIGN KEY (GroupId) REFERENCES groups (Id) ON DELETE CASCADE);"""
+            ,"""CREATE INDEX IF NOT EXISTS IX_group_program_modules_GroupId_SortOrder ON group_program_modules (GroupId, SortOrder);"""
             ,"""ALTER TABLE students ADD COLUMN Birthday TEXT NULL;"""
         };
         foreach (var statement in statements)

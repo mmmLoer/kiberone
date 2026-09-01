@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Net.NetworkInformation;
+using System.Net.WebSockets;
 using System.Text.Json;
 using System.Security.Cryptography;
 using System.Diagnostics;
@@ -36,7 +37,10 @@ public sealed class StudentAgent : IAsyncDisposable
     private Guid? studentId;
     private readonly ConcurrentQueue<string> clientEvents = new();
     private readonly ConcurrentQueue<SubmitQuizAnswerRequest> quizAnswers = new();
+    private readonly ConcurrentDictionary<Guid, byte> handledCommands = [];
     private Task? loopTask;
+    private ClientWebSocket? commandSocket;
+    private int commandSocketLive;
 
     public StudentAgent(string? pcNumber = null, string? watchFolder = null)
     {
@@ -55,12 +59,14 @@ public sealed class StudentAgent : IAsyncDisposable
     public Func<int?>? BatteryProvider { get; set; }
     public Func<ClassroomCommand, CommandExecutionResult>? VpnCommandHandler { get; set; }
     public Func<bool>? VpnStateProvider { get; set; }
+    public Func<bool>? ScreenLockStateProvider { get; set; }
     public event Action<StudentConnectionState>? ConnectionChanged;
     public event Action<ClassroomCommand>? CommandReceived;
     public event Action<StudentSyncState>? SyncStateChanged;
     public event Action<StudentUpdateInfo>? UpdateAvailable;
     public event Action<string>? UpdateStateChanged;
     public event Action<IReadOnlyList<StudentSummary>>? StudentsAvailable;
+    public string? PreferredGroupName { get; private set; }
 
     public void RequestUpdateInstallation()
     {
@@ -70,7 +76,11 @@ public sealed class StudentAgent : IAsyncDisposable
 
     public void QueueClientEvent(string eventName) => clientEvents.Enqueue(eventName);
     public void SubmitQuizAnswer(Guid sessionId, int selectedIndex) => quizAnswers.Enqueue(new SubmitQuizAnswerRequest(sessionId, clientId, selectedIndex));
-    public void AssignStudent(Guid id) => studentId = id;
+    public void AssignStudent(Guid id)
+    {
+        studentId = id;
+        fileSync.StudentId = id;
+    }
 
     public void Start(string? hintAddress = null)
     {
@@ -97,9 +107,11 @@ public sealed class StudentAgent : IAsyncDisposable
                 Timeout = TimeSpan.FromSeconds(10)
             };
             http.DefaultRequestHeaders.Add("X-Sync-Token", beacon.Token);
+            http.DefaultRequestHeaders.Add("X-Client-Id", clientId);
             Raise(true, "Подключено к тьютору", address);
             var consecutiveFailures = 0;
             var rosterLoaded = false;
+            Task? socketTask = null;
             while (!cancellationToken.IsCancellationRequested && consecutiveFailures < 3)
             {
                 try
@@ -110,7 +122,11 @@ public sealed class StudentAgent : IAsyncDisposable
                         rosterLoaded = true;
                     }
                     await SendHeartbeatAsync(http, cancellationToken);
-                    await PollCommandsAsync(http, cancellationToken);
+                    if (studentId is Guid assigned)
+                        fileSync.StudentId = assigned;
+                    socketTask = await EnsureCommandSocketAsync(beacon, http, socketTask, cancellationToken);
+                    if (Volatile.Read(ref commandSocketLive) == 0)
+                        await PollCommandsAsync(http, cancellationToken);
                     await FlushClientEventsAsync(http, cancellationToken);
                     await FlushQuizAnswersAsync(http, cancellationToken);
                     if (DateTimeOffset.UtcNow >= nextSyncAt)
@@ -137,6 +153,11 @@ public sealed class StudentAgent : IAsyncDisposable
                 }
                 await Task.Delay(TimeSpan.FromSeconds(3), cancellationToken);
             }
+            await CloseCommandSocketAsync();
+            if (socketTask is not null)
+            {
+                try { await socketTask; } catch { }
+            }
         }
     }
 
@@ -146,7 +167,7 @@ public sealed class StudentAgent : IAsyncDisposable
             clientId,
             pcNumber,
             Environment.MachineName,
-            watchFolder,
+            fileSync.WatchFolder,
             BuildInfo.Version,
             studentId,
             null,
@@ -155,13 +176,20 @@ public sealed class StudentAgent : IAsyncDisposable
                 FocusModeStateProvider?.Invoke() ?? false,
                 string.Empty,
                 BatteryProvider?.Invoke(),
-                VpnStateProvider?.Invoke() ?? false));
+                VpnStateProvider?.Invoke() ?? false,
+                ScreenLockStateProvider?.Invoke() ?? false));
         using var response = await http.PostAsJsonAsync("/heartbeat", heartbeat, JsonOptions, cancellationToken);
         response.EnsureSuccessStatusCode();
         var settings = await response.Content.ReadFromJsonAsync<HeartbeatResponse>(JsonOptions, cancellationToken);
         if (settings is not null)
         {
-            syncSeconds = Math.Clamp(settings.SyncSeconds, 15, 3600);
+            syncSeconds = Math.Clamp(settings.SyncSeconds, 5, 3600);
+            if (!string.IsNullOrWhiteSpace(settings.PreferredGroupName))
+                PreferredGroupName = settings.PreferredGroupName;
+            if (!string.IsNullOrWhiteSpace(settings.SaveStudentName))
+                fileSync.SetWorkspace(FileSyncService.StudentDesktopFolder(settings.SaveStudentName, settings.SaveModule));
+            else if (!string.IsNullOrWhiteSpace(settings.SaveModule))
+                fileSync.SetWorkspace(Path.Combine(watchFolder, FileSyncService.SanitizeFolderName(settings.SaveModule)));
             if (settings.StudentUpdate is not null)
             {
                 availableUpdate = settings.StudentUpdate;
@@ -175,36 +203,164 @@ public sealed class StudentAgent : IAsyncDisposable
         var commands = await http.GetFromJsonAsync<List<ClassroomCommand>>(
             $"/commands?client_id={Uri.EscapeDataString(clientId)}", JsonOptions, cancellationToken) ?? [];
         foreach (var command in commands)
+            await ExecuteAndAckAsync(http, command, cancellationToken);
+    }
+
+    private async Task<Task?> EnsureCommandSocketAsync(DiscoveryBeacon beacon, HttpClient http, Task? receiveTask, CancellationToken cancellationToken)
+    {
+        if (Volatile.Read(ref commandSocketLive) == 1 && commandSocket?.State == WebSocketState.Open)
+            return receiveTask;
+
+        await CloseCommandSocketAsync();
+        if (receiveTask is not null)
         {
-            CommandReceived?.Invoke(command);
-            CommandExecutionResult result;
-            try
-            {
-                if (command.Kind == ClassroomCommandKinds.SyncNow) nextSyncAt = DateTimeOffset.MinValue;
-                if (command.Kind == ClassroomCommandKinds.Configure && command.Payload.TryGetProperty("sync_seconds", out var seconds) && seconds.TryGetInt32(out var configured))
-                    syncSeconds = Math.Clamp(configured, 15, 3600);
-                result = TryHandleVpnCommand(command)
-                    ?? (CommandHandler is null
-                        ? new CommandExecutionResult(false, "Обработчик команд не настроен.")
-                        : await CommandHandler(command, cancellationToken));
-            }
-            catch (Exception error)
-            {
-                result = new CommandExecutionResult(false, error.Message);
-            }
-            var acknowledgement = new CommandAcknowledgement(command.Id, result.Succeeded, result.Error);
-            using var response = await http.PostAsJsonAsync(
-                $"/commands/{command.Id}/ack?client_id={Uri.EscapeDataString(clientId)}",
-                acknowledgement,
-                JsonOptions,
-                cancellationToken);
-            response.EnsureSuccessStatusCode();
+            try { await receiveTask; } catch { }
         }
+
+        var socket = new ClientWebSocket();
+        socket.Options.SetRequestHeader("X-Sync-Token", beacon.Token);
+        socket.Options.SetRequestHeader("X-Client-Id", clientId);
+        var uri = new Uri($"ws://{beacon.Host}:{beacon.Port}/ws?client_id={Uri.EscapeDataString(clientId)}&token={Uri.EscapeDataString(beacon.Token)}");
+        using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        connectCts.CancelAfter(TimeSpan.FromSeconds(3));
+        try
+        {
+            await socket.ConnectAsync(uri, connectCts.Token);
+        }
+        catch
+        {
+            socket.Dispose();
+            Volatile.Write(ref commandSocketLive, 0);
+            return null;
+        }
+
+        commandSocket = socket;
+        Volatile.Write(ref commandSocketLive, 1);
+        return ReceivePushedCommandsAsync(socket, http, cancellationToken);
+    }
+
+    private async Task ReceivePushedCommandsAsync(ClientWebSocket socket, HttpClient http, CancellationToken cancellationToken)
+    {
+        var buffer = new byte[8192];
+        var message = new MemoryStream();
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested && socket.State == WebSocketState.Open)
+            {
+                message.SetLength(0);
+                WebSocketReceiveResult result;
+                do
+                {
+                    result = await socket.ReceiveAsync(buffer, cancellationToken);
+                    if (result.MessageType == WebSocketMessageType.Close)
+                    {
+                        Volatile.Write(ref commandSocketLive, 0);
+                        return;
+                    }
+                    if (result.Count > 0)
+                        message.Write(buffer, 0, result.Count);
+                } while (!result.EndOfMessage);
+
+                ClassroomCommand? command;
+                try
+                {
+                    command = JsonSerializer.Deserialize<ClassroomCommand>(message.ToArray(), JsonOptions);
+                }
+                catch (JsonException)
+                {
+                    continue;
+                }
+                if (command is null || command.Id == Guid.Empty) continue;
+                await ExecuteAndAckAsync(http, command, cancellationToken);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (WebSocketException)
+        {
+        }
+        catch (IOException)
+        {
+        }
+        finally
+        {
+            Volatile.Write(ref commandSocketLive, 0);
+        }
+    }
+
+    private async Task ExecuteAndAckAsync(HttpClient http, ClassroomCommand command, CancellationToken cancellationToken)
+    {
+        if (!handledCommands.TryAdd(command.Id, 0)) return;
+        TrimHandledCommands();
+
+        CommandReceived?.Invoke(command);
+        CommandExecutionResult result;
+        try
+        {
+            if (command.Kind == ClassroomCommandKinds.SyncNow) nextSyncAt = DateTimeOffset.MinValue;
+            if (command.Kind == ClassroomCommandKinds.Configure && command.Payload.ValueKind == JsonValueKind.Object
+                && command.Payload.TryGetProperty("sync_seconds", out var seconds) && seconds.TryGetInt32(out var configured))
+                syncSeconds = Math.Clamp(configured, 15, 3600);
+            result = TryHandleVpnCommand(command)
+                ?? (CommandHandler is null
+                    ? new CommandExecutionResult(false, "Обработчик команд не настроен.")
+                    : await CommandHandler(command, cancellationToken));
+        }
+        catch (Exception error)
+        {
+            result = new CommandExecutionResult(false, error.Message);
+        }
+        var acknowledgement = new CommandAcknowledgement(command.Id, result.Succeeded, result.Error);
+        using var response = await http.PostAsJsonAsync(
+            $"/commands/{command.Id}/ack?client_id={Uri.EscapeDataString(clientId)}",
+            acknowledgement,
+            JsonOptions,
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
+
+    private void TrimHandledCommands()
+    {
+        if (handledCommands.Count < 400) return;
+        foreach (var key in handledCommands.Keys.Take(handledCommands.Count - 200))
+            handledCommands.TryRemove(key, out _);
+    }
+
+    private async Task CloseCommandSocketAsync()
+    {
+        Volatile.Write(ref commandSocketLive, 0);
+        var socket = Interlocked.Exchange(ref commandSocket, null);
+        if (socket is null) return;
+        try
+        {
+            if (socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
+                await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "bye", CancellationToken.None);
+        }
+        catch
+        {
+        }
+        socket.Dispose();
     }
 
     private async Task LoadRosterAsync(HttpClient http, CancellationToken cancellationToken)
     {
         var students = await http.GetFromJsonAsync<List<StudentSummary>>("/students", JsonOptions, cancellationToken) ?? [];
+        try
+        {
+            using var health = await http.GetAsync("/health", cancellationToken);
+            if (health.IsSuccessStatusCode)
+            {
+                await using var stream = await health.Content.ReadAsStreamAsync(cancellationToken);
+                using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+                if (document.RootElement.TryGetProperty("preferred_group", out var group) && group.ValueKind == JsonValueKind.String)
+                    PreferredGroupName = group.GetString();
+            }
+        }
+        catch
+        {
+        }
+
         StudentsAvailable?.Invoke(students);
     }
 
@@ -339,6 +495,7 @@ public sealed class StudentAgent : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await lifetime.CancelAsync();
+        await CloseCommandSocketAsync();
         if (loopTask is not null)
         {
             try { await loopTask; } catch (OperationCanceledException) { }

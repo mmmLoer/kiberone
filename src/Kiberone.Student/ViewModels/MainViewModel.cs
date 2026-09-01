@@ -73,6 +73,9 @@ public partial class MainViewModel : ViewModelBase
     public Action? WatchdogDisabled { get; set; }
     public Action<Guid, int>? QuizAnswerRequested { get; set; }
     public Action<Guid>? StudentSelected { get; set; }
+    public Action<bool>? ScreenLockChanged { get; set; }
+
+    partial void OnIsScreenLockedChanged(bool value) => ScreenLockChanged?.Invoke(value);
 
     public void HandleCharacter(char character)
     {
@@ -205,7 +208,7 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnTargetTextChanged(string value) => OnPropertyChanged(nameof(LessonMeta));
 
-    public void SetStudents(IReadOnlyList<StudentSummary> students)
+    public void SetStudents(IReadOnlyList<StudentSummary> students, string? preferredGroup = null)
     {
         var selectedId = SelectedStudent?.Id;
         var previousGroup = SelectedLoginGroup;
@@ -217,6 +220,7 @@ public partial class MainViewModel : ViewModelBase
             LoginGroups.Add(group);
 
         SelectedLoginGroup = LoginGroups.FirstOrDefault(x => x == previousGroup)
+            ?? LoginGroups.FirstOrDefault(x => !string.IsNullOrWhiteSpace(preferredGroup) && x == preferredGroup)
             ?? LoginGroups.FirstOrDefault(x => Students.Any(s => s.Id == selectedId && s.Group == x))
             ?? LoginGroups.FirstOrDefault();
         RebuildLoginStudents(selectedId);
