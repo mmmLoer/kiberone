@@ -34,6 +34,7 @@ public sealed class ClassroomDbContext(DbContextOptions<ClassroomDbContext> opti
             entity.HasKey(x => x.Id);
             entity.HasIndex(x => x.Name).IsUnique();
             entity.Property(x => x.Name).HasMaxLength(120);
+            entity.Property(x => x.Location).HasMaxLength(80);
             entity.HasMany(x => x.ProgramModules).WithOne(x => x.Group).HasForeignKey(x => x.GroupId).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<GroupProgramModule>(entity =>

@@ -73,4 +73,41 @@ public partial class MainWindow : Window
         });
         return files.Count == 0 ? null : files[0].TryGetLocalPath();
     }
+
+    public async Task<IReadOnlyList<string>> PickStarterFilesAsync()
+    {
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Файлы стартового пакета",
+            AllowMultiple = true
+        });
+        return files.Select(file => file.TryGetLocalPath()).Where(path => !string.IsNullOrWhiteSpace(path)).Cast<string>().ToList();
+    }
+
+    public async Task<string?> PickStarterFolderAsync()
+    {
+        var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "Папка в стартовый пакет",
+            AllowMultiple = false
+        });
+        return folders.Count == 0 ? null : folders[0].TryGetLocalPath();
+    }
+
+    public async Task<string?> PickWallpaperFileAsync()
+    {
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Обои для компьютеров учеников",
+            AllowMultiple = false,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("Изображения")
+                {
+                    Patterns = ["*.jpg", "*.jpeg", "*.png", "*.bmp", "*.webp"]
+                }
+            ]
+        });
+        return files.Count == 0 ? null : files[0].TryGetLocalPath();
+    }
 }

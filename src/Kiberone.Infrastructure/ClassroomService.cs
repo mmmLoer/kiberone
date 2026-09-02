@@ -5,10 +5,13 @@ namespace Kiberone.Infrastructure;
 
 public sealed class ClassroomService(DbContextOptions<ClassroomDbContext> options)
 {
-    public async Task<IReadOnlyList<ClassroomGroup>> ListGroupsAsync(CancellationToken ct = default)
+    public async Task<IReadOnlyList<ClassroomGroup>> ListGroupsAsync(string? location = null, CancellationToken ct = default)
     {
         await using var db = new ClassroomDbContext(options);
-        return await db.Groups.AsNoTracking().Include(x => x.Students).OrderBy(x => x.Name).ToListAsync(ct);
+        var query = db.Groups.AsNoTracking().Include(x => x.Students).AsQueryable();
+        if (!string.IsNullOrWhiteSpace(location))
+            query = query.Where(x => x.Location == location);
+        return await query.OrderBy(x => x.Name).ToListAsync(ct);
     }
 
     public async Task<ClassroomGroup> CreateGroupAsync(GroupDraft draft, CancellationToken ct = default)
@@ -21,7 +24,8 @@ public sealed class ClassroomService(DbContextOptions<ClassroomDbContext> option
         {
             Name = name,
             Module = Trim(draft.Module, 160),
-            Topics = Trim(draft.Topics, 1000)
+            Topics = Trim(draft.Topics, 1000),
+            Location = Trim(draft.Location, 80)
         };
         db.Groups.Add(group);
         await db.SaveChangesAsync(ct);
@@ -39,15 +43,18 @@ public sealed class ClassroomService(DbContextOptions<ClassroomDbContext> option
         group.Name = name;
         group.Module = Trim(draft.Module, 160);
         group.Topics = Trim(draft.Topics, 1000);
+        group.Location = Trim(draft.Location, 80);
         await db.SaveChangesAsync(ct);
         return group;
     }
 
-    public async Task<IReadOnlyList<StudentSummary>> ListStudentsAsync(Guid? groupId = null, string? query = null, CancellationToken ct = default)
+    public async Task<IReadOnlyList<StudentSummary>> ListStudentsAsync(Guid? groupId = null, string? query = null, string? location = null, CancellationToken ct = default)
     {
         await using var db = new ClassroomDbContext(options);
         var students = db.Students.AsNoTracking().Include(x => x.Group).AsQueryable();
         if (groupId is not null) students = students.Where(x => x.GroupId == groupId);
+        if (!string.IsNullOrWhiteSpace(location))
+            students = students.Where(x => x.Group != null && x.Group.Location == location);
         if (!string.IsNullOrWhiteSpace(query))
         {
             var normalized = query.Trim();
@@ -395,6 +402,18 @@ public sealed class ClassroomService(DbContextOptions<ClassroomDbContext> option
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<string>> ListKnownModulesAsync(CancellationToken ct = default)
+    {
+        await using var db = new ClassroomDbContext(options);
+        var fromProgram = await db.GroupProgramModules.AsNoTracking().Select(x => x.Name).ToListAsync(ct);
+        var fromGroups = await db.Groups.AsNoTracking().Select(x => x.Module).ToListAsync(ct);
+        return fromProgram.Concat(fromGroups)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     public async Task<GroupProgramModule?> ApplyCurrentModuleAsync(Guid groupId, DateOnly? today = null, CancellationToken ct = default)
     {
         var day = today ?? DateOnly.FromDateTime(DateTime.Today);
@@ -414,49 +433,63 @@ public sealed class ClassroomService(DbContextOptions<ClassroomDbContext> option
 
     public async Task<int> ImportShbProgramAsync(CancellationToken ct = default)
     {
-        var catalog = ProgramCatalog.LoadShb2026();
+        var catalog = ProgramCatalog.Load2026();
         await using var db = new ClassroomDbContext(options);
         var imported = 0;
-        foreach (var item in catalog)
+        foreach (var location in catalog)
         {
-            var name = Required(item.Name, "Название группы", 120);
-            var group = await db.Groups.SingleOrDefaultAsync(x => x.Name == name, ct);
-            if (group is null)
+            var locationName = Trim(location.Name, 80);
+            foreach (var item in location.Groups)
             {
-                group = new ClassroomGroup { Name = name, Module = string.Empty, Topics = "ШБ 2026-2027" };
-                db.Groups.Add(group);
-                await db.SaveChangesAsync(ct);
-            }
-            else if (string.IsNullOrWhiteSpace(group.Topics))
-                group.Topics = "ШБ 2026-2027";
-
-            await db.Database.ExecuteSqlRawAsync(
-                "DELETE FROM group_program_modules WHERE upper(GroupId) = upper({0})",
-                [group.Id.ToString()],
-                ct);
-
-            var modules = new List<GroupProgramModule>();
-            var order = 0;
-            foreach (var module in item.Modules)
-            {
-                if (!DateOnly.TryParse(module.Start, out var start) || !DateOnly.TryParse(module.End, out var end))
-                    continue;
-                modules.Add(new GroupProgramModule
+                var name = Required(item.Name, "Название группы", 120);
+                var group = await db.Groups.SingleOrDefaultAsync(x => x.Name == name, ct);
+                if (group is null)
                 {
-                    GroupId = group.Id,
-                    Name = Trim(module.Name, 240),
-                    StartDate = start,
-                    EndDate = end,
-                    LessonCount = Math.Max(0, module.Lessons ?? 0),
-                    Comment = Trim(module.Comment, 500),
-                    SortOrder = order++
-                });
+                    group = new ClassroomGroup
+                    {
+                        Name = name,
+                        Module = string.Empty,
+                        Topics = location.Sheet,
+                        Location = locationName
+                    };
+                    db.Groups.Add(group);
+                    await db.SaveChangesAsync(ct);
+                }
+                else
+                {
+                    group.Location = locationName;
+                    if (string.IsNullOrWhiteSpace(group.Topics))
+                        group.Topics = location.Sheet;
+                }
+
+                await db.Database.ExecuteSqlRawAsync(
+                    "DELETE FROM group_program_modules WHERE upper(GroupId) = upper({0})",
+                    [group.Id.ToString()],
+                    ct);
+
+                var modules = new List<GroupProgramModule>();
+                var order = 0;
+                foreach (var module in item.Modules)
+                {
+                    if (!DateOnly.TryParse(module.Start, out var start) || !DateOnly.TryParse(module.End, out var end))
+                        continue;
+                    modules.Add(new GroupProgramModule
+                    {
+                        GroupId = group.Id,
+                        Name = Trim(module.Name, 240),
+                        StartDate = start,
+                        EndDate = end,
+                        LessonCount = Math.Max(0, module.Lessons ?? 0),
+                        Comment = Trim(module.Comment, 500),
+                        SortOrder = order++
+                    });
+                }
+                db.GroupProgramModules.AddRange(modules);
+                var current = ProgramCalendar.Pick(modules, DateOnly.FromDateTime(DateTime.Today));
+                if (current is not null)
+                    group.Module = current.Name;
+                imported++;
             }
-            db.GroupProgramModules.AddRange(modules);
-            var current = ProgramCalendar.Pick(modules, DateOnly.FromDateTime(DateTime.Today));
-            if (current is not null)
-                group.Module = current.Name;
-            imported++;
         }
         await db.SaveChangesAsync(ct);
         return imported;

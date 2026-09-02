@@ -64,7 +64,7 @@ public sealed class AssetDistributionServiceTests : IDisposable
     [Fact]
     public void StarterFolder_IsDeliveredAsZip()
     {
-        var folder = Path.Combine(root, "app", "starter-pack", "Python Start");
+        var folder = Path.Combine(root, "data", "starter-pack", "Python Start");
         Directory.CreateDirectory(Path.Combine(folder, "src"));
         File.WriteAllText(Path.Combine(folder, "src", "main.py"), "print('KIBERone')");
 
@@ -74,6 +74,45 @@ public sealed class AssetDistributionServiceTests : IDisposable
 
         Assert.Equal("Python Start.zip", download.FileName);
         Assert.Contains(archive.Entries, x => x.FullName == "src/main.py");
+    }
+
+    [Fact]
+    public void StarterFileAndWallpaper_AreStoredInDataFolder()
+    {
+        var installer = Path.Combine(root, "UnityHubSetup.exe");
+        File.WriteAllText(installer, "setup");
+        service.AddStarterFile(installer);
+        var notes = Path.Combine(root, "notes");
+        Directory.CreateDirectory(notes);
+        File.WriteAllText(Path.Combine(notes, "readme.txt"), "go");
+        service.AddStarterFolder(notes);
+        var wallpaper = Path.Combine(root, "wall.jpg");
+        File.WriteAllBytes(wallpaper, [0xFF, 0xD8, 0xFF, 0xD9, 1, 2, 3, 4]);
+        service.SetWallpaper(wallpaper);
+
+        var pack = service.ListStarterPack();
+        Assert.Contains(pack, x => x.Name == "UnityHubSetup.exe" && x.RunsInstaller);
+        Assert.Contains(pack, x => x.Name == "notes" && x.Kind == "folder");
+        Assert.Equal("desktop.jpg", service.GetWallpaper()?.Name);
+        using var opened = service.OpenWallpaper()!.Content;
+        Assert.True(opened.Length > 0);
+
+        service.RemoveStarterAsset("UnityHubSetup.exe");
+        Assert.DoesNotContain(service.ListStarterPack(), x => x.Name == "UnityHubSetup.exe");
+    }
+
+    [Fact]
+    public void TopLevelInstallers_AreDetected_NestedExecutablesAreIgnored()
+    {
+        var folder = Path.Combine(root, "game");
+        Directory.CreateDirectory(Path.Combine(folder, "bin"));
+        File.WriteAllText(Path.Combine(folder, "Setup.exe"), "installer");
+        File.WriteAllText(Path.Combine(folder, "bin", "game.exe"), "payload");
+
+        Assert.True(StarterPackRules.IsInstallerFile("Setup.exe"));
+        Assert.False(StarterPackRules.IsInstallerFile("readme.txt"));
+        Assert.Contains(StarterPackRules.FindTopLevelInstallers(folder), path => path.EndsWith("Setup.exe", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(StarterPackRules.FindTopLevelInstallers(folder), path => path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"));
     }
 
     [Fact]

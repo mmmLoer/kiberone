@@ -5,26 +5,46 @@ using Kiberone.Core;
 
 namespace Kiberone.Infrastructure;
 
-public sealed record DistributedAsset(string Name, long Size, string Kind);
+public sealed record DistributedAsset(string Name, long Size, string Kind, string Sha256 = "", bool RunsInstaller = false);
 public sealed record DistributedAssetDownload(Stream Content, string FileName, string ContentType);
 public sealed record StudentReleaseManifest(string Version, string Filename, long Size, string Sha256, DateTimeOffset PublishedAt);
 
 public sealed class AssetDistributionService
 {
     private const long MaxScreenBytes = 2L * 1024 * 1024;
+    private const long MaxStarterBytes = 1024L * 1024 * 1024;
+    private const long MaxWallpaperBytes = 12L * 1024 * 1024;
     private readonly string updatesRoot;
     private readonly string deployRoot;
     private readonly string starterRoot;
+    private readonly string wallpaperRoot;
     private readonly string screensRoot;
 
     public AssetDistributionService(string applicationRoot, string dataRoot)
     {
         updatesRoot = Path.Combine(applicationRoot, "updates");
         deployRoot = Path.Combine(applicationRoot, "deploy");
-        starterRoot = Path.Combine(applicationRoot, "starter-pack");
+        var bundledStarter = Path.Combine(applicationRoot, "starter-pack");
+        starterRoot = Path.Combine(dataRoot, "starter-pack");
+        wallpaperRoot = Path.Combine(dataRoot, "wallpaper");
         screensRoot = Path.Combine(dataRoot, "screens");
+        Directory.CreateDirectory(starterRoot);
+        Directory.CreateDirectory(wallpaperRoot);
         Directory.CreateDirectory(screensRoot);
+        if (Directory.Exists(bundledStarter) && !Directory.EnumerateFileSystemEntries(starterRoot).Any())
+        {
+            foreach (var entry in Directory.EnumerateFileSystemEntries(bundledStarter))
+            {
+                var name = Path.GetFileName(entry);
+                if (string.IsNullOrWhiteSpace(name) || name.StartsWith('.')) continue;
+                var target = Path.Combine(starterRoot, name);
+                if (Directory.Exists(entry)) CopyDirectory(entry, target);
+                else File.Copy(entry, target, true);
+            }
+        }
     }
+
+    public string StarterPackFolder => starterRoot;
 
     public StudentReleaseManifest? GetStudentRelease()
     {
@@ -59,10 +79,71 @@ public sealed class AssetDistributionService
     }
 
     public IReadOnlyList<DistributedAsset> ListStarterPack() => ListAssets(starterRoot);
+
+    public void AddStarterFile(string sourcePath)
+    {
+        if (!File.Exists(sourcePath)) throw new LessonValidationException(["Файл стартового пакета не найден."]);
+        var info = new FileInfo(sourcePath);
+        if (info.Length > MaxStarterBytes) throw new LessonValidationException(["Файл стартового пакета больше 1 ГБ."]);
+        Directory.CreateDirectory(starterRoot);
+        var destination = UniquePath(starterRoot, Path.GetFileName(sourcePath));
+        File.Copy(sourcePath, destination);
+    }
+
+    public void AddStarterFolder(string sourcePath)
+    {
+        if (!Directory.Exists(sourcePath)) throw new LessonValidationException(["Папка стартового пакета не найдена."]);
+        Directory.CreateDirectory(starterRoot);
+        var destination = UniquePath(starterRoot, Path.GetFileName(sourcePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)));
+        CopyDirectory(sourcePath, destination);
+    }
+
+    public void RemoveStarterAsset(string name)
+    {
+        var path = ResolveStarterPath(name);
+        if (File.Exists(path)) File.Delete(path);
+        else if (Directory.Exists(path)) Directory.Delete(path, true);
+        else throw new KeyNotFoundException("Элемент стартового пакета не найден.");
+    }
+
+    public void SetWallpaper(string sourcePath)
+    {
+        if (!File.Exists(sourcePath)) throw new LessonValidationException(["Файл обоев не найден."]);
+        var info = new FileInfo(sourcePath);
+        if (info.Length > MaxWallpaperBytes) throw new LessonValidationException(["Файл обоев больше 12 МБ."]);
+        var extension = Path.GetExtension(sourcePath).ToLowerInvariant();
+        if (extension is not (".jpg" or ".jpeg" or ".png" or ".bmp" or ".webp"))
+            throw new LessonValidationException(["Обои: JPG, PNG или BMP."]);
+        Directory.CreateDirectory(wallpaperRoot);
+        foreach (var leftover in Directory.EnumerateFileSystemEntries(wallpaperRoot))
+        {
+            if (File.Exists(leftover)) File.Delete(leftover);
+            else Directory.Delete(leftover, true);
+        }
+        File.Copy(sourcePath, Path.Combine(wallpaperRoot, "desktop" + extension.ToLowerInvariant()));
+    }
+
+    public DistributedAsset? GetWallpaper() => ListAssets(wallpaperRoot).FirstOrDefault();
+
+    public DistributedAssetDownload? OpenWallpaper()
+    {
+        var wallpaper = GetWallpaper();
+        if (wallpaper is null) return null;
+        var path = Path.Combine(wallpaperRoot, wallpaper.Name);
+        if (!File.Exists(path)) return null;
+        var type = Path.GetExtension(path).ToLowerInvariant() switch
+        {
+            ".png" => "image/png",
+            ".bmp" => "image/bmp",
+            ".webp" => "image/webp",
+            _ => "image/jpeg"
+        };
+        return new DistributedAssetDownload(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read), wallpaper.Name, type);
+    }
+
     public DistributedAssetDownload? OpenStarterAsset(string name)
     {
-        if (!IsSafeName(name)) throw new LessonValidationException(["Некорректное имя стартового пакета."]);
-        var path = Path.Combine(starterRoot, name);
+        var path = ResolveStarterPath(name);
         if (File.Exists(path)) return new DistributedAssetDownload(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read), name, "application/octet-stream");
         if (!Directory.Exists(path)) return null;
         var memory = new MemoryStream();
@@ -74,7 +155,7 @@ public sealed class AssetDistributionService
                 var info = new FileInfo(file);
                 if ((info.Attributes & FileAttributes.ReparsePoint) != 0) continue;
                 total += info.Length;
-                if (total > 200L * 1024 * 1024) throw new LessonValidationException(["Папка стартового пакета превышает 200 МБ."]);
+                if (total > MaxStarterBytes) throw new LessonValidationException(["Папка стартового пакета превышает 1 ГБ."]);
                 var entry = archive.CreateEntry(Path.GetRelativePath(path, file).Replace('\\', '/'), CompressionLevel.Fastest);
                 using var source = File.OpenRead(file);
                 using var destination = entry.Open();
@@ -118,16 +199,103 @@ public sealed class AssetDistributionService
         return File.Exists(path) ? new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite) : null;
     }
 
-    private static IReadOnlyList<DistributedAsset> ListAssets(string root) => Directory.Exists(root)
-        ? Directory.EnumerateFileSystemEntries(root).Select(path => new DistributedAsset(Path.GetFileName(path), File.Exists(path) ? new FileInfo(path).Length : 0, File.Exists(path) ? "file" : "folder")).OrderBy(x => x.Name).ToList()
-        : [];
+    private static IReadOnlyList<DistributedAsset> ListAssets(string root)
+    {
+        if (!Directory.Exists(root)) return [];
+        return Directory.EnumerateFileSystemEntries(root)
+            .Where(path => !Path.GetFileName(path).StartsWith('.'))
+            .Select(path =>
+            {
+                var name = Path.GetFileName(path);
+                if (File.Exists(path))
+                {
+                    var info = new FileInfo(path);
+                    return new DistributedAsset(name, info.Length, "file", HashFile(path), StarterPackRules.IsInstallerFile(name));
+                }
+                return new DistributedAsset(name, FolderSize(path), "folder", HashFolder(path), StarterPackRules.HasTopLevelInstaller(path));
+            })
+            .OrderBy(x => x.Name)
+            .ToList();
+    }
+    private string ResolveStarterPath(string name)
+    {
+        if (!IsSafeName(name)) throw new LessonValidationException(["Некорректное имя стартового пакета."]);
+        return Path.Combine(starterRoot, name);
+    }
+    private static void CopyDirectory(string source, string destination)
+    {
+        Directory.CreateDirectory(destination);
+        long total = 0;
+        foreach (var directory in Directory.EnumerateDirectories(source, "*", SearchOption.AllDirectories))
+        {
+            if ((File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0) continue;
+            Directory.CreateDirectory(Path.Combine(destination, Path.GetRelativePath(source, directory)));
+        }
+        foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+        {
+            var info = new FileInfo(file);
+            if ((info.Attributes & FileAttributes.ReparsePoint) != 0) continue;
+            total += info.Length;
+            if (total > MaxStarterBytes) throw new LessonValidationException(["Папка стартового пакета превышает 1 ГБ."]);
+            var target = Path.Combine(destination, Path.GetRelativePath(source, file));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(file, target);
+        }
+    }
+    private static string UniquePath(string directory, string name)
+    {
+        var safe = SanitizeFileName(name);
+        var destination = Path.Combine(directory, safe);
+        if (!Path.Exists(destination)) return destination;
+        var stem = Path.GetFileNameWithoutExtension(safe);
+        var extension = Path.GetExtension(safe);
+        for (var index = 2; index < 100; index++)
+        {
+            destination = Path.Combine(directory, $"{stem} {index}{extension}");
+            if (!Path.Exists(destination)) return destination;
+        }
+        throw new InvalidOperationException("Не удалось подобрать имя для файла пакета.");
+    }
+    private static string SanitizeFileName(string name)
+    {
+        var fileName = Path.GetFileName(name.Trim());
+        if (string.IsNullOrWhiteSpace(fileName) || fileName.StartsWith('.'))
+            throw new LessonValidationException(["Некорректное имя файла пакета."]);
+        foreach (var character in Path.GetInvalidFileNameChars())
+            fileName = fileName.Replace(character, '_');
+        if (!IsSafeName(fileName)) throw new LessonValidationException(["Некорректное имя файла пакета."]);
+        return fileName;
+    }
+    private static string HashFile(string path)
+    {
+        using var stream = File.OpenRead(path);
+        return Convert.ToHexString(SHA256.HashData(stream));
+    }
+    private static string HashFolder(string path)
+    {
+        using var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories).OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+        {
+            var info = new FileInfo(file);
+            if ((info.Attributes & FileAttributes.ReparsePoint) != 0) continue;
+            hasher.AppendData(System.Text.Encoding.UTF8.GetBytes(Path.GetRelativePath(path, file).Replace('\\', '/')));
+            hasher.AppendData(BitConverter.GetBytes(info.Length));
+            hasher.AppendData(BitConverter.GetBytes(info.LastWriteTimeUtc.Ticks));
+        }
+        return Convert.ToHexString(hasher.GetHashAndReset());
+    }
+    private static long FolderSize(string path) =>
+        Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories)
+            .Select(file => new FileInfo(file))
+            .Where(info => (info.Attributes & FileAttributes.ReparsePoint) == 0)
+            .Sum(info => info.Length);
     private static Stream? OpenAsset(string root, string name)
     {
         if (!IsSafeName(name)) throw new LessonValidationException(["Некорректное имя deploy-файла."]);
         var path = Path.Combine(root, name);
         return File.Exists(path) ? new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read) : null;
     }
-    private static bool IsSafeName(string name) => !string.IsNullOrWhiteSpace(name) && name == Path.GetFileName(name) && name.IndexOfAny(Path.GetInvalidFileNameChars()) < 0;
+    private static bool IsSafeName(string name) => !string.IsNullOrWhiteSpace(name) && name == Path.GetFileName(name) && name.IndexOfAny(Path.GetInvalidFileNameChars()) < 0 && !name.StartsWith('.');
     private static string SafeKey(string value)
     {
         if (string.IsNullOrWhiteSpace(value)) throw new LessonValidationException(["client_id обязателен."]);

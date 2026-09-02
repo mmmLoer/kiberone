@@ -14,6 +14,7 @@
     <ProjectReference Include="..\Kiberone.Core\Kiberone.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="Data\program-2026-2027.json" />
     <EmbeddedResource Include="Data\shb-2026-2027.json" />
   </ItemGroup>
 </Project>

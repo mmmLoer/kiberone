@@ -14,7 +14,7 @@
             <TextBlock Text="KIBER" FontSize="20" FontWeight="ExtraBold" Classes="teal" />
             <TextBlock Text="ONE" FontSize="20" FontWeight="ExtraBold" Foreground="{DynamicResource BrandInkBrush}" />
           </StackPanel>
-          <TextBlock Text="CLASSROOM · ТЬЮТОР" Classes="eyebrow" />
+          <TextBlock Text="KIBERone" Classes="eyebrow" />
         </StackPanel>
         <ScrollViewer Grid.Row="1" Margin="0,10,0,10" VerticalScrollBarVisibility="Auto">
           <StackPanel Spacing="2">
@@ -34,12 +34,12 @@
 
             <TextBlock Text="ДАННЫЕ" Classes="eyebrow" Margin="13,14,0,6"/>
             <Button Content="Сохранения" Command="{Binding NavigateCommand}" CommandParameter="4" Classes="nav compact" Classes.active="{Binding IsSection4}"/>
-            <Button Content="Модули и версии" Command="{Binding NavigateCommand}" CommandParameter="12" Classes="nav compact" Classes.active="{Binding IsSection12}"/>
-            <Button Content="Сравнение версии" Command="{Binding NavigateCommand}" CommandParameter="13" Classes="nav compact" Classes.active="{Binding IsSection13}"/>
-            <Button Content="Журнал аудита" Command="{Binding NavigateCommand}" CommandParameter="17" Classes="nav compact" Classes.active="{Binding IsSection17}"/>
+            <Button Content="Софт класса" Command="{Binding NavigateCommand}" CommandParameter="12" Classes="nav compact" Classes.active="{Binding IsSection12}"/>
+            <Button Content="Восстановление" Command="{Binding NavigateCommand}" CommandParameter="13" Classes="nav compact" Classes.active="{Binding IsSection13}"/>
+            <Button Content="Журнал" Command="{Binding NavigateCommand}" CommandParameter="17" Classes="nav compact" Classes.active="{Binding IsSection17}"/>
 
             <TextBlock Text="СИСТЕМА" Classes="eyebrow" Margin="13,14,0,6"/>
-            <Button Content="Сервер и локация" Command="{Binding NavigateCommand}" CommandParameter="11" Classes="nav compact" Classes.active="{Binding IsSection11}"/>
+            <Button Content="Этот класс" Command="{Binding NavigateCommand}" CommandParameter="11" Classes="nav compact" Classes.active="{Binding IsSection11}"/>
             <Button Content="Настройки" Command="{Binding NavigateCommand}" CommandParameter="15" Classes="nav compact" Classes.active="{Binding IsSection15}"/>
           </StackPanel>
         </ScrollViewer>
@@ -47,7 +47,7 @@
           <Grid ColumnDefinitions="Auto,*">
             <Border Width="9" Height="9" CornerRadius="100" Background="{DynamicResource TealBrush}" VerticalAlignment="Top" Margin="0,5,9,0" />
             <StackPanel Grid.Column="1" Spacing="2">
-              <TextBlock Text="Сервер · 8765" FontWeight="Bold" FontSize="13" />
+              <TextBlock Text="Класс на связи" FontWeight="Bold" FontSize="13" />
               <TextBlock Text="{Binding ConnectedClientLabel}" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
             </StackPanel>
           </Grid>
@@ -58,7 +58,6 @@
     <Border Grid.Column="1" Classes="headerBar" BorderThickness="0,0,0,1">
       <Grid ColumnDefinitions="*,Auto" Margin="24,0">
         <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
-          <TextBlock Text="КОНСОЛЬ ТЬЮТОРА" Classes="eyebrow" Margin="0,0,0,3" />
           <TextBlock Text="{Binding SectionTitle}" FontSize="22" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
           <TextBlock Text="{Binding SectionSubtitle}" Classes="muted" FontSize="12" TextTrimming="CharacterEllipsis" />
         </StackPanel>
@@ -118,7 +117,7 @@
               </ItemsControl.ItemTemplate>
             </ItemsControl>
 
-            <SplitView Grid.Row="1" DisplayMode="Inline" PanePlacement="Right" OpenPaneLength="280" CompactPaneLength="0"
+            <SplitView Grid.Row="1" DisplayMode="Inline" PanePlacement="Right" OpenPaneLength="320" CompactPaneLength="0"
                        IsPaneOpen="{Binding IsClassPanelOpen}">
               <SplitView.Pane>
                 <Border Classes="card" Margin="16,0,0,0" Padding="18">
@@ -133,28 +132,33 @@
                       </Grid>
 
                       <StackPanel Spacing="6" IsVisible="{Binding HasSelectedClassStudent}">
-                        <TextBlock Text="Этому ученику" Classes="eyebrow" />
+                        <TextBlock Text="Модуль на этот урок" Classes="eyebrow" />
+                        <ComboBox ItemsSource="{Binding ClassLessonModules}" SelectedItem="{Binding SelectedClassLessonModule}" HorizontalAlignment="Stretch" MinWidth="0" />
+                        <TextBlock Text="Сохранения этого ученика пойдут в выбранный модуль. Остальные работают как обычно." Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                        <TextBlock Text="Этому ученику" Classes="eyebrow" Margin="0,8,0,0" />
                         <Button Content="Заблокировать экран" Classes="commandRow" Command="{Binding StudentLockCommand}" CommandParameter="{Binding SelectedClassStudent}" />
                         <Button Content="Разблокировать экран" Classes="commandRow" Command="{Binding StudentUnlockCommand}" CommandParameter="{Binding SelectedClassStudent}" />
-                        <Button Content="Watchdog вкл" Classes="commandRow" Command="{Binding StudentWatchdogOnCommand}" CommandParameter="{Binding SelectedClassStudent}" />
-                        <Button Content="Watchdog выкл" Classes="commandRow" Command="{Binding StudentWatchdogOffCommand}" CommandParameter="{Binding SelectedClassStudent}" />
-                        <Button Content="Фокус вкл" Classes="commandRow" Command="{Binding StudentFocusOnCommand}" CommandParameter="{Binding SelectedClassStudent}" />
-                        <Button Content="Фокус выкл" Classes="commandRow" Command="{Binding StudentFocusOffCommand}" CommandParameter="{Binding SelectedClassStudent}" />
-                        <Button Content="Синхронизировать" Classes="commandRow" Command="{Binding StudentSyncCommand}" CommandParameter="{Binding SelectedClassStudent}" />
+                        <Button Content="Не закрывать приложение" Classes="commandRow" Command="{Binding StudentWatchdogOnCommand}" CommandParameter="{Binding SelectedClassStudent}" />
+                        <Button Content="Можно закрыть приложение" Classes="commandRow" Command="{Binding StudentWatchdogOffCommand}" CommandParameter="{Binding SelectedClassStudent}" />
+                        <Button Content="Только нужные окна" Classes="commandRow" Command="{Binding StudentFocusOnCommand}" CommandParameter="{Binding SelectedClassStudent}" />
+                        <Button Content="Все окна" Classes="commandRow" Command="{Binding StudentFocusOffCommand}" CommandParameter="{Binding SelectedClassStudent}" />
+                        <Button Content="Обновить сохранения" Classes="commandRow" Command="{Binding StudentSyncCommand}" CommandParameter="{Binding SelectedClassStudent}" />
                         <Button Content="Отправить сообщение" Classes="commandRow" Command="{Binding StudentMessageCommand}" CommandParameter="{Binding SelectedClassStudent}" />
-                        <Button Content="Папка ученика" Classes="commandRow" Command="{Binding OpenStudentFolderCommand}" CommandParameter="{Binding SelectedClassStudent}" />
+                        <Button Content="Папка работ" Classes="commandRow" Command="{Binding OpenStudentFolderCommand}" CommandParameter="{Binding SelectedClassStudent}" />
                       </StackPanel>
 
                       <StackPanel Spacing="6">
                         <TextBlock Text="Всему классу" Classes="eyebrow" />
                         <Button Content="Заблокировать экраны" Classes="commandRow" Command="{Binding LockAllCommand}" />
                         <Button Content="Разблокировать экраны" Classes="commandRow" Command="{Binding UnlockAllCommand}" />
-                        <Button Content="Watchdog вкл" Classes="commandRow" Command="{Binding WatchdogAllOnCommand}" />
-                        <Button Content="Watchdog выкл" Classes="commandRow" Command="{Binding WatchdogAllOffCommand}" />
-                        <Button Content="Фокус вкл" Classes="commandRow" Command="{Binding FocusAllOnCommand}" />
-                        <Button Content="Синхронизировать всех" Classes="commandRow" Command="{Binding SyncAllNowCommand}" />
+                        <Button Content="Не закрывать приложения" Classes="commandRow" Command="{Binding WatchdogAllOnCommand}" />
+                        <Button Content="Можно закрыть приложения" Classes="commandRow" Command="{Binding WatchdogAllOffCommand}" />
+                        <Button Content="Только нужные окна" Classes="commandRow" Command="{Binding FocusAllOnCommand}" />
+                        <Button Content="Обновить сохранения у всех" Classes="commandRow" Command="{Binding SyncAllNowCommand}" />
                         <TextBox Text="{Binding ClassroomMessage}" Watermark="Сообщение классу" />
                         <Button Content="Отправить всем" Classes="primary commandRow" Command="{Binding SendMessageAllCommand}" HorizontalContentAlignment="Center" />
+                        <Button Content="Раздать стартовый пакет" Classes="commandRow" Command="{Binding PushStarterPackCommand}" />
+                        <Button Content="Поставить обои на все ПК" Classes="commandRow" Command="{Binding PushWallpaperCommand}" />
                       </StackPanel>
                     </StackPanel>
                   </ScrollViewer>
@@ -166,14 +170,14 @@
                   <Grid ColumnDefinitions="*,Auto">
                     <StackPanel>
                       <TextBlock Text="Состав класса" Classes="h2" />
-                      <TextBlock Text="Онлайн, батарея и время последнего обновления" Classes="muted" FontSize="13" Margin="0,4,0,0" />
+                      <TextBlock Text="Онлайн и модуль" Classes="muted" FontSize="13" Margin="0,4,0,0" />
                     </StackPanel>
                     <Button Grid.Column="1" Content="Команды" Classes="ghost" VerticalAlignment="Top" Command="{Binding SelectClassStudentCommand}" CommandParameter="{Binding SelectedClassStudent}" />
                   </Grid>
                   <Grid Grid.Row="1" ColumnDefinitions="*,*,*" Margin="0,14,0,12">
                     <StackPanel Spacing="4" Margin="0,0,8,0">
-                      <TextBlock Text="Текущая группа" Classes="muted" FontSize="11" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
-                      <ComboBox ItemsSource="{Binding Groups}" SelectedItem="{Binding ActiveClassGroup}" PlaceholderText="Для входа учеников" HorizontalAlignment="Stretch" MinWidth="0" />
+                      <TextBlock Text="Группа на урок" Classes="muted" FontSize="11" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
+                      <ComboBox ItemsSource="{Binding Groups}" SelectedItem="{Binding ActiveClassGroup}" PlaceholderText="Её увидят ученики при входе" HorizontalAlignment="Stretch" MinWidth="0" />
                     </StackPanel>
                     <StackPanel Grid.Column="1" Spacing="4" Margin="0,0,8,0">
                       <TextBlock Text="Фильтр группы" Classes="muted" FontSize="11" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
@@ -220,13 +224,13 @@
                                       <Border Classes="modeIcon" IsVisible="{Binding IsScreenLocked}" ToolTip.Tip="Экран заблокирован">
                                         <TextBlock Text="🔒" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                       </Border>
-                                      <Border Classes="modeIcon" IsVisible="{Binding IsWatchdogOn}" ToolTip.Tip="Watchdog включён">
+                                      <Border Classes="modeIcon" IsVisible="{Binding IsWatchdogOn}" ToolTip.Tip="Нельзя закрыть приложение">
                                         <TextBlock Text="🐕" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                       </Border>
                                       <Border Classes="modeIcon" IsVisible="{Binding IsFocusOn}" ToolTip.Tip="Фокус включён">
                                         <TextBlock Text="◎" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource TealBrush}" />
                                       </Border>
-                                      <Border Classes="modeIcon" IsVisible="{Binding IsVpnOn}" ToolTip.Tip="VPN включён">
+                                      <Border Classes="modeIcon" IsVisible="{Binding IsVpnOn}" ToolTip.Tip="Безопасная сеть">
                                         <TextBlock Text="🛡" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                       </Border>
                                     </StackPanel>
@@ -266,14 +270,14 @@
                           <MenuItem Header="{Binding Title}" IsEnabled="False" />
                           <MenuItem Header="Заблокировать экран" Command="{Binding #TutorRoot.DataContext.PcLockCommand}" CommandParameter="{Binding}" />
                           <MenuItem Header="Разблокировать экран" Command="{Binding #TutorRoot.DataContext.PcUnlockCommand}" CommandParameter="{Binding}" />
-                          <MenuItem Header="Watchdog вкл" Command="{Binding #TutorRoot.DataContext.PcWatchdogOnCommand}" CommandParameter="{Binding}" />
-                          <MenuItem Header="Watchdog выкл" Command="{Binding #TutorRoot.DataContext.PcWatchdogOffCommand}" CommandParameter="{Binding}" />
-                          <MenuItem Header="Фокус вкл" Command="{Binding #TutorRoot.DataContext.PcFocusOnCommand}" CommandParameter="{Binding}" />
-                          <MenuItem Header="Фокус выкл" Command="{Binding #TutorRoot.DataContext.PcFocusOffCommand}" CommandParameter="{Binding}" />
-                          <MenuItem Header="Синхронизировать" Command="{Binding #TutorRoot.DataContext.PcSyncCommand}" CommandParameter="{Binding}" />
+                          <MenuItem Header="Не закрывать приложение" Command="{Binding #TutorRoot.DataContext.PcWatchdogOnCommand}" CommandParameter="{Binding}" />
+                          <MenuItem Header="Можно закрыть приложение" Command="{Binding #TutorRoot.DataContext.PcWatchdogOffCommand}" CommandParameter="{Binding}" />
+                          <MenuItem Header="Только нужные окна" Command="{Binding #TutorRoot.DataContext.PcFocusOnCommand}" CommandParameter="{Binding}" />
+                          <MenuItem Header="Все окна" Command="{Binding #TutorRoot.DataContext.PcFocusOffCommand}" CommandParameter="{Binding}" />
+                          <MenuItem Header="Обновить сохранения" Command="{Binding #TutorRoot.DataContext.PcSyncCommand}" CommandParameter="{Binding}" />
                           <MenuItem Header="Отправить сообщение" Command="{Binding #TutorRoot.DataContext.PcMessageCommand}" CommandParameter="{Binding}" />
                           <Separator />
-                          <MenuItem Header="Папка ученика на сервере" Command="{Binding #TutorRoot.DataContext.OpenPcFolderCommand}" CommandParameter="{Binding}" />
+                          <MenuItem Header="Папка работ" Command="{Binding #TutorRoot.DataContext.OpenPcFolderCommand}" CommandParameter="{Binding}" />
                         </MenuFlyout>
                       </Button.Flyout>
                       <Border Classes="card" Width="246" Height="168" Padding="10">
@@ -840,14 +844,14 @@
                           <MenuItem Header="{Binding Title}" IsEnabled="False" />
                           <MenuItem Header="Заблокировать экран" Command="{Binding #TutorRoot.DataContext.PcLockCommand}" CommandParameter="{Binding}" />
                           <MenuItem Header="Разблокировать экран" Command="{Binding #TutorRoot.DataContext.PcUnlockCommand}" CommandParameter="{Binding}" />
-                          <MenuItem Header="Watchdog вкл" Command="{Binding #TutorRoot.DataContext.PcWatchdogOnCommand}" CommandParameter="{Binding}" />
-                          <MenuItem Header="Watchdog выкл" Command="{Binding #TutorRoot.DataContext.PcWatchdogOffCommand}" CommandParameter="{Binding}" />
-                          <MenuItem Header="Фокус вкл" Command="{Binding #TutorRoot.DataContext.PcFocusOnCommand}" CommandParameter="{Binding}" />
-                          <MenuItem Header="Фокус выкл" Command="{Binding #TutorRoot.DataContext.PcFocusOffCommand}" CommandParameter="{Binding}" />
-                          <MenuItem Header="Синхронизировать" Command="{Binding #TutorRoot.DataContext.PcSyncCommand}" CommandParameter="{Binding}" />
+                          <MenuItem Header="Не закрывать приложение" Command="{Binding #TutorRoot.DataContext.PcWatchdogOnCommand}" CommandParameter="{Binding}" />
+                          <MenuItem Header="Можно закрыть приложение" Command="{Binding #TutorRoot.DataContext.PcWatchdogOffCommand}" CommandParameter="{Binding}" />
+                          <MenuItem Header="Только нужные окна" Command="{Binding #TutorRoot.DataContext.PcFocusOnCommand}" CommandParameter="{Binding}" />
+                          <MenuItem Header="Все окна" Command="{Binding #TutorRoot.DataContext.PcFocusOffCommand}" CommandParameter="{Binding}" />
+                          <MenuItem Header="Обновить сохранения" Command="{Binding #TutorRoot.DataContext.PcSyncCommand}" CommandParameter="{Binding}" />
                           <MenuItem Header="Отправить сообщение" Command="{Binding #TutorRoot.DataContext.PcMessageCommand}" CommandParameter="{Binding}" />
                           <Separator />
-                          <MenuItem Header="Папка ученика на сервере" Command="{Binding #TutorRoot.DataContext.OpenPcFolderCommand}" CommandParameter="{Binding}" />
+                          <MenuItem Header="Папка работ" Command="{Binding #TutorRoot.DataContext.OpenPcFolderCommand}" CommandParameter="{Binding}" />
                         </MenuFlyout>
                       </Button.Flyout>
                       <Border Classes="card" Width="246" Height="168" Padding="10">
@@ -931,7 +935,7 @@
                       <TextBlock Text="ВКЛ" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource TealBrush}" />
                     </Border>
                   </Grid>
-                  <TextBlock Text="Watchdog" FontWeight="Bold" FontSize="16" />
+                  <TextBlock Text="Не закрывать приложение" FontWeight="Bold" FontSize="16" />
                   <TextBlock Text="{Binding WatchdogLabel}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
                 </StackPanel>
               </Button>
@@ -946,7 +950,7 @@
                       <TextBlock Text="ВКЛ" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource TealBrush}" />
                     </Border>
                   </Grid>
-                  <TextBlock Text="VPN" FontWeight="Bold" FontSize="16" />
+                  <TextBlock Text="Безопасная сеть" FontWeight="Bold" FontSize="16" />
                   <TextBlock Text="{Binding VpnToggleLabel}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
                 </StackPanel>
               </Button>
@@ -956,8 +960,8 @@
                   <Border Classes="toggleIcon">
                     <TextBlock Text="↻" FontSize="22" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource TealBrush}" />
                   </Border>
-                  <TextBlock Text="Синхронизация" FontWeight="Bold" FontSize="16" />
-                  <TextBlock Text="Разовая команда: синхронизировать файлы на всех ПК сейчас." Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                  <TextBlock Text="Сохранения" FontWeight="Bold" FontSize="16" />
+                  <TextBlock Text="Обновить работы учеников на всех компьютерах." Classes="muted" FontSize="12" TextWrapping="Wrap" />
                 </StackPanel>
               </Button>
 
@@ -967,7 +971,7 @@
                     <TextBlock Text="?" FontSize="22" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource TealBrush}" />
                   </Border>
                   <TextBlock Text="Викторины" FontWeight="Bold" FontSize="16" />
-                  <TextBlock Text="Отдельный редактор вопросов, настройки и экспорт JSON." Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                  <TextBlock Text="Составить вопросы и запустить для класса." Classes="muted" FontSize="12" TextWrapping="Wrap" />
                 </StackPanel>
               </Button>
             </UniformGrid>
@@ -1072,8 +1076,8 @@
                   <Button Content="Настройки" Command="{Binding ShowQuizSettingsPaneCommand}" Classes="segment" Classes.active="{Binding ShowQuizSettings}" />
                 </StackPanel>
               </Border>
-              <Button Content="Экспорт JSON" Command="{Binding ExportQuizCommand}" Classes="ghost" Margin="0,0,8,8" />
-              <Button Content="Импорт JSON" Command="{Binding ImportQuizCommand}" Classes="ghost" Margin="0,0,8,8" />
+              <Button Content="Экспорт" Command="{Binding ExportQuizCommand}" Classes="ghost" Margin="0,0,8,8" />
+              <Button Content="Импорт" Command="{Binding ImportQuizCommand}" Classes="ghost" Margin="0,0,8,8" />
               <Button Content="Сохранить" Command="{Binding SaveQuizDraftCommand}" Classes="primary" Margin="0,0,8,8" />
               <Button Content="Запустить вопрос" Command="{Binding StartQuizCommand}" Classes="accent" Margin="0,0,0,8" />
             </WrapPanel>
@@ -1178,15 +1182,15 @@
       <TabItem Header="Сервер и настройки">
         <ScrollViewer><Grid ColumnDefinitions="*,*" Margin="36,40">
           <StackPanel Spacing="18">
-            <Border Classes="card"><StackPanel Spacing="12"><TextBlock Text="Сервер локации" Classes="h2"/><TextBlock Text="Tutor принимает подключения только в локальной сети." Classes="muted"/><TextBlock Text="HTTP API" FontWeight="Bold"/><Border Background="{DynamicResource SurfaceSoftBrush}" CornerRadius="8" Padding="14"><TextBlock Text="{Binding ServerAddress}"/></Border><TextBlock Text="Обнаружение Student" FontWeight="Bold"/><Border Background="{DynamicResource SurfaceSoftBrush}" CornerRadius="8" Padding="14"><TextBlock Text="{Binding DiscoveryAddress}"/></Border><TextBlock Text="{Binding ConnectedClientLabel}" Foreground="{DynamicResource TealBrush}" FontWeight="Bold"/><TextBlock Text="{Binding VersionLabel}" Classes="muted"/></StackPanel></Border>
-            <Border Classes="card"><StackPanel Spacing="12"><TextBlock Text="Безопасность" Classes="h2"/><TextBlock Text="Токен класса не показывается в интерфейсе и передаётся Student только через локальное обнаружение." Classes="muted" TextWrapping="Wrap"/><TextBlock Text="Опасные файлы всегда требуют отдельного подтверждения во вкладке «Сохранения и версии»." Foreground="{DynamicResource DangerTextBrush}" TextWrapping="Wrap"/></StackPanel></Border>
+            <Border Classes="card"><StackPanel Spacing="12"><TextBlock Text="Этот класс" Classes="h2"/><TextBlock Text="Ученики находят занятие в этой сети автоматически." Classes="muted" TextWrapping="Wrap"/><TextBlock Text="{Binding ConnectedClientLabel}" Foreground="{DynamicResource TealBrush}" FontWeight="Bold"/></StackPanel></Border>
+            <Border Classes="card"><StackPanel Spacing="12"><TextBlock Text="Безопасность" Classes="h2"/><TextBlock Text="Подключение учеников работает только в этой сети. Необычные файлы ждут вашего подтверждения во вкладке «Сохранения»." Classes="muted" TextWrapping="Wrap"/></StackPanel></Border>
           </StackPanel>
           <Border Grid.Column="1" Classes="card" Margin="18,0,0,0">
             <StackPanel Spacing="14">
               <TextBlock Text="Настройки Tutor" Classes="h2"/>
               <TextBlock Text="Параметры текущей локации" Classes="muted"/>
-              <TextBlock Text="Название локации" FontWeight="Bold"/>
-              <TextBox Text="{Binding LocationName}"/>
+              <TextBlock Text="Локация" FontWeight="Bold"/>
+              <ComboBox ItemsSource="{Binding Locations}" SelectedItem="{Binding LocationName}" HorizontalAlignment="Stretch"/>
               <TextBlock Text="Обновление экранов, секунд" FontWeight="Bold"/>
               <NumericUpDown Value="{Binding ScreenRefreshSeconds}" Minimum="5" Maximum="300"/>
               <TextBlock Text="Интервал синхронизации, секунд" FontWeight="Bold"/>
@@ -1194,10 +1198,10 @@
               <CheckBox Content="Автоматически принимать безопасные файлы" IsChecked="{Binding AutoApproveSafeFiles}"/>
               <CheckBox Content="Разрешить обновления Student" IsChecked="{Binding EnableStudentUpdates}"/>
               <CheckBox Content="Тёмная тема" IsChecked="{Binding IsDarkTheme}"/>
-              <TextBlock Text="VPN · папка конфигов WireGuard" FontWeight="Bold"/>
+              <TextBlock Text="Папка настроек безопасной сети" FontWeight="Bold"/>
               <TextBlock Text="Нужна один раз: на каждом ПК установите службу, затем укажите папку с .conf." Classes="muted" TextWrapping="Wrap"/>
               <Grid ColumnDefinitions="*,Auto">
-                <TextBox Text="{Binding VpnConfigsFolder}" Watermark="Папка с VPN-конфигами" VerticalAlignment="Center"/>
+                <TextBox Text="{Binding VpnConfigsFolder}" Watermark="Папка с настройками сети" VerticalAlignment="Center"/>
                 <Button Grid.Column="1" Content="Обзор…" Command="{Binding PickVpnConfigsFolderCommand}" Classes="ghost" Margin="10,0,0,0" VerticalAlignment="Center"/>
               </Grid>
               <TextBlock Text="{Binding VpnDistributionStatus}" Classes="muted" TextWrapping="Wrap"/>
@@ -1207,8 +1211,51 @@
           </Border>
         </Grid></ScrollViewer>
       </TabItem>
-      <TabItem Header="Модули и версии">
-        <Grid ColumnDefinitions="220,*" Margin="24,24"><Border Classes="card"><Grid RowDefinitions="Auto,*,Auto"><TextBlock Text="Модули" FontSize="20" FontWeight="Bold"/><StackPanel Grid.Row="1" Spacing="18" Margin="0,30,0,0"><Border Background="{DynamicResource MintBrush}" CornerRadius="8" Height="44" Padding="16,0"><TextBlock Text="Python · активный" Foreground="{DynamicResource TealBrush}" FontWeight="Bold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/></Border><Border Background="{DynamicResource SurfaceSoftBrush}" CornerRadius="8" Height="44" Padding="16,0"><TextBlock Text="C# · архив" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/></Border><Border Background="{DynamicResource SurfaceSoftBrush}" CornerRadius="8" Height="44" Padding="16,0"><TextBlock Text="Вёрстка · архив" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/></Border></StackPanel><Button Grid.Row="2" Content="Загрузить файлы" Command="{Binding LoadSyncedFilesCommand}" Classes="primary" HorizontalAlignment="Stretch"/></Grid></Border><Border Grid.Column="1" Classes="card" Margin="16,0,0,0"><Grid RowDefinitions="Auto,Auto,*"><TextBlock Text="Последние версии" FontSize="20" FontWeight="Bold"/><Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,22,0,18"><ComboBox ItemsSource="{Binding SyncClients}" SelectedItem="{Binding SelectedSyncClient}" MinWidth="0"/><Button Grid.Column="1" Content="Обновить" Command="{Binding LoadSyncedFilesCommand}" Margin="12,0,0,0"/></Grid><Grid Grid.Row="2" ColumnDefinitions="*,*"><ListBox ItemsSource="{Binding SyncedFiles}" SelectedItem="{Binding SelectedSyncedFile}" Margin="0,0,12,0"/><StackPanel Grid.Column="1" Spacing="10"><Button Content="Показать версии" Command="{Binding LoadVersionsCommand}" HorizontalAlignment="Stretch"/><ListBox ItemsSource="{Binding FileVersions}" SelectedItem="{Binding SelectedFileVersion}"/><Button Content="Восстановить" Command="{Binding RestoreVersionCommand}" Classes="primary" HorizontalAlignment="Stretch"/></StackPanel></Grid></Grid></Border></Grid>
+      <TabItem Header="Софт класса">
+        <Grid ColumnDefinitions="*,*" Margin="24,24">
+          <Border Classes="card" Margin="0,0,12,0">
+            <Grid RowDefinitions="Auto,*,Auto">
+              <StackPanel Spacing="8">
+                <TextBlock Text="Стартовый пакет" FontSize="22" FontWeight="Bold"/>
+                <TextBlock Text="Папки копируются на рабочий стол ученика. Установщики .exe и .msi запускаются сами." Classes="muted" TextWrapping="Wrap"/>
+              </StackPanel>
+              <Grid Grid.Row="1" Margin="0,16,0,16">
+                <ListBox ItemsSource="{Binding StarterPackItems}" SelectedItem="{Binding SelectedStarterAsset}" IsVisible="{Binding HasStarterPackItems}">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:StarterAssetCardViewModel">
+                      <StackPanel Margin="0,4" Spacing="2">
+                        <TextBlock Text="{Binding Name}" FontWeight="Bold" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Text="{Binding Details}" Classes="muted" FontSize="12"/>
+                      </StackPanel>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+                <TextBlock Text="Пока пусто — добавьте установщики или папки урока." Classes="muted" TextWrapping="Wrap" VerticalAlignment="Center" IsVisible="{Binding HasNoStarterPackItems}"/>
+              </Grid>
+              <StackPanel Grid.Row="2" Spacing="8">
+                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto">
+                  <Button Content="Добавить файлы" Command="{Binding AddStarterFilesCommand}" Classes="ghost" HorizontalAlignment="Stretch" Margin="0,0,6,8"/>
+                  <Button Grid.Column="1" Content="Добавить папку" Command="{Binding AddStarterFolderCommand}" Classes="ghost" HorizontalAlignment="Stretch" Margin="6,0,0,8"/>
+                  <Button Grid.Row="1" Content="Убрать из пакета" Command="{Binding RemoveStarterAssetCommand}" Classes="ghost" HorizontalAlignment="Stretch" Margin="0,0,6,0"/>
+                  <Button Grid.Row="1" Grid.Column="1" Content="Папка пакета" Command="{Binding OpenStarterPackFolderCommand}" Classes="ghost" HorizontalAlignment="Stretch" Margin="6,0,0,0"/>
+                </Grid>
+                <Button Content="Раздать пакет на все ПК" Command="{Binding PushStarterPackCommand}" Classes="primary" HorizontalAlignment="Stretch"/>
+              </StackPanel>
+            </Grid>
+          </Border>
+          <Border Grid.Column="1" Classes="card" Margin="12,0,0,0">
+            <StackPanel Spacing="14">
+              <TextBlock Text="Обои класса" FontSize="22" FontWeight="Bold"/>
+              <TextBlock Text="Картинка ставится рабочим столом на всех компьютерах учеников." Classes="muted" TextWrapping="Wrap"/>
+              <Border Classes="subcard">
+                <TextBlock Text="{Binding WallpaperName}" TextWrapping="Wrap"/>
+              </Border>
+              <Button Content="Выбрать картинку" Command="{Binding PickWallpaperCommand}" Classes="ghost" HorizontalAlignment="Left"/>
+              <Button Content="Поставить обои на все ПК" Command="{Binding PushWallpaperCommand}" Classes="primary" HorizontalAlignment="Left"/>
+              <TextBlock Text="{Binding SoftwareStatus}" Classes="muted" TextWrapping="Wrap" Margin="0,8,0,0"/>
+            </StackPanel>
+          </Border>
+        </Grid>
       </TabItem>
       <TabItem Header="Сравнение">
         <Border Classes="card" Margin="24,24"><Grid RowDefinitions="Auto,*,Auto"><TextBlock Text="Сравнение версии" FontSize="22" FontWeight="Bold"/><Grid Grid.Row="1" ColumnDefinitions="*,*" Margin="0,24,0,24"><Border Background="{DynamicResource SurfaceSoftBrush}" CornerRadius="8" Padding="24" Margin="0,0,12,0"><StackPanel Spacing="18"><TextBlock Text="На компьютере" FontWeight="Bold"/><TextBlock Text="+ print(i)&#10;- print(j)" FontFamily="Consolas" Foreground="{DynamicResource SuccessBrush}" FontSize="15" TextWrapping="Wrap"/></StackPanel></Border><Border Grid.Column="1" Background="{DynamicResource SurfaceSoftBrush}" CornerRadius="8" Padding="24" Margin="12,0,0,0"><StackPanel Spacing="18"><TextBlock Text="На сервере" FontWeight="Bold"/><TextBlock Text="+ print(i)&#10;- print(j)" FontFamily="Consolas" Foreground="{DynamicResource DangerBrush}" FontSize="15" TextWrapping="Wrap"/></StackPanel></Border></Grid><Button Grid.Row="2" Content="Восстановить эту версию" Command="{Binding RestoreVersionCommand}" Classes="danger" MaxWidth="300" HorizontalAlignment="Right"/></Grid></Border>
@@ -1241,12 +1288,12 @@
               <TextBox Watermark="Не указано"/>
               <TextBlock Text="Тема интерфейса" FontWeight="Bold"/>
               <CheckBox Content="Тёмная тема" IsChecked="{Binding IsDarkTheme}"/>
-              <TextBlock Text="Название локации" FontWeight="Bold"/>
-              <TextBox Text="{Binding LocationName}"/>
-              <TextBlock Text="VPN · папка конфигов WireGuard" FontWeight="Bold"/>
+              <TextBlock Text="Локация" FontWeight="Bold"/>
+              <ComboBox ItemsSource="{Binding Locations}" SelectedItem="{Binding LocationName}" HorizontalAlignment="Stretch"/>
+              <TextBlock Text="Папка настроек безопасной сети" FontWeight="Bold"/>
               <TextBlock Text="Нужна один раз: на каждом ПК установите службу, затем укажите папку с .conf." Classes="muted" TextWrapping="Wrap"/>
               <Grid ColumnDefinitions="*,Auto">
-                <TextBox Text="{Binding VpnConfigsFolder}" Watermark="Папка с VPN-конфигами" VerticalAlignment="Center"/>
+                <TextBox Text="{Binding VpnConfigsFolder}" Watermark="Папка с настройками сети" VerticalAlignment="Center"/>
                 <Button Grid.Column="1" Content="Обзор…" Command="{Binding PickVpnConfigsFolderCommand}" Classes="ghost" Margin="10,0,0,0" VerticalAlignment="Center"/>
               </Grid>
               <TextBlock Text="{Binding VpnDistributionStatus}" Classes="muted" TextWrapping="Wrap"/>

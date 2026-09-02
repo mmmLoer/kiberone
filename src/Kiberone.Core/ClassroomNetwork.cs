@@ -100,12 +100,16 @@ public static class ClassroomCommandKinds
     public const string VpnDisconnect = "vpn_disconnect";
     public const string VpnStatus = "vpn_status";
     public const string VpnInstallConfig = "vpn_install_config";
+    public const string SetWorkspace = "set_workspace";
+    public const string InstallStarterPack = "install_starter_pack";
+    public const string SetWallpaper = "set_wallpaper";
 
     public static IReadOnlySet<string> SafeKnownKinds { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
         Message, OpenUrl, LockScreen, UnlockScreen, FocusOn, FocusOff,
         SyncNow, TypingStart, TypingFinish, Configure, WatchdogOn, WatchdogOff, QuizStart, Notification,
-        VpnConnect, VpnDisconnect, VpnStatus, VpnInstallConfig
+        VpnConnect, VpnDisconnect, VpnStatus, VpnInstallConfig, SetWorkspace,
+        InstallStarterPack, SetWallpaper
     };
 }
 

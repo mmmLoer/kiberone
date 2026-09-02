@@ -89,6 +89,9 @@ public partial class App : Application
             viewModel.QuizExportPathPicker = () => mainWindow.PickQuizExportPathAsync();
             viewModel.QuizImportPathPicker = () => mainWindow.PickQuizImportPathAsync();
             viewModel.QuizMediaPathPicker = () => mainWindow.PickQuizMediaPathAsync();
+            viewModel.StarterFilesPicker = () => mainWindow.PickStarterFilesAsync();
+            viewModel.StarterFolderPicker = () => mainWindow.PickStarterFolderAsync();
+            viewModel.WallpaperFilePicker = () => mainWindow.PickWallpaperFileAsync();
             desktop.MainWindow = mainWindow;
             _ = viewModel.InitializeAsync();
             clientRefreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };

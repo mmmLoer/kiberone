@@ -59,13 +59,16 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string? selectedLoginGroup;
     [ObservableProperty] private StudentChoiceViewModel? selectedStudent;
     [ObservableProperty] private bool isLoginVisible = true;
-    [ObservableProperty] private string loginMessage = "Подключитесь к Tutor, выберите группу и своё имя.";
+    [ObservableProperty] private string loginMessage = "Выберите группу и своё имя.";
     [ObservableProperty] private string currentStudentName = "Ученик";
     [ObservableProperty] private string currentStudentGroup = "Группа не выбрана";
     [ObservableProperty] private int currentStudentLevel = 1;
     [ObservableProperty] private int currentStudentKiberons;
     [ObservableProperty] private int selectedSectionIndex;
     private Guid? quizSessionId;
+    private bool applyingLoginGroups;
+    private bool loginGroupChosenByUser;
+    private string? lastPreferredGroup;
     public Action? UpdateRequested { get; set; }
     public Action? FocusEnabled { get; set; }
     public Action? FocusDisabled { get; set; }
@@ -157,12 +160,12 @@ public partial class MainViewModel : ViewModelBase
     public void SetConnection(StudentConnectionState state)
     {
         IsConnected = state.IsConnected;
-        ConnectionLabel = state.IsConnected && state.TutorAddress is not null
-            ? $"● Тьютор {state.TutorAddress.Replace("http://", string.Empty, StringComparison.Ordinal)}"
-            : state.Message;
+        ConnectionLabel = state.IsConnected
+            ? "На связи с классом"
+            : string.IsNullOrWhiteSpace(state.Message) ? "Ищем класс…" : state.Message;
         ConnectionActionMessage = state.IsConnected
-            ? "Связь активна — задания и результаты синхронизируются."
-            : "Tutor пока не найден. Проверьте, что оба приложения находятся в одной сети.";
+            ? "Задания и сохранения приходят сами."
+            : "Подождите: класс ещё не найден в этой сети.";
         OnPropertyChanged(nameof(IsOffline));
         OnPropertyChanged(nameof(ConnectionForeground));
         OnPropertyChanged(nameof(ConnectionBackground));
@@ -186,14 +189,14 @@ public partial class MainViewModel : ViewModelBase
     public string SectionTitle => SelectedSectionIndex switch
     {
         0 => "Главная", 1 => "Уроки печати", 2 => "Назначенный урок", 3 => "Урок печати",
-        4 => "Пауза", 5 => "Итоги урока", 6 => "Профиль", _ => "Технические настройки"
+        4 => "Пауза", 5 => "Итоги урока",         6 => "Уровень и награды", _ => "Связь"
     };
     public string SectionSubtitle => SelectedSectionIndex switch
     {
         0 => "Твой следующий шаг появится здесь", 1 => "Выбери доступный материал",
-        2 => "Тьютор выбрал один материал для всей группы", 3 => "Следуй тексту и нужной клавише",
-        4 => "Попытка сохранена локально", 5 => "Тьютор завершил сессию · рейтинг открыт",
-        6 => "Уровень, XP, кибероны и достижения", _ => "Связь с Tutor и состояние синхронизации"
+        2 => "Тьютор выбрал материал для группы", 3 => "Следуй тексту и нужной клавише",
+        4 => "Можно передохнуть", 5 => "Урок закончен",
+        6 => "Уровень, кибероны и достижения", _ => "Связь с классом"
     };
 
     partial void OnSelectedSectionIndexChanged(int value)
@@ -215,23 +218,59 @@ public partial class MainViewModel : ViewModelBase
         Students.Clear();
         foreach (var student in students) Students.Add(new StudentChoiceViewModel(student));
 
-        LoginGroups.Clear();
-        foreach (var group in Students.Select(x => x.Group).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().OrderBy(x => x))
-            LoginGroups.Add(group);
+        applyingLoginGroups = true;
+        try
+        {
+            LoginGroups.Clear();
+            foreach (var group in Students.Select(x => x.Group).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().OrderBy(x => x))
+                LoginGroups.Add(group);
 
-        SelectedLoginGroup = LoginGroups.FirstOrDefault(x => x == previousGroup)
-            ?? LoginGroups.FirstOrDefault(x => !string.IsNullOrWhiteSpace(preferredGroup) && x == preferredGroup)
-            ?? LoginGroups.FirstOrDefault(x => Students.Any(s => s.Id == selectedId && s.Group == x))
-            ?? LoginGroups.FirstOrDefault();
+            var tutorChangedGroup = !string.Equals(lastPreferredGroup, preferredGroup, StringComparison.Ordinal);
+            lastPreferredGroup = preferredGroup;
+            if (tutorChangedGroup)
+                loginGroupChosenByUser = false;
+
+            if (loginGroupChosenByUser && previousGroup is not null && LoginGroups.Contains(previousGroup))
+                SelectedLoginGroup = previousGroup;
+            else
+                SelectedLoginGroup = LoginGroups.FirstOrDefault(x => !string.IsNullOrWhiteSpace(preferredGroup) && x == preferredGroup)
+                    ?? LoginGroups.FirstOrDefault(x => previousGroup is not null && x == previousGroup)
+                    ?? LoginGroups.FirstOrDefault(x => Students.Any(s => s.Id == selectedId && s.Group == x))
+                    ?? LoginGroups.FirstOrDefault();
+        }
+        finally
+        {
+            applyingLoginGroups = false;
+        }
+
         RebuildLoginStudents(selectedId);
         LoginMessage = Students.Count == 0
             ? "Тьютор ещё не добавил учеников."
             : LoginGroups.Count == 0
                 ? "Группы пока не назначены."
-                : "Сначала выберите группу, затем своё имя.";
+                : "Группа уже выбрана для урока. Можно сменить, если вы на отработке.";
     }
 
-    partial void OnSelectedLoginGroupChanged(string? value) => RebuildLoginStudents(SelectedStudent?.Id);
+    public void ApplyPreferredGroup(string? preferredGroup)
+    {
+        if (string.IsNullOrWhiteSpace(preferredGroup) || !LoginGroups.Contains(preferredGroup))
+            return;
+        if (loginGroupChosenByUser && string.Equals(lastPreferredGroup, preferredGroup, StringComparison.Ordinal))
+            return;
+        lastPreferredGroup = preferredGroup;
+        if (loginGroupChosenByUser) return;
+        applyingLoginGroups = true;
+        try { SelectedLoginGroup = preferredGroup; }
+        finally { applyingLoginGroups = false; }
+        RebuildLoginStudents(SelectedStudent?.Id);
+    }
+
+    partial void OnSelectedLoginGroupChanged(string? value)
+    {
+        if (!applyingLoginGroups)
+            loginGroupChosenByUser = true;
+        RebuildLoginStudents(SelectedStudent?.Id);
+    }
 
     private void RebuildLoginStudents(Guid? preferredId)
     {
@@ -248,25 +287,25 @@ public partial class MainViewModel : ViewModelBase
     {
         if (status?.Connected == true)
         {
-            VpnLabel = "VPN: подключён";
+            VpnLabel = "Сеть класса: подключена";
             return;
         }
 
         if (!string.IsNullOrWhiteSpace(detail))
         {
             VpnLabel = detail.Contains("VPN-служба не установлена", StringComparison.Ordinal)
-                ? "VPN: нужна установка службы (один раз от админа)"
-                : $"VPN: {detail}";
+                ? "Нужна разовая установка сети класса (с компьютера администратора)"
+                : "Сеть класса пока не подключена";
             return;
         }
 
-        VpnLabel = status?.ConfigExists == true ? "VPN: конфиг есть, не подключён" : "VPN: ожидает команду тьютора";
+        VpnLabel = status?.ConfigExists == true ? "Сеть класса ещё не включена" : "Ждём команду тьютора";
     }
 
     public void SetUpdate(StudentUpdateInfo update)
     {
         HasUpdate = true;
-        UpdateLabel = $"Доступно обновление {update.Version}";
+        UpdateLabel = "Доступно обновление программы";
     }
 
     public void SetUpdateState(string state) => UpdateLabel = state;
@@ -417,19 +456,24 @@ public partial class MainViewModel : ViewModelBase
                 return CommandExecutionResult.Success;
             case ClassroomCommandKinds.FocusOn:
                 FocusEnabled?.Invoke();
-                StatusMessage = "Режим фокуса включён тьютором.";
+                StatusMessage = "Тьютор оставил только нужные окна.";
                 return CommandExecutionResult.Success;
             case ClassroomCommandKinds.FocusOff:
                 FocusDisabled?.Invoke();
-                StatusMessage = "Режим фокуса выключен.";
+                StatusMessage = "Снова можно открывать все окна.";
                 return CommandExecutionResult.Success;
             case ClassroomCommandKinds.WatchdogOn:
                 WatchdogEnabled?.Invoke();
-                StatusMessage = "Защита Student от закрытия включена.";
+                StatusMessage = "Приложение теперь нельзя закрыть.";
                 return CommandExecutionResult.Success;
             case ClassroomCommandKinds.WatchdogOff:
                 WatchdogDisabled?.Invoke();
-                StatusMessage = "Watchdog выключен.";
+                StatusMessage = "Приложение снова можно закрыть.";
+                return CommandExecutionResult.Success;
+            case ClassroomCommandKinds.SetWorkspace:
+                return CommandExecutionResult.Success;
+            case ClassroomCommandKinds.InstallStarterPack:
+            case ClassroomCommandKinds.SetWallpaper:
                 return CommandExecutionResult.Success;
             case ClassroomCommandKinds.Notification:
                 NotificationText = command.Payload.TryGetProperty("title", out var title) ? title.GetString() ?? "Получена награда" : "Получена награда";

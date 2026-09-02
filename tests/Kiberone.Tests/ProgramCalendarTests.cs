@@ -23,7 +23,7 @@ public sealed class ProgramCalendarTests
     }
 
     [Fact]
-    public async Task ImportShbProgram_CreatesSchoolOfFutureGroups()
+    public async Task ImportProgram_LoadsAllLocationsAndFiltersGroups()
     {
         var path = Path.Combine(Path.GetTempPath(), $"kiberone-shb-{Guid.NewGuid():N}.db");
         var options = ClassroomDatabase.CreateOptions(path);
@@ -31,21 +31,28 @@ public sealed class ProgramCalendarTests
         var service = new ClassroomService(options);
 
         var count = await service.ImportShbProgramAsync();
-        var groups = await service.ListGroupsAsync();
-        var saturday = groups.Single(x => x.Name == "Мл3Сб10 Школа будущего");
+        var shb = await service.ListGroupsAsync("ШБ");
+        var aksakova = await service.ListGroupsAsync("АКСАКОВА 2");
+        var saturday = shb.Single(x => x.Name == "Мл3Сб10 Школа будущего");
         var modules = await service.ListProgramModulesAsync(saturday.Id);
         var current = await service.ApplyCurrentModuleAsync(saturday.Id, DateOnly.Parse("2026-09-02"));
 
-        Assert.Equal(8, count);
-        Assert.Contains(groups, x => x.Name == "Ср4Сб12 Школа будущего");
-        Assert.Contains(groups, x => x.Name == "Ст4Вс14 Школа будущего");
+        Assert.Equal(129, count);
+        Assert.Equal(12, ProgramCatalog.LocationNames().Count);
+        Assert.Contains("АРТЕША", ProgramCatalog.LocationNames());
+        Assert.Equal(8, shb.Count);
+        Assert.True(aksakova.Count > 0);
+        Assert.DoesNotContain(shb, x => x.Name == aksakova[0].Name);
+        Assert.Equal("ШБ", saturday.Location);
+        Assert.Contains(shb, x => x.Name == "Ср4Сб12 Школа будущего");
+        Assert.Contains(shb, x => x.Name == "Ст4Вс14 Школа будущего");
         Assert.True(modules.Count >= 6);
         Assert.Equal("Figma", current?.Name);
-        Assert.Equal("Figma", (await service.ListGroupsAsync()).Single(x => x.Id == saturday.Id).Module);
+        Assert.Equal("Figma", (await service.ListGroupsAsync("ШБ")).Single(x => x.Id == saturday.Id).Module);
 
         var again = await service.ImportShbProgramAsync();
         var modulesAfterRestart = await service.ListProgramModulesAsync(saturday.Id);
-        Assert.Equal(8, again);
+        Assert.Equal(129, again);
         Assert.Equal(modules.Count, modulesAfterRestart.Count);
 
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();

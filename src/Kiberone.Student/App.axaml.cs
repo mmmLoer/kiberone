@@ -45,6 +45,8 @@ public partial class App : Avalonia.Application
             agent.VpnStateProvider = () => vpn.IsConnected;
             agent.BatteryProvider = BatteryInfo.TryGetBatteryPercent;
             agent.VpnCommandHandler = HandleVpnCommand;
+            agent.LaunchInstaller = DesktopWallpaper.LaunchInstaller;
+            agent.ApplyWallpaperFile = DesktopWallpaper.Apply;
             focusMode = new FocusModeManager();
             watchdog = new WatchdogManager();
             focusMode.GameWindowsClosed += _ => agent.QueueClientEvent("games_addict");
@@ -66,6 +68,7 @@ public partial class App : Avalonia.Application
             agent.UpdateAvailable += update => Dispatcher.UIThread.Post(() => viewModel.SetUpdate(update));
             agent.UpdateStateChanged += state => Dispatcher.UIThread.Post(() => viewModel.SetUpdateState(state));
             agent.StudentsAvailable += students => Dispatcher.UIThread.Post(() => viewModel.SetStudents(students, agent.PreferredGroupName));
+            agent.PreferredGroupChanged += group => Dispatcher.UIThread.Post(() => viewModel.ApplyPreferredGroup(group));
             viewModel.UpdateRequested = agent.RequestUpdateInstallation;
             viewModel.QuizAnswerRequested = agent.SubmitQuizAnswer;
             viewModel.StudentSelected = agent.AssignStudent;

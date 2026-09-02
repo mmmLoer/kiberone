@@ -76,7 +76,7 @@ public sealed class StoreOrder
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
-public sealed record GroupDraft(string Name, string Module, string Topics);
+public sealed record GroupDraft(string Name, string Module, string Topics, string Location = "");
 public sealed record StudentDraft(
     string LastName,
     string FirstName,

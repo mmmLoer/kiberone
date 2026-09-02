@@ -134,6 +134,56 @@ public sealed class FileSyncServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task LessonModuleOverride_UsesOnlyModulesFromStudentGroup()
+    {
+        var classroom = new ClassroomService(options);
+        var homeGroup = await classroom.CreateGroupAsync(new GroupDraft("Python 01", "Python", "", "ШБ"));
+        var otherGroup = await classroom.CreateGroupAsync(new GroupDraft("Дизайн 01", "Figma", "", "ШБ"));
+        var student = await classroom.CreateStudentAsync(new StudentDraft("Иванов", "Артём", 12, homeGroup.Id, "", "", ""));
+        service.BindClient("pc-override", student.Id);
+
+        await using (var db = new ClassroomDbContext(options))
+        {
+            db.GroupProgramModules.AddRange(
+                new GroupProgramModule
+                {
+                    GroupId = homeGroup.Id,
+                    Name = "Python",
+                    StartDate = DateOnly.Parse("2026-09-01"),
+                    EndDate = DateOnly.Parse("2026-10-01")
+                },
+                new GroupProgramModule
+                {
+                    GroupId = homeGroup.Id,
+                    Name = "Scratch",
+                    StartDate = DateOnly.Parse("2026-10-02"),
+                    EndDate = DateOnly.Parse("2026-11-01")
+                },
+                new GroupProgramModule
+                {
+                    GroupId = otherGroup.Id,
+                    Name = "Figma",
+                    StartDate = DateOnly.Parse("2026-09-01"),
+                    EndDate = DateOnly.Parse("2026-10-01")
+                });
+            await db.SaveChangesAsync();
+        }
+
+        service.SetLessonModule(student.Id, "Figma");
+        var home = await service.ResolveStudentHomeAsync(student.Id);
+        Assert.Equal("Python", home?.Module);
+
+        service.SetLessonModule(student.Id, "Scratch");
+        home = await service.ResolveStudentHomeAsync(student.Id);
+        Assert.Equal("Scratch", home?.Module);
+        Assert.Contains(Path.Combine("Python 01", "Иванов Артём", "Scratch"), service.GetClientFolderPath("pc-override"));
+
+        service.SetLessonModule(student.Id, null);
+        home = await service.ResolveStudentHomeAsync(student.Id);
+        Assert.Equal("Python", home?.Module);
+    }
+
+    [Fact]
     public async Task ConflictingSave_WaitsForTutor_UpdateKeepsStudent_RestoreKeepsTutor()
     {
         var classroom = new ClassroomService(options);

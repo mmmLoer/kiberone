@@ -58,6 +58,8 @@ public sealed class StudentAgent : IAsyncDisposable
     public Func<bool>? WatchdogStateProvider { get; set; }
     public Func<int?>? BatteryProvider { get; set; }
     public Func<ClassroomCommand, CommandExecutionResult>? VpnCommandHandler { get; set; }
+    public Func<string, CommandExecutionResult>? LaunchInstaller { get; set; }
+    public Func<string, CommandExecutionResult>? ApplyWallpaperFile { get; set; }
     public Func<bool>? VpnStateProvider { get; set; }
     public Func<bool>? ScreenLockStateProvider { get; set; }
     public event Action<StudentConnectionState>? ConnectionChanged;
@@ -66,6 +68,7 @@ public sealed class StudentAgent : IAsyncDisposable
     public event Action<StudentUpdateInfo>? UpdateAvailable;
     public event Action<string>? UpdateStateChanged;
     public event Action<IReadOnlyList<StudentSummary>>? StudentsAvailable;
+    public event Action<string?>? PreferredGroupChanged;
     public string? PreferredGroupName { get; private set; }
 
     public void RequestUpdateInstallation()
@@ -95,7 +98,7 @@ public sealed class StudentAgent : IAsyncDisposable
             var beacon = await DiscoveryClient.DiscoverAsync(TimeSpan.FromSeconds(8), hintAddress, cancellationToken);
             if (beacon is null)
             {
-                Raise(false, "Тьютор не найден. Повторяем поиск…", null);
+                Raise(false, "Класс пока не найден. Ищем…", null);
                 await Task.Delay(TimeSpan.FromSeconds(3), cancellationToken);
                 continue;
             }
@@ -108,7 +111,7 @@ public sealed class StudentAgent : IAsyncDisposable
             };
             http.DefaultRequestHeaders.Add("X-Sync-Token", beacon.Token);
             http.DefaultRequestHeaders.Add("X-Client-Id", clientId);
-            Raise(true, "Подключено к тьютору", address);
+            Raise(true, "Подключено к классу", address);
             var consecutiveFailures = 0;
             var rosterLoaded = false;
             Task? socketTask = null;
@@ -149,7 +152,7 @@ public sealed class StudentAgent : IAsyncDisposable
                 catch (Exception error) when (error is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
                 {
                     consecutiveFailures++;
-                    Raise(false, $"Связь нестабильна: {error.Message}", address);
+                    Raise(false, "Связь с классом прервалась. Пробуем ещё раз…", address);
                 }
                 await Task.Delay(TimeSpan.FromSeconds(3), cancellationToken);
             }
@@ -184,12 +187,19 @@ public sealed class StudentAgent : IAsyncDisposable
         if (settings is not null)
         {
             syncSeconds = Math.Clamp(settings.SyncSeconds, 5, 3600);
-            if (!string.IsNullOrWhiteSpace(settings.PreferredGroupName))
+            if (!string.IsNullOrWhiteSpace(settings.PreferredGroupName)
+                && !string.Equals(PreferredGroupName, settings.PreferredGroupName, StringComparison.Ordinal))
+            {
                 PreferredGroupName = settings.PreferredGroupName;
+                PreferredGroupChanged?.Invoke(PreferredGroupName);
+            }
+            var previousFolder = fileSync.WatchFolder;
             if (!string.IsNullOrWhiteSpace(settings.SaveStudentName))
                 fileSync.SetWorkspace(FileSyncService.StudentDesktopFolder(settings.SaveStudentName, settings.SaveModule));
             else if (!string.IsNullOrWhiteSpace(settings.SaveModule))
                 fileSync.SetWorkspace(Path.Combine(watchFolder, FileSyncService.SanitizeFolderName(settings.SaveModule)));
+            if (!string.Equals(previousFolder, fileSync.WatchFolder, StringComparison.OrdinalIgnoreCase))
+                nextSyncAt = DateTimeOffset.MinValue;
             if (settings.StudentUpdate is not null)
             {
                 availableUpdate = settings.StudentUpdate;
@@ -299,10 +309,16 @@ public sealed class StudentAgent : IAsyncDisposable
         try
         {
             if (command.Kind == ClassroomCommandKinds.SyncNow) nextSyncAt = DateTimeOffset.MinValue;
+            if (command.Kind == ClassroomCommandKinds.SetWorkspace)
+            {
+                ApplyWorkspaceCommand(command);
+                nextSyncAt = DateTimeOffset.MinValue;
+            }
             if (command.Kind == ClassroomCommandKinds.Configure && command.Payload.ValueKind == JsonValueKind.Object
                 && command.Payload.TryGetProperty("sync_seconds", out var seconds) && seconds.TryGetInt32(out var configured))
                 syncSeconds = Math.Clamp(configured, 15, 3600);
-            result = TryHandleVpnCommand(command)
+            result = await TryHandleSoftwareCommandAsync(http, command, cancellationToken)
+                ?? TryHandleVpnCommand(command)
                 ?? (CommandHandler is null
                     ? new CommandExecutionResult(false, "Обработчик команд не настроен.")
                     : await CommandHandler(command, cancellationToken));
@@ -318,6 +334,19 @@ public sealed class StudentAgent : IAsyncDisposable
             JsonOptions,
             cancellationToken);
         response.EnsureSuccessStatusCode();
+    }
+
+    private void ApplyWorkspaceCommand(ClassroomCommand command)
+    {
+        if (command.Payload.ValueKind != JsonValueKind.Object) return;
+        command.Payload.TryGetProperty("module", out var moduleElement);
+        command.Payload.TryGetProperty("student_name", out var nameElement);
+        var module = moduleElement.ValueKind == JsonValueKind.String ? moduleElement.GetString() : null;
+        var name = nameElement.ValueKind == JsonValueKind.String ? nameElement.GetString() : null;
+        if (!string.IsNullOrWhiteSpace(name))
+            fileSync.SetWorkspace(FileSyncService.StudentDesktopFolder(name, module));
+        else if (!string.IsNullOrWhiteSpace(module))
+            fileSync.SetWorkspace(Path.Combine(watchFolder, FileSyncService.SanitizeFolderName(module)));
     }
 
     private void TrimHandledCommands()
@@ -354,7 +383,14 @@ public sealed class StudentAgent : IAsyncDisposable
                 await using var stream = await health.Content.ReadAsStreamAsync(cancellationToken);
                 using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
                 if (document.RootElement.TryGetProperty("preferred_group", out var group) && group.ValueKind == JsonValueKind.String)
-                    PreferredGroupName = group.GetString();
+                {
+                    var name = group.GetString();
+                    if (!string.Equals(PreferredGroupName, name, StringComparison.Ordinal))
+                    {
+                        PreferredGroupName = name;
+                        PreferredGroupChanged?.Invoke(PreferredGroupName);
+                    }
+                }
             }
         }
         catch
@@ -468,6 +504,42 @@ public sealed class StudentAgent : IAsyncDisposable
             .Select(network => network.GetPhysicalAddress().ToString())
             .FirstOrDefault(value => value.Length >= 12);
         return string.IsNullOrWhiteSpace(address) ? $"host-{Environment.MachineName.ToLowerInvariant()}" : address.ToLowerInvariant();
+    }
+
+    private async Task<CommandExecutionResult?> TryHandleSoftwareCommandAsync(HttpClient http, ClassroomCommand command, CancellationToken cancellationToken)
+    {
+        if (command.Kind == ClassroomCommandKinds.InstallStarterPack)
+        {
+            var runInstallers = !command.Payload.TryGetProperty("run_installers", out var flag) || flag.ValueKind != JsonValueKind.False;
+            UpdateStateChanged?.Invoke("Скачиваем стартовый пакет…");
+            var destination = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+                "KIBERone Start");
+            var state = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "KIBERone Classroom",
+                "starter-applied.json");
+            var result = await ClassroomSoftwarePush.InstallStarterPackAsync(
+                http, destination, state, runInstallers, LaunchInstaller, message => UpdateStateChanged?.Invoke(message), cancellationToken);
+            UpdateStateChanged?.Invoke(result.Succeeded ? "Стартовый пакет установлен." : result.Error ?? "Не удалось установить пакет.");
+            return result;
+        }
+
+        if (command.Kind == ClassroomCommandKinds.SetWallpaper)
+        {
+            UpdateStateChanged?.Invoke("Ставим обои…");
+            var directory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "KIBERone Classroom",
+                "wallpaper");
+            var path = await ClassroomSoftwarePush.DownloadWallpaperAsync(http, directory, cancellationToken);
+            var result = ApplyWallpaperFile?.Invoke(path)
+                ?? new CommandExecutionResult(false, "Установка обоев недоступна на этом компьютере.");
+            UpdateStateChanged?.Invoke(result.Succeeded ? "Обои установлены." : result.Error ?? "Не удалось поставить обои.");
+            return result;
+        }
+
+        return null;
     }
 
     private CommandExecutionResult? TryHandleVpnCommand(ClassroomCommand command)

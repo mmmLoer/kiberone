@@ -21,6 +21,7 @@ public sealed class FileSyncService
     private readonly string root;
     private readonly string rosterRoot;
     private readonly ConcurrentDictionary<string, Guid> clientStudents = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<Guid, string> lessonModules = new();
 
     public FileSyncService(DbContextOptions<ClassroomDbContext> options, string root)
     {
@@ -39,6 +40,18 @@ public sealed class FileSyncService
         else
             clientStudents[clientId.Trim()] = studentId.Value;
     }
+
+    public void SetLessonModule(Guid studentId, string? module)
+    {
+        if (studentId == Guid.Empty) return;
+        if (string.IsNullOrWhiteSpace(module))
+            lessonModules.TryRemove(studentId, out _);
+        else
+            lessonModules[studentId] = module.Trim();
+    }
+
+    public string? GetLessonModule(Guid studentId) =>
+        lessonModules.TryGetValue(studentId, out var module) ? module : null;
 
     public async Task<string?> ResolveSaveModuleAsync(Guid studentId, CancellationToken ct = default) =>
         (await ResolveStudentHomeAsync(studentId, ct))?.Module;
@@ -355,7 +368,15 @@ public sealed class FileSyncService
         await using var db = new ClassroomDbContext(options);
         var student = await db.Students.AsNoTracking().Include(x => x.Group).SingleOrDefaultAsync(x => x.Id == studentId, ct);
         if (student is null) return null;
-        return new StudentSyncTarget(student.LastName, student.FirstName, student.Group?.Name ?? "группа", student.Group?.Module ?? "");
+        var allowed = await db.GroupProgramModules.AsNoTracking()
+            .Where(x => x.GroupId == student.GroupId)
+            .Select(x => x.Name)
+            .ToListAsync(ct);
+        var module = GetLessonModule(studentId);
+        if (string.IsNullOrWhiteSpace(module)
+            || allowed.All(name => !string.Equals(name, module, StringComparison.OrdinalIgnoreCase)))
+            module = student.Group?.Module ?? "";
+        return new StudentSyncTarget(student.LastName, student.FirstName, student.Group?.Name ?? "группа", module);
     }
 
     private async Task<StoredPlan> BuildPlanAsync(string clientId, IReadOnlyList<SyncFileFingerprint> localFiles, CancellationToken ct)
