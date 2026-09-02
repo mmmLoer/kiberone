@@ -72,6 +72,8 @@ public sealed record CommandReceipt(
     string? Error,
     DateTimeOffset AcknowledgedAt);
 
+public sealed record CommandRolloutItem(string ClientId, string State, string? Detail);
+
 public sealed record DiscoveryBeacon(
     string Type,
     string Token,

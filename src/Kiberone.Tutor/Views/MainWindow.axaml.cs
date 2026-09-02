@@ -1,7 +1,9 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Platform.Storage;
 using Kiberone.Tutor;
+using Kiberone.Tutor.ViewModels;
 
 namespace Kiberone.Tutor.Views;
 
@@ -15,6 +17,29 @@ public partial class MainWindow : Window
             if (Application.Current is App app)
                 app.ShutdownServicesAndExit();
         };
+    }
+
+    private void OnClassStudentPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not Control control || control.DataContext is not StudentCardViewModel student)
+            return;
+        if (DataContext is not MainViewModel viewModel)
+            return;
+
+        var toggle = e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Meta);
+        viewModel.SelectClassStudentCore(student, toggle);
+        e.Handled = true;
+    }
+
+    public async Task<string?> PickStudentSavesFolderAsync()
+    {
+        var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "Папка сохранений учеников",
+            AllowMultiple = false
+        });
+
+        return folders.Count == 0 ? null : folders[0].TryGetLocalPath();
     }
 
     public async Task<string?> PickVpnConfigsFolderAsync()

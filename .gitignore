@@ -18,5 +18,7 @@ TestResults/
 /KIBERoneTutor.exe
 *.exe
 !scripts/**/*.ps1
+deploy/location-secrets.json
+deploy/location-passwords.txt
 src/Kiberone.VpnAgent/native/*.dll
 src/Kiberone.Student/native/*.dll

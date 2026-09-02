@@ -59,6 +59,75 @@ public sealed class ProgramCalendarTests
         File.Delete(path);
     }
 
+    [Fact]
+    public async Task ImportProgram_OnlyCreatesGroupsForSelectedLocation()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"kiberone-loc-{Guid.NewGuid():N}.db");
+        var options = ClassroomDatabase.CreateOptions(path);
+        await ClassroomDatabase.InitializeAsync(options);
+        var service = new ClassroomService(options);
+
+        var count = await service.ImportShbProgramAsync("АКСАКОВА 2");
+        await service.KeepOnlyLocationAsync("АКСАКОВА 2");
+        var all = await service.ListGroupsAsync();
+        var aksakova = await service.ListGroupsAsync("АКСАКОВА 2");
+        var shb = await service.ListGroupsAsync("ШБ");
+
+        Assert.Equal(aksakova.Count, count);
+        Assert.Equal(all.Count, aksakova.Count);
+        Assert.True(aksakova.Count > 0);
+        Assert.Empty(shb);
+        Assert.All(all, x => Assert.Equal("АКСАКОВА 2", x.Location));
+
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        File.Delete(path);
+    }
+
+    [Fact]
+    public async Task ImportProgramIfNeeded_SkipsUnchangedCatalog()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"kiberone-hash-{Guid.NewGuid():N}.db");
+        var marker = path + ".hash";
+        var options = ClassroomDatabase.CreateOptions(path);
+        await ClassroomDatabase.InitializeAsync(options);
+        var service = new ClassroomService(options);
+
+        var first = await service.ImportProgramIfNeededAsync(marker);
+        var second = await service.ImportProgramIfNeededAsync(marker);
+        var forced = await service.ImportProgramIfNeededAsync(marker, true);
+
+        Assert.True(first.Ran);
+        Assert.Equal(129, first.Groups);
+        Assert.False(second.Ran);
+        Assert.True(forced.Ran);
+        Assert.Equal(129, forced.Groups);
+
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        File.Delete(path);
+        if (File.Exists(marker)) File.Delete(marker);
+    }
+
+    [Fact]
+    public async Task ImportProgramIfNeeded_CompletesOnThreadPool()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"kiberone-pool-{Guid.NewGuid():N}.db");
+        var marker = path + ".hash";
+        var options = ClassroomDatabase.CreateOptions(path);
+        var result = await Task.Run(async () =>
+        {
+            await ClassroomDatabase.InitializeAsync(options);
+            var service = new ClassroomService(options);
+            return await service.ImportProgramIfNeededAsync(marker);
+        });
+
+        Assert.True(result.Ran);
+        Assert.Equal(129, result.Groups);
+
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        File.Delete(path);
+        if (File.Exists(marker)) File.Delete(marker);
+    }
+
     private static GroupProgramModule Mod(string name, string start, string end) => new()
     {
         Name = name,

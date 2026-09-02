@@ -15,6 +15,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     public ObservableCollection<ProgramModuleCardViewModel> SelectedGroupModules { get; } = [];
     public ObservableCollection<string> ClassLessonModules { get; } = [];
     public ObservableCollection<StarterAssetCardViewModel> StarterPackItems { get; } = [];
+    public ObservableCollection<RolloutCardViewModel> RolloutItems { get; } = [];
     public ObservableCollection<StudentCardViewModel> Students { get; } = [];
     public ObservableCollection<StudentCardViewModel> FilteredStudents { get; } = [];
     public ObservableCollection<StudentCardViewModel> ClassRosterStudents { get; } = [];
@@ -122,16 +123,28 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [ObservableProperty] private bool enableStudentUpdates = true;
     [ObservableProperty] private bool isDarkTheme;
     [ObservableProperty] private string locationName = "";
+    [ObservableProperty] private string hubUrl = ClassroomHubClient.DefaultBaseUrl;
+    [ObservableProperty] private string hubStatus = "Сервер хранит учеников и группы локации.";
+    [ObservableProperty] private string locationUploadPassword = "";
+    [ObservableProperty] private bool needsLocationSetup;
+    [ObservableProperty] private int setupStep;
+    [ObservableProperty] private string? setupLocationName;
+    [ObservableProperty] private string setupStudentSavesFolder = DefaultStudentSavesFolder();
     [ObservableProperty] private string settingsStatus = "Настройки действуют только на этом Tutor.";
     [ObservableProperty] private string vpnConfigsFolder = string.Empty;
+    [ObservableProperty] private string studentSavesFolder = DefaultStudentSavesFolder();
     [ObservableProperty] private string vpnDistributionStatus = "Укажите папку с .conf файлами — конфиги раздадутся ученикам автоматически.";
     [ObservableProperty] private StarterAssetCardViewModel? selectedStarterAsset;
     [ObservableProperty] private string wallpaperName = "Обои ещё не выбраны";
     [ObservableProperty] private string softwareStatus = "Соберите пакет: папки урока и установщики .exe / .msi.";
+    [ObservableProperty] private string programStatus = "Программа подтянется при первом запуске или по кнопке ниже.";
+    [ObservableProperty] private bool showOtherLocationStudents;
+    [ObservableProperty] private string rolloutHeadline = "Статус раздачи появится после отправки пакета или обоев.";
     [ObservableProperty] private int selectedSectionIndex;
 
     public ClassroomLiveState LiveState { get; set; } = new();
     public Func<Task<string?>>? VpnConfigsFolderPicker { get; set; }
+    public Func<Task<string?>>? StudentSavesFolderPicker { get; set; }
     public Func<Task<string?>>? QuizExportPathPicker { get; set; }
     public Func<Task<string?>>? QuizImportPathPicker { get; set; }
     public Func<Task<string?>>? QuizMediaPathPicker { get; set; }
@@ -163,13 +176,20 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     public bool HasClassRosterStudents => ClassRosterStudents.Count > 0;
     public bool HasNoClassRosterStudents => !HasClassRosterStudents;
     public bool HasClassNotices => ClassNotices.Count > 0;
-    public bool HasSelectedClassStudent => SelectedClassStudent is not null;
-    public string ClassPanelTitle => SelectedClassStudent is null
-        ? "Команды класса"
-        : SelectedClassStudent.Name;
-    public string ClassPanelSubtitle => SelectedClassStudent is null
-        ? "Быстрые команды для всех ПК"
-        : SelectedClassStudent.QuickActionsTitle;
+    public bool HasSelectedClassStudent => SelectedClassStudents.Count > 0;
+    public string SelectedStudentsActionsTitle => SelectedClassStudents.Count <= 1 ? "Этому ученику" : $"Выбранным ({SelectedClassStudents.Count})";
+    public string ClassPanelTitle => SelectedClassStudents.Count switch
+    {
+        0 => "Команды класса",
+        1 => SelectedClassStudents[0].Name,
+        _ => $"{SelectedClassStudents.Count} учеников"
+    };
+    public string ClassPanelSubtitle => SelectedClassStudents.Count switch
+    {
+        0 => "Выберите ученика. Несколько — Ctrl (на Mac ⌘) и клик.",
+        1 => SelectedClassStudents[0].QuickActionsTitle,
+        _ => "Команды уйдут всем выделенным."
+    };
     public bool HasLessons => Lessons.Count > 0;
     public bool HasNoLessons => !HasLessons;
     public bool HasStudents => Students.Count > 0;
@@ -211,11 +231,16 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     public bool HasNoAuditEvents => !HasAuditEvents;
     public bool HasStarterPackItems => StarterPackItems.Count > 0;
     public bool HasNoStarterPackItems => !HasStarterPackItems;
+    public bool HasRolloutItems => RolloutItems.Count > 0;
+    public bool HasNoRolloutItems => !HasRolloutItems;
     public string ServerAddress => "http://0.0.0.0:8765";
     public string DiscoveryAddress => "UDP 8766 · локальная сеть";
     public string VersionLabel => $"Tutor {BuildInfo.Version}";
     public IReadOnlyList<string> AuditCategories { get; } = ["Все", "Синхронизация", "Магазин", "Печать", "Викторина", "Команды", "Ученики", "Система"];
     public IReadOnlyList<string> Locations { get; } = ProgramCatalog.LocationNames();
+    public bool IsSetupWelcome => NeedsLocationSetup && SetupStep == 0;
+    public bool IsSetupLocation => NeedsLocationSetup && SetupStep == 1;
+    public bool IsSetupDownload => NeedsLocationSetup && SetupStep == 2;
 
     public async Task InitializeAsync()
     {
@@ -223,12 +248,18 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         {
             LoadSettings();
             loadingSettings = true;
-            if (Locations.Count > 0 && Locations.All(x => !string.Equals(x, LocationName, StringComparison.OrdinalIgnoreCase)))
+            if (!NeedsLocationSetup
+                && Locations.Count > 0
+                && Locations.All(x => !string.Equals(x, LocationName, StringComparison.OrdinalIgnoreCase)))
                 LocationName = Locations[0];
             loadingSettings = false;
             EnsureQuizSeed();
+            fileSync.SetRosterRoot(StudentSavesFolder);
+            if (!NeedsLocationSetup && !string.IsNullOrWhiteSpace(LocationName))
+                await ApplyLocationProgramAsync();
             await RefreshCoreAsync();
             RefreshSoftwarePack();
+            RefreshProgramStatus();
             await RefreshScreensAsync();
             StatusMessage = Lessons.Count == 0
                 ? "Создайте первый урок — он сохранится в локальной базе."
@@ -259,6 +290,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         RefreshVpnDistributionStatus(online);
         RebuildClassRoster();
         RebuildClassNotices();
+        RefreshRolloutStatus();
         OnPropertyChanged(nameof(SectionSubtitle));
     }
 
@@ -341,7 +373,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         0 => "Класс сейчас", 1 => "Уроки печати", 2 => "Ученики и группы",
         3 => "Награды и магазин", 4 => "Сохранения", 5 => "Экраны",
         6 => "Пульт класса", 7 => "Урок печати", 8 => "Итоги урока",
-        9 => "Викторины", 10 => "Статистика", 11 => "Этот класс",
+        9 => "Викторины", 10 => "Статистика", 11 => "Настройки",
         12 => "Софт класса", 13 => "Восстановление файлов", 14 => "Цели",
         15 => "Настройки", 16 => "Достижения", 17 => "Журнал", _ => "Статистика"
     };
@@ -352,7 +384,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         4 => "Работы учеников и восстановление", 5 => "Экраны компьютеров класса",
         6 => "Блокировка, окна и сохранения", 7 => "Урок печати для класса",
         8 => "Итоги появятся в уведомлениях", 9 => "Вопросы и запуск для класса",
-        10 => "Прогресс группы", 11 => "Этот компьютер ведёт занятие",
+        10 => "Прогресс группы", 11 => "Локация, программа и этот компьютер",
         12 => "Пакет программ и обои на все компьютеры", 13 => "Вернуть файл к сохранённой копии",
         14 => "Накопления учеников", 15 => "Параметры этого класса",
         16 => "Награды за успехи", 17 => "Что происходило в классе", _ => "Прогресс учеников и групп"
@@ -463,6 +495,38 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         StatusMessage = $"Папка VPN-конфигов: {selected}";
     }
 
+    [RelayCommand]
+    private async Task PickStudentSavesFolderAsync()
+    {
+        if (StudentSavesFolderPicker is null)
+        {
+            HasError = true;
+            StatusMessage = "Выбор папки недоступен в этом окне.";
+            return;
+        }
+
+        var selected = await StudentSavesFolderPicker();
+        if (string.IsNullOrWhiteSpace(selected))
+            return;
+
+        ApplyStudentSavesFolder(selected);
+        if (!NeedsLocationSetup)
+            SaveSettings();
+        HasError = false;
+        StatusMessage = $"Сохранения учеников: {StudentSavesFolder}";
+        HubStatus = StatusMessage;
+    }
+
+    private void ApplyStudentSavesFolder(string path)
+    {
+        StudentSavesFolder = path.Trim();
+        SetupStudentSavesFolder = StudentSavesFolder;
+        fileSync.SetRosterRoot(StudentSavesFolder);
+    }
+
+    private static string DefaultStudentSavesFolder() =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KIBERone Classroom", "groups");
+
     private void RefreshSoftwarePack()
     {
         var selected = SelectedStarterAsset?.Name;
@@ -475,6 +539,254 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             : "Обои ещё не выбраны";
         OnPropertyChanged(nameof(HasStarterPackItems));
         OnPropertyChanged(nameof(HasNoStarterPackItems));
+    }
+
+    private static string ProgramMarkerPath =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KIBERone Classroom", "program-catalog.hash");
+
+    private void RefreshProgramStatus()
+    {
+        var path = ProgramMarkerPath;
+        if (!File.Exists(path))
+        {
+            ProgramStatus = "Каталог ещё не записан в базу — нажмите «Обновить программу».";
+            return;
+        }
+
+        var lines = File.ReadAllLines(path);
+        var count = lines.Length > 1 ? lines[1].Trim() : "?";
+        ProgramStatus = $"Программа в базе: {count} групп. Повторно не импортируется, пока каталог в приложении не изменится.";
+    }
+
+    [RelayCommand]
+    private async Task ImportProgramAsync()
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(LocationName))
+                throw new InvalidOperationException("Сначала выберите локацию.");
+            await ApplyLocationProgramAsync();
+            var groups = await classroom.ListGroupsAsync(LocationName);
+            RefreshProgramStatus();
+            await RefreshCoreAsync();
+            ProgramStatus = $"Программа локации «{LocationName}»: {groups.Count} групп.";
+            HasError = false;
+            StatusMessage = ProgramStatus;
+        }
+        catch (Exception error)
+        {
+            HasError = true;
+            StatusMessage = error.Message;
+            ProgramStatus = error.Message;
+        }
+    }
+
+    private ClassroomHubClient CreateHubClient() => new(string.IsNullOrWhiteSpace(HubUrl) ? ClassroomHubClient.DefaultBaseUrl : HubUrl);
+
+    private async Task ApplyLocationProgramAsync()
+    {
+        if (string.IsNullOrWhiteSpace(LocationName)) return;
+        await classroom.ImportShbProgramAsync(LocationName);
+        await classroom.KeepOnlyLocationAsync(LocationName);
+    }
+
+    private void NotifySetupSteps()
+    {
+        OnPropertyChanged(nameof(IsSetupWelcome));
+        OnPropertyChanged(nameof(IsSetupLocation));
+        OnPropertyChanged(nameof(IsSetupDownload));
+        ConfirmSetupLocationCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnNeedsLocationSetupChanged(bool value)
+    {
+        if (value) SetupStep = 0;
+        NotifySetupSteps();
+    }
+
+    partial void OnSetupStepChanged(int value) => NotifySetupSteps();
+
+    partial void OnSetupLocationNameChanged(string? value) => ConfirmSetupLocationCommand.NotifyCanExecuteChanged();
+
+    partial void OnIsBusyChanged(bool value) => ConfirmSetupLocationCommand.NotifyCanExecuteChanged();
+
+    [RelayCommand]
+    private void BeginLocationSetup()
+    {
+        if (string.IsNullOrWhiteSpace(SetupStudentSavesFolder))
+            SetupStudentSavesFolder = DefaultStudentSavesFolder();
+        SetupStep = 1;
+    }
+
+    private bool CanConfirmSetupLocation() =>
+        !IsBusy && !string.IsNullOrWhiteSpace(SetupLocationName);
+
+    [RelayCommand(CanExecute = nameof(CanConfirmSetupLocation))]
+    private async Task ConfirmSetupLocationAsync()
+    {
+        loadingSettings = true;
+        LocationName = SetupLocationName!.Trim();
+        if (!string.IsNullOrWhiteSpace(SetupStudentSavesFolder))
+            ApplyStudentSavesFolder(SetupStudentSavesFolder);
+        loadingSettings = false;
+        SetupStep = 2;
+        HubStatus = $"Загружаем группы и учеников локации «{LocationName}»…";
+        await DownloadLocationRosterAsync();
+        if (NeedsLocationSetup)
+            HubStatus = string.IsNullOrWhiteSpace(HubStatus)
+                ? "Не получилось скачать. Проверьте сеть и попробуйте ещё раз."
+                : HubStatus;
+    }
+
+    [RelayCommand]
+    private void BackToLocationSetup()
+    {
+        if (IsBusy) return;
+        SetupStep = 1;
+        HubStatus = "Выберите локацию — данные скачаются с сервера.";
+    }
+
+    [RelayCommand]
+    private async Task DownloadLocationRosterAsync()
+    {
+        if (string.IsNullOrWhiteSpace(LocationName))
+        {
+            HubStatus = "Сначала выберите локацию.";
+            return;
+        }
+
+        try
+        {
+            IsBusy = true;
+            await ApplyLocationProgramAsync();
+            var snapshot = await CreateHubClient().DownloadAsync(LocationName);
+            if (snapshot is null)
+                throw new InvalidOperationException("Сервер не вернул данные локации.");
+            if (snapshot.Groups.Count == 0 && snapshot.Students.Count == 0)
+            {
+                HubStatus = $"Локация «{LocationName}»: группы из программы 2026–2027. На сервере учеников пока нет.";
+            }
+            else
+            {
+                await classroom.ReplaceLocationRosterAsync(snapshot);
+                HubStatus = $"Скачано: {snapshot.Groups.Count} групп, {snapshot.Students.Count} учеников.";
+            }
+            await RefreshCoreAsync();
+            NeedsLocationSetup = false;
+            SetupStep = 0;
+            SaveSettings();
+            HasError = false;
+            StatusMessage = HubStatus;
+        }
+        catch (Exception error)
+        {
+            HasError = true;
+            HubStatus = $"Не удалось скачать: {error.Message}";
+            StatusMessage = HubStatus;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task UploadLocationRosterAsync()
+    {
+        if (string.IsNullOrWhiteSpace(LocationName))
+        {
+            HubStatus = "Сначала выберите локацию.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(LocationUploadPassword))
+        {
+            HubStatus = "Чтобы отправить данные, введите пароль этой локации.";
+            return;
+        }
+
+        try
+        {
+            IsBusy = true;
+            var snapshot = await classroom.ExportLocationRosterAsync(LocationName);
+            await CreateHubClient().UploadAsync(LocationName, LocationUploadPassword, snapshot);
+            LocationUploadPassword = string.Empty;
+            HubStatus = $"Отправлено на сервер: {snapshot.Groups.Count} групп, {snapshot.Students.Count} учеников.";
+            HasError = false;
+            StatusMessage = HubStatus;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            HasError = true;
+            HubStatus = "Неверный пароль локации. Данные на сервер не отправлены.";
+            StatusMessage = HubStatus;
+        }
+        catch (Exception error)
+        {
+            HasError = true;
+            HubStatus = $"Не удалось отправить: {error.Message}";
+            StatusMessage = HubStatus;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private void SkipLocationServer()
+    {
+        if (string.IsNullOrWhiteSpace(LocationName))
+        {
+            if (!string.IsNullOrWhiteSpace(SetupLocationName))
+                LocationName = SetupLocationName.Trim();
+            else if (Locations.Count > 0)
+                LocationName = Locations[0];
+        }
+        NeedsLocationSetup = false;
+        SetupStep = 0;
+        HubStatus = "Работаем без сервера. Скачать состав локации можно в настройках.";
+        SaveSettings();
+    }
+
+    private void TrackRollout(string title, ClassroomCommand? command)
+    {
+        lastRolloutCommandId = command?.Id;
+        RolloutHeadline = command is null
+            ? $"{title}: не отправлено. Подключите учеников и повторите."
+            : $"{title}: ждём ответы компьютеров…";
+        RefreshRolloutStatus();
+    }
+
+    private void RefreshRolloutStatus()
+    {
+        RolloutItems.Clear();
+        if (lastRolloutCommandId is not Guid commandId)
+        {
+            OnPropertyChanged(nameof(HasRolloutItems));
+            OnPropertyChanged(nameof(HasNoRolloutItems));
+            return;
+        }
+
+        var snapshots = clients.GetAll().ToDictionary(x => x.ClientId, StringComparer.OrdinalIgnoreCase);
+        foreach (var row in commandQueue.GetRollout(commandId))
+        {
+            snapshots.TryGetValue(row.ClientId, out var client);
+            var name = string.IsNullOrWhiteSpace(client?.PcNumber) ? row.ClientId : client!.PcNumber;
+            var status = row.State switch
+            {
+                "ok" => "готово",
+                "error" => "ошибка",
+                _ => client?.IsOnline == true ? "скачивает…" : "ждёт ПК"
+            };
+            RolloutItems.Add(new RolloutCardViewModel(name, status, row.Detail, row.State == "error", row.State == "ok"));
+        }
+
+        var ready = RolloutItems.Count(x => x.IsOk);
+        var failed = RolloutItems.Count(x => x.IsError);
+        if (RolloutItems.Count > 0)
+            RolloutHeadline = $"Готово {ready} из {RolloutItems.Count}" + (failed > 0 ? $" · ошибок: {failed}" : "");
+        OnPropertyChanged(nameof(HasRolloutItems));
+        OnPropertyChanged(nameof(HasNoRolloutItems));
     }
 
     [RelayCommand]
@@ -605,21 +917,39 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             return;
         }
 
-        SendClassCommand(ClassroomCommandKinds.InstallStarterPack, new { run_installers = true }, 7200);
+        var command = SendClassCommand(ClassroomCommandKinds.InstallStarterPack, new { run_installers = true }, 7200);
         SoftwareStatus = "Пакет уходит на компьютеры учеников. Установщики .exe и .msi запустятся сами.";
+        TrackRollout("Стартовый пакет", command);
     }
 
     [RelayCommand]
-    private void PushWallpaper()
+    private async Task PushWallpaperAsync()
     {
-        if (assets.GetWallpaper() is null)
+        if (WallpaperFilePicker is null)
         {
-            ShowSelectionError("Сначала выберите картинку обоев.");
+            ShowSelectionError("Выбор картинки недоступен в этом окне.");
             return;
         }
 
-        SendClassCommand(ClassroomCommandKinds.SetWallpaper, new { }, 1800);
-        SoftwareStatus = "Обои отправлены на все компьютеры класса.";
+        var file = await WallpaperFilePicker();
+        if (string.IsNullOrWhiteSpace(file))
+            return;
+
+        try
+        {
+            assets.SetWallpaper(file);
+            RefreshSoftwarePack();
+            var command = SendClassCommand(ClassroomCommandKinds.SetWallpaper, new { }, 1800);
+            SoftwareStatus = "Обои выбраны и отправлены на компьютеры класса.";
+            TrackRollout("Обои", command);
+            HasError = false;
+        }
+        catch (Exception error)
+        {
+            HasError = true;
+            StatusMessage = error.Message;
+            SoftwareStatus = error.Message;
+        }
     }
 
     [RelayCommand]
@@ -665,16 +995,43 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     }
 
     [RelayCommand]
-    private void SelectClassStudent(StudentCardViewModel? student)
+    private void SelectClassStudent(StudentCardViewModel? student) => SelectClassStudentCore(student, false);
+
+    public void SelectClassStudentCore(StudentCardViewModel? student, bool toggle)
     {
-        SelectedClassStudent = student;
+        if (student is null)
+        {
+            IsClassPanelOpen = true;
+            NotifyClassSelection();
+            return;
+        }
+
+        if (!toggle)
+        {
+            foreach (var card in Students)
+                card.IsClassSelected = card.Id == student.Id;
+        }
+        else
+        {
+            student.IsClassSelected = !student.IsClassSelected;
+        }
+
+        SelectedClassStudent = Students.FirstOrDefault(x => x.IsClassSelected && x.Id == student.Id)
+            ?? Students.FirstOrDefault(x => x.IsClassSelected);
         IsClassPanelOpen = true;
-        foreach (var card in Students)
-            card.IsClassSelected = student is not null && card.Id == student.Id;
+        NotifyClassSelection();
+        _ = LoadClassLessonModulesAsync();
+    }
+
+    private IReadOnlyList<StudentCardViewModel> SelectedClassStudents =>
+        Students.Where(x => x.IsClassSelected).ToList();
+
+    private void NotifyClassSelection()
+    {
         OnPropertyChanged(nameof(HasSelectedClassStudent));
         OnPropertyChanged(nameof(ClassPanelTitle));
         OnPropertyChanged(nameof(ClassPanelSubtitle));
-        _ = LoadClassLessonModulesAsync();
+        OnPropertyChanged(nameof(SelectedStudentsActionsTitle));
     }
 
     [RelayCommand]
@@ -716,19 +1073,25 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [RelayCommand]
     private void OpenStudentFolder(StudentCardViewModel? student)
     {
-        if (student is null)
+        var targets = SelectedClassStudents.Count > 0
+            ? SelectedClassStudents
+            : student is null ? [] : [student];
+        if (targets.Count == 0)
         {
             ShowSelectionError("Выберите ученика.");
             return;
         }
 
-        OpenRosterFolder(fileSync.EnsureStudentModuleFolder(
-            student.Group,
-            student.LastName,
-            student.FirstName,
-            fileSync.GetLessonModule(student.Id)
-                ?? Groups.FirstOrDefault(x => x.Id == student.GroupId)?.Module
-                ?? student.LessonModule), student.Name);
+        foreach (var target in targets)
+        {
+            OpenRosterFolder(fileSync.EnsureStudentModuleFolder(
+                target.Group,
+                target.LastName,
+                target.FirstName,
+                fileSync.GetLessonModule(target.Id)
+                    ?? Groups.FirstOrDefault(x => x.Id == target.GroupId)?.Module
+                    ?? target.LessonModule), target.Name);
+        }
     }
 
     [RelayCommand]
@@ -764,27 +1127,51 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
 
     private void SendStudentCommand(StudentCardViewModel? student, string kind, object payload)
     {
-        var clientId = ResolveStudentClientId(student);
-        if (clientId is null)
+        var targets = SelectedClassStudents.Count > 0
+            ? SelectedClassStudents
+            : student is null ? [] : [student];
+        if (targets.Count == 0)
         {
-            ShowSelectionError(student is null
-                ? "Выберите ученика."
-                : $"ПК для {student.Name} не найден. Ученик должен быть онлайн хотя бы раз.");
+            ShowSelectionError("Выберите ученика.");
             return;
         }
 
-        try
+        var sent = 0;
+        string? lastError = null;
+        foreach (var target in targets)
         {
-            SendClientCommand(clientId, kind, payload);
-            student!.ApplyCommandedMode(kind);
-            HasError = false;
-            StatusMessage = $"{student.Name}: {DescribeCommand(kind)}";
+            var clientId = ResolveStudentClientId(target);
+            if (clientId is null)
+            {
+                lastError = $"ПК для {target.Name} не найден. Ученик должен быть онлайн хотя бы раз.";
+                continue;
+            }
+
+            try
+            {
+                SendClientCommand(clientId, kind, payload);
+                target.ApplyCommandedMode(kind);
+                sent++;
+            }
+            catch (Exception error)
+            {
+                lastError = error.Message;
+            }
         }
-        catch (Exception error)
+
+        if (sent == 0)
         {
             HasError = true;
-            StatusMessage = error.Message;
+            StatusMessage = lastError ?? "ПК выбранных учеников не найдены.";
+            return;
         }
+
+        HasError = false;
+        StatusMessage = targets.Count == 1
+            ? $"{targets[0].Name}: {DescribeCommand(kind)}"
+            : $"{DescribeCommand(kind)} · {sent} из {targets.Count}";
+        if (lastError is not null)
+            StatusMessage += $" · {lastError}";
     }
 
     private void SendPcCommand(ScreenPreviewCardViewModel? pc, string kind, object payload)
@@ -883,6 +1270,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     private bool dismissedSyncNotice;
     private Guid? pendingActiveClassGroupId;
     private bool applyingClassLessonModule;
+    private Guid? lastRolloutCommandId;
     private const string DefaultLessonModuleLabel = "Как в группе";
 
     [RelayCommand]
@@ -917,10 +1305,15 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             EnableStudentUpdates,
             VpnConfigsFolder.Trim(),
             IsDarkTheme,
-            ActiveClassGroup?.Id);
+            ActiveClassGroup?.Id,
+            ShowOtherLocationStudents,
+            HubUrl.Trim(),
+            !NeedsLocationSetup,
+            StudentSavesFolder.Trim());
         var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KIBERone", "Tutor");
         Directory.CreateDirectory(directory);
         File.WriteAllText(Path.Combine(directory, "settings.json"), JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
+        fileSync.SetRosterRoot(StudentSavesFolder);
         PublishPreferredGroup();
         SettingsStatus = $"Настройки сохранены · {DateTime.Now:t}";
     }
@@ -930,9 +1323,17 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         try
         {
             var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KIBERone", "Tutor", "settings.json");
-            if (!File.Exists(path)) return;
+            if (!File.Exists(path))
+            {
+                NeedsLocationSetup = true;
+                return;
+            }
             var saved = JsonSerializer.Deserialize<TutorLocalSettings>(File.ReadAllText(path));
-            if (saved is null) return;
+            if (saved is null)
+            {
+                NeedsLocationSetup = true;
+                return;
+            }
             loadingSettings = true;
             LocationName = saved.LocationName;
             ScreenRefreshSeconds = saved.ScreenRefreshSeconds;
@@ -940,8 +1341,21 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             AutoApproveSafeFiles = saved.AutoApproveSafeFiles;
             EnableStudentUpdates = saved.EnableStudentUpdates;
             VpnConfigsFolder = saved.VpnConfigsFolder ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(saved.StudentSavesFolder))
+                StudentSavesFolder = saved.StudentSavesFolder;
+            fileSync.SetRosterRoot(StudentSavesFolder);
             IsDarkTheme = saved.PreferDarkTheme;
             pendingActiveClassGroupId = saved.ActiveClassGroupId;
+            ShowOtherLocationStudents = saved.ShowOtherLocationStudents;
+            if (!string.IsNullOrWhiteSpace(saved.HubUrl))
+                HubUrl = saved.HubUrl;
+            NeedsLocationSetup = !saved.LocationSetupCompleted;
+            if (NeedsLocationSetup)
+            {
+                SetupStep = 0;
+                SetupLocationName = string.IsNullOrWhiteSpace(saved.LocationName) ? null : saved.LocationName;
+                SetupStudentSavesFolder = StudentSavesFolder;
+            }
             SettingsStatus = "Локальные настройки загружены.";
         }
         catch (Exception error)
@@ -1338,7 +1752,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         OnPropertyChanged(nameof(HasNoStatsBars));
     }
 
-    private void SendClassCommand(string kind, object payload, int? ttlSeconds = null)
+    private ClassroomCommand? SendClassCommand(string kind, object payload, int? ttlSeconds = null)
     {
         try
         {
@@ -1348,11 +1762,13 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
                 student.ApplyCommandedMode(kind);
             HasError = false;
             StatusMessage = DescribeCommand(kind);
+            return command;
         }
         catch (Exception error)
         {
             HasError = true;
             StatusMessage = error.Message;
+            return null;
         }
     }
 
@@ -1381,22 +1797,30 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         {
             ClassLessonModules.Clear();
             ClassLessonModules.Add(DefaultLessonModuleLabel);
-            if (SelectedClassStudent is null)
+            var selected = SelectedClassStudents;
+            if (selected.Count == 0)
             {
                 SelectedClassLessonModule = DefaultLessonModuleLabel;
                 return;
             }
 
-            foreach (var module in await classroom.ListProgramModulesAsync(SelectedClassStudent.GroupId))
+            foreach (var groupId in selected.Select(x => x.GroupId).Distinct())
             {
-                if (!string.IsNullOrWhiteSpace(module.Name) && ClassLessonModules.All(x => !string.Equals(x, module.Name, StringComparison.Ordinal)))
-                    ClassLessonModules.Add(module.Name);
+                foreach (var module in await classroom.ListProgramModulesAsync(groupId))
+                {
+                    if (!string.IsNullOrWhiteSpace(module.Name) && ClassLessonModules.All(x => !string.Equals(x, module.Name, StringComparison.Ordinal)))
+                        ClassLessonModules.Add(module.Name);
+                }
             }
 
-            var overrideModule = fileSync.GetLessonModule(SelectedClassStudent.Id);
-            var allowed = overrideModule is not null
-                && ClassLessonModules.Any(x => string.Equals(x, overrideModule, StringComparison.OrdinalIgnoreCase));
-            SelectedClassLessonModule = allowed ? overrideModule : DefaultLessonModuleLabel;
+            var overrideModules = selected
+                .Select(x => fileSync.GetLessonModule(x.Id))
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            SelectedClassLessonModule = overrideModules.Count == 1 && ClassLessonModules.Any(x => string.Equals(x, overrideModules[0], StringComparison.OrdinalIgnoreCase))
+                ? overrideModules[0]
+                : DefaultLessonModuleLabel;
         }
         finally
         {
@@ -1406,9 +1830,10 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
 
     partial void OnSelectedClassLessonModuleChanged(string? value)
     {
-        if (applyingClassLessonModule || SelectedClassStudent is null || string.IsNullOrWhiteSpace(value))
+        if (applyingClassLessonModule || SelectedClassStudents.Count == 0 || string.IsNullOrWhiteSpace(value))
             return;
-        ApplyClassLessonModule(SelectedClassStudent, value);
+        foreach (var student in SelectedClassStudents)
+            ApplyClassLessonModule(student, value);
     }
 
     private void ApplyClassLessonModule(StudentCardViewModel student, string selected)
@@ -1963,7 +2388,9 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         foreach (var lesson in stored) StatsLessonFilters.Add(new LessonFilterOption(lesson.Id, lesson.Name));
         SelectedStatsLesson = StatsLessonFilters.FirstOrDefault(x => x.Id == selectedLessonFilter) ?? StatsLessonFilters.FirstOrDefault();
         var location = string.IsNullOrWhiteSpace(LocationName) ? null : LocationName.Trim();
-        var storedGroups = await classroom.ListGroupsAsync(location);
+        var storedGroups = string.IsNullOrWhiteSpace(location)
+            ? []
+            : await classroom.ListGroupsAsync(location);
         var selectedId = SelectedGroup?.Id;
         Groups.Clear();
         foreach (var group in storedGroups)
@@ -1988,7 +2415,19 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         pendingActiveClassGroupId = null;
         PublishPreferredGroup();
         var selectedStudentId = SelectedStudent?.Id;
-        var storedStudents = await classroom.ListStudentsAsync(location: location);
+        var storedStudents = string.IsNullOrWhiteSpace(location)
+            ? []
+            : (await classroom.ListStudentsAsync(location: location)).ToList();
+        if (ShowOtherLocationStudents)
+        {
+            var connectedIds = clients.GetAll().Select(x => x.StudentId).OfType<Guid>().ToHashSet();
+            var missing = connectedIds.Except(storedStudents.Select(x => x.Id)).ToList();
+            if (missing.Count > 0)
+            {
+                var extras = await classroom.ListStudentsAsync();
+                storedStudents.AddRange(extras.Where(x => missing.Contains(x.Id)));
+            }
+        }
         Students.Clear();
         foreach (var student in storedStudents)
         {
@@ -2105,10 +2544,54 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     {
         LiveState.PreferredGroupName = ActiveClassGroup?.Name;
         LiveState.LocationName = string.IsNullOrWhiteSpace(LocationName) ? null : LocationName.Trim();
+        LiveState.ShowAllLocations = ShowOtherLocationStudents;
         LiveState.SyncSeconds = Math.Clamp(SyncIntervalSeconds, 5, 3600);
     }
 
     partial void OnLocationNameChanged(string value)
+    {
+        if (loadingSettings || NeedsLocationSetup) return;
+        PublishPreferredGroup();
+        _ = SwitchLocationAsync();
+    }
+
+    private async Task SwitchLocationAsync()
+    {
+        if (string.IsNullOrWhiteSpace(LocationName) || IsBusy) return;
+        try
+        {
+            IsBusy = true;
+            HubStatus = $"Переключаем локацию «{LocationName}»…";
+            await ApplyLocationProgramAsync();
+            try
+            {
+                var snapshot = await CreateHubClient().DownloadAsync(LocationName);
+                if (snapshot is not null && (snapshot.Groups.Count > 0 || snapshot.Students.Count > 0))
+                    await classroom.ReplaceLocationRosterAsync(snapshot);
+            }
+            catch (Exception error)
+            {
+                HubStatus = $"Программа локации загружена. Сервер недоступен: {error.Message}";
+            }
+            await RefreshCoreAsync();
+            SaveSettings();
+            HubStatus = $"Локация «{LocationName}»: {Groups.Count} групп, {Students.Count} учеников.";
+            StatusMessage = HubStatus;
+            HasError = false;
+        }
+        catch (Exception error)
+        {
+            HasError = true;
+            HubStatus = $"Не удалось сменить локацию: {error.Message}";
+            StatusMessage = HubStatus;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    partial void OnShowOtherLocationStudentsChanged(bool value)
     {
         if (loadingSettings) return;
         PublishPreferredGroup();
@@ -2141,13 +2624,16 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         };
         foreach (var student in source.OrderByDescending(x => x.IsOnline).ThenBy(x => x.Name))
             ClassRosterStudents.Add(student);
-        if (SelectedClassStudent is not null && ClassRosterStudents.All(x => x.Id != SelectedClassStudent.Id))
-            SelectedClassStudent = ClassRosterStudents.FirstOrDefault();
+        var visible = ClassRosterStudents.Select(x => x.Id).ToHashSet();
+        foreach (var student in Students)
+        {
+            if (!visible.Contains(student.Id))
+                student.IsClassSelected = false;
+        }
+        SelectedClassStudent = Students.FirstOrDefault(x => x.IsClassSelected);
+        NotifyClassSelection();
         OnPropertyChanged(nameof(HasClassRosterStudents));
         OnPropertyChanged(nameof(HasNoClassRosterStudents));
-        OnPropertyChanged(nameof(HasSelectedClassStudent));
-        OnPropertyChanged(nameof(ClassPanelTitle));
-        OnPropertyChanged(nameof(ClassPanelSubtitle));
     }
 
     private void RebuildClassNotices()
@@ -2284,6 +2770,16 @@ public sealed class StarterAssetCardViewModel(DistributedAsset asset)
         var kind = asset.Kind == "folder" ? "Папка" : "Файл";
         return asset.RunsInstaller ? $"{kind} · {size} · установщик" : $"{kind} · {size}";
     }
+}
+
+public sealed class RolloutCardViewModel(string pc, string status, string? detail, bool isError, bool isOk)
+{
+    public string Pc { get; } = pc;
+    public string Status { get; } = status;
+    public string Detail { get; } = string.IsNullOrWhiteSpace(detail) ? status : $"{status} · {detail}";
+    public bool IsError { get; } = isError;
+    public bool IsOk { get; } = isOk;
+    public override string ToString() => $"{Pc} · {Detail}";
 }
 
 public sealed class ChartBarViewModel(string label, string valueLabel, double height, string color)
@@ -2465,7 +2961,11 @@ public sealed record TutorLocalSettings(
     bool EnableStudentUpdates,
     string? VpnConfigsFolder = "",
     bool PreferDarkTheme = false,
-    Guid? ActiveClassGroupId = null);
+    Guid? ActiveClassGroupId = null,
+    bool ShowOtherLocationStudents = false,
+    string HubUrl = "",
+    bool LocationSetupCompleted = false,
+    string StudentSavesFolder = "");
 
 public partial class QuizQuestionEditorViewModel : ObservableObject
 {

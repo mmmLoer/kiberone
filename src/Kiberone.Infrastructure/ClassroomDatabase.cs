@@ -39,17 +39,6 @@ public static class ClassroomDatabase
         await using var db = new ClassroomDbContext(options);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
 
-        ClassroomGroup? group = await db.Groups.FirstOrDefaultAsync(cancellationToken);
-        if (group is null)
-        {
-            group = new ClassroomGroup { Name = "Python 01", Module = "Python", Topics = "Основы, циклы и функции" };
-            db.Groups.Add(group);
-            db.Students.AddRange(
-                new Student { LastName = "Иванов", FirstName = "Артём", Age = 11, Group = group, Xp = 140, Kiberons = 35 },
-                new Student { LastName = "Петрова", FirstName = "Софья", Age = 12, Group = group, Xp = 220, Kiberons = 60 },
-                new Student { LastName = "Смирнов", FirstName = "Лев", Age = 10, Group = group, Xp = 80, Kiberons = 20 });
-        }
-
         if (!await db.TypingLessons.AnyAsync(cancellationToken))
         {
             db.TypingLessons.AddRange(

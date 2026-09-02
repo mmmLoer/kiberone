@@ -19,7 +19,7 @@ public sealed class FileSyncService
 
     private readonly DbContextOptions<ClassroomDbContext> options;
     private readonly string root;
-    private readonly string rosterRoot;
+    private string rosterRoot;
     private readonly ConcurrentDictionary<string, Guid> clientStudents = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<Guid, string> lessonModules = new();
 
@@ -27,8 +27,21 @@ public sealed class FileSyncService
     {
         this.options = options;
         this.root = Path.GetFullPath(root);
-        rosterRoot = Path.GetFullPath(Path.Combine(this.root, "..", "groups"));
+        rosterRoot = DefaultRosterRoot(this.root);
         Directory.CreateDirectory(this.root);
+        Directory.CreateDirectory(rosterRoot);
+    }
+
+    public string RosterRoot => rosterRoot;
+
+    public static string DefaultRosterRoot(string syncRoot) =>
+        Path.GetFullPath(Path.Combine(Path.GetFullPath(syncRoot), "..", "groups"));
+
+    public void SetRosterRoot(string? path)
+    {
+        rosterRoot = string.IsNullOrWhiteSpace(path)
+            ? DefaultRosterRoot(root)
+            : Path.GetFullPath(path.Trim());
         Directory.CreateDirectory(rosterRoot);
     }
 

@@ -25,6 +25,7 @@ public sealed class ClassroomLiveState
 {
     public string? PreferredGroupName { get; set; }
     public string? LocationName { get; set; }
+    public bool ShowAllLocations { get; set; }
     public int SyncSeconds { get; set; } = 300;
 }
 
@@ -164,7 +165,7 @@ public sealed class ClassroomServer(
             await lessons.FinishSessionAsync(id, ct) is { } result
                 ? Results.Ok(new { result.Snapshot, result.Winners })
                 : Results.NotFound());
-        application.MapGet("/groups", (CancellationToken ct) => classroom.ListGroupsAsync(LiveState.LocationName, ct));
+        application.MapGet("/groups", (CancellationToken ct) => classroom.ListGroupsAsync(StudentLocationFilter(), ct));
         application.MapPost("/groups", async (HttpContext context, [FromBody] GroupDraft draft, CancellationToken ct) =>
             IsTutor(context) ? Results.Created("/groups", await classroom.CreateGroupAsync(draft, ct)) : Results.Unauthorized());
         application.MapPut("/groups/{id:guid}", async (HttpContext context, Guid id, [FromBody] GroupDraft draft, CancellationToken ct) =>
@@ -172,7 +173,7 @@ public sealed class ClassroomServer(
         application.MapDelete("/groups/{id:guid}", async (HttpContext context, Guid id, CancellationToken ct) =>
             !IsTutor(context) ? Results.Unauthorized() : await classroom.DeleteGroupAsync(id, ct) ? Results.NoContent() : Results.NotFound());
         application.MapGet("/students", (Guid? group_id, string? query, CancellationToken ct) =>
-            classroom.ListStudentsAsync(group_id, query, LiveState.LocationName, ct));
+            classroom.ListStudentsAsync(group_id, query, StudentLocationFilter(), ct));
         application.MapGet("/students/{id:guid}", async (Guid id, CancellationToken ct) =>
             await classroom.GetStudentAsync(id, ct) is { } student ? Results.Ok(student) : Results.NotFound());
         application.MapGet("/statistics/groups/{id:guid}", async (Guid id, CancellationToken ct) =>
@@ -314,6 +315,9 @@ public sealed class ClassroomServer(
         if (value.StartsWith("/student", StringComparison.Ordinal) || value.StartsWith("/group", StringComparison.Ordinal) || value.StartsWith("/achievement", StringComparison.Ordinal)) return "Ученики";
         return "Система";
     }
+
+    private string? StudentLocationFilter() =>
+        LiveState.ShowAllLocations ? null : LiveState.LocationName;
 
     private static bool IsTutor(HttpContext context) =>
         context.Request.Headers["X-Tutor"].ToString().Equals("1", StringComparison.Ordinal);

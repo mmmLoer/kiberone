@@ -431,41 +431,64 @@ public sealed class ClassroomService(DbContextOptions<ClassroomDbContext> option
         return current;
     }
 
-    public async Task<int> ImportShbProgramAsync(CancellationToken ct = default)
+    public async Task<int> ImportShbProgramAsync(string? location = null, CancellationToken ct = default)
     {
         var catalog = ProgramCatalog.Load2026();
-        await using var db = new ClassroomDbContext(options);
-        var imported = 0;
-        foreach (var location in catalog)
+        if (!string.IsNullOrWhiteSpace(location))
         {
-            var locationName = Trim(location.Name, 80);
-            foreach (var item in location.Groups)
+            var wanted = location.Trim();
+            catalog = catalog.Where(x => string.Equals(x.Name, wanted, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+        await using var db = new ClassroomDbContext(options);
+        var existing = await db.Groups.ToListAsync(ct);
+        var byNameAndLocation = existing
+            .GroupBy(x => GroupKey(x.Name, x.Location), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
+        var byName = existing
+            .GroupBy(x => x.Name.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.ToList(), StringComparer.OrdinalIgnoreCase);
+
+        var imported = 0;
+        var pendingModules = new List<(Guid GroupId, List<GroupProgramModule> Modules)>();
+        foreach (var locationProgram in catalog)
+        {
+            var locationName = Trim(locationProgram.Name, 80);
+            foreach (var item in locationProgram.Groups)
             {
                 var name = Required(item.Name, "Название группы", 120);
-                var group = await db.Groups.SingleOrDefaultAsync(x => x.Name == name, ct);
+                var key = GroupKey(name, locationName);
+                if (!byNameAndLocation.TryGetValue(key, out var group))
+                {
+                    group = byName.TryGetValue(name, out var matches) && matches.Count == 1
+                        ? matches[0]
+                        : null;
+                }
+
                 if (group is null)
                 {
                     group = new ClassroomGroup
                     {
                         Name = name,
                         Module = string.Empty,
-                        Topics = location.Sheet,
+                        Topics = locationProgram.Sheet,
                         Location = locationName
                     };
                     db.Groups.Add(group);
-                    await db.SaveChangesAsync(ct);
+                    byNameAndLocation[key] = group;
+                    if (!byName.TryGetValue(name, out var list))
+                    {
+                        list = [];
+                        byName[name] = list;
+                    }
+                    list.Add(group);
                 }
                 else
                 {
                     group.Location = locationName;
                     if (string.IsNullOrWhiteSpace(group.Topics))
-                        group.Topics = location.Sheet;
+                        group.Topics = locationProgram.Sheet;
+                    byNameAndLocation[key] = group;
                 }
-
-                await db.Database.ExecuteSqlRawAsync(
-                    "DELETE FROM group_program_modules WHERE upper(GroupId) = upper({0})",
-                    [group.Id.ToString()],
-                    ct);
 
                 var modules = new List<GroupProgramModule>();
                 var order = 0;
@@ -484,14 +507,223 @@ public sealed class ClassroomService(DbContextOptions<ClassroomDbContext> option
                         SortOrder = order++
                     });
                 }
-                db.GroupProgramModules.AddRange(modules);
+
                 var current = ProgramCalendar.Pick(modules, DateOnly.FromDateTime(DateTime.Today));
                 if (current is not null)
                     group.Module = current.Name;
+                pendingModules.Add((group.Id, modules));
                 imported++;
             }
         }
+
+        await db.SaveChangesAsync(ct);
+
+        foreach (var (groupId, _) in pendingModules)
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                "DELETE FROM group_program_modules WHERE upper(GroupId) = upper({0})",
+                [groupId.ToString()],
+                ct);
+        }
+
+        foreach (var (_, modules) in pendingModules)
+            db.GroupProgramModules.AddRange(modules);
+
         await db.SaveChangesAsync(ct);
         return imported;
     }
+
+    private static string GroupKey(string name, string location) => $"{name.Trim()}\u001f{location.Trim()}";
+
+    public async Task<ProgramImportResult> ImportProgramIfNeededAsync(string markerPath, bool force = false, string? location = null, CancellationToken ct = default)
+    {
+        var hash = ProgramCatalog.ContentHash();
+        if (!string.IsNullOrWhiteSpace(location))
+            hash += ":" + location.Trim().ToUpperInvariant();
+        if (!force && File.Exists(markerPath))
+        {
+            var previous = (await File.ReadAllTextAsync(markerPath, ct)).Split('\n', 2)[0].Trim();
+            if (previous.Equals(hash, StringComparison.OrdinalIgnoreCase))
+                return new ProgramImportResult(false, 0, hash);
+        }
+
+        var count = await ImportShbProgramAsync(location, ct);
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(markerPath))!);
+        await File.WriteAllTextAsync(markerPath, hash + Environment.NewLine + count.ToString(), ct);
+        return new ProgramImportResult(true, count, hash);
+    }
+
+    public async Task KeepOnlyLocationAsync(string location, CancellationToken ct = default)
+    {
+        var keep = Required(location, "Локация", 80);
+        await using var db = new ClassroomDbContext(options);
+        var foreign = (await db.Groups.ToListAsync(ct))
+            .Where(x => !string.Equals(x.Location, keep, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (foreign.Count == 0) return;
+        await WipeGroupsAsync(db, foreign, ct);
+        await db.SaveChangesAsync(ct);
+    }
+
+    private static async Task WipeGroupsAsync(ClassroomDbContext db, List<ClassroomGroup> groups, CancellationToken ct)
+    {
+        var ids = groups.Select(x => x.Id).ToList();
+        var students = await db.Students.Where(x => ids.Contains(x.GroupId)).ToListAsync(ct);
+        foreach (var student in students)
+        {
+            db.StoreOrders.RemoveRange(await db.StoreOrders.Where(x => x.StudentId == student.Id).ToListAsync(ct));
+            db.Grades.RemoveRange(await db.Grades.Where(x => x.StudentId == student.Id).ToListAsync(ct));
+            db.ClassroomSessions.RemoveRange(await db.ClassroomSessions.Where(x => x.StudentId == student.Id).ToListAsync(ct));
+            db.StudentAchievements.RemoveRange(await db.StudentAchievements.Where(x => x.StudentId == student.Id).ToListAsync(ct));
+            db.KiberonTransactions.RemoveRange(await db.KiberonTransactions.Where(x => x.StudentId == student.Id).ToListAsync(ct));
+            db.QuizAnswers.RemoveRange(await db.QuizAnswers.Where(x => x.StudentId == student.Id).ToListAsync(ct));
+        }
+        db.Students.RemoveRange(students);
+        await db.SaveChangesAsync(ct);
+        foreach (var group in groups)
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                "DELETE FROM group_program_modules WHERE upper(GroupId) = upper({0})",
+                [group.Id.ToString()],
+                ct);
+        }
+        db.Groups.RemoveRange(groups);
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task<LocationRosterSnapshot> ExportLocationRosterAsync(string location, CancellationToken ct = default)
+    {
+        var name = Required(location, "Локация", 80);
+        await using var db = new ClassroomDbContext(options);
+        var groups = await db.Groups.AsNoTracking()
+            .Where(x => x.Location == name)
+            .OrderBy(x => x.Name)
+            .ToListAsync(ct);
+        var groupIds = groups.Select(x => x.Id).ToList();
+        var modules = await db.GroupProgramModules.AsNoTracking()
+            .Where(x => groupIds.Contains(x.GroupId))
+            .OrderBy(x => x.SortOrder)
+            .ToListAsync(ct);
+        var students = await db.Students.AsNoTracking()
+            .Where(x => groupIds.Contains(x.GroupId))
+            .OrderBy(x => x.LastName).ThenBy(x => x.FirstName)
+            .ToListAsync(ct);
+
+        return new LocationRosterSnapshot(
+            name,
+            DateTimeOffset.UtcNow,
+            groups.Select(group => new LocationGroupSnapshot(
+                group.Id,
+                group.Name,
+                group.Module,
+                group.Topics,
+                group.Location,
+                modules.Where(module => module.GroupId == group.Id)
+                    .Select(module => new LocationModuleSnapshot(
+                        module.Id,
+                        module.Name,
+                        module.StartDate.ToString("yyyy-MM-dd"),
+                        module.EndDate.ToString("yyyy-MM-dd"),
+                        module.LessonCount,
+                        module.Comment,
+                        module.SortOrder))
+                    .ToList()))
+                .ToList(),
+            students.Select(student => new LocationStudentSnapshot(
+                student.Id,
+                student.LastName,
+                student.FirstName,
+                student.Age,
+                student.Birthday,
+                student.GroupId,
+                student.Comment,
+                student.PortfolioUrl,
+                student.CrmId,
+                student.Kiberons,
+                student.Xp))
+                .ToList());
+    }
+
+    public async Task ReplaceLocationRosterAsync(LocationRosterSnapshot snapshot, CancellationToken ct = default)
+    {
+        var location = Required(snapshot.Location, "Локация", 80);
+        await using var db = new ClassroomDbContext(options);
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+
+        var existingGroups = await db.Groups.Where(x => x.Location == location).ToListAsync(ct);
+        var existingIds = existingGroups.Select(x => x.Id).ToList();
+        var existingStudents = await db.Students.Where(x => existingIds.Contains(x.GroupId)).ToListAsync(ct);
+        foreach (var student in existingStudents)
+        {
+            db.StoreOrders.RemoveRange(await db.StoreOrders.Where(x => x.StudentId == student.Id).ToListAsync(ct));
+            db.Grades.RemoveRange(await db.Grades.Where(x => x.StudentId == student.Id).ToListAsync(ct));
+            db.ClassroomSessions.RemoveRange(await db.ClassroomSessions.Where(x => x.StudentId == student.Id).ToListAsync(ct));
+            db.StudentAchievements.RemoveRange(await db.StudentAchievements.Where(x => x.StudentId == student.Id).ToListAsync(ct));
+            db.KiberonTransactions.RemoveRange(await db.KiberonTransactions.Where(x => x.StudentId == student.Id).ToListAsync(ct));
+            db.QuizAnswers.RemoveRange(await db.QuizAnswers.Where(x => x.StudentId == student.Id).ToListAsync(ct));
+        }
+        db.Students.RemoveRange(existingStudents);
+        await db.SaveChangesAsync(ct);
+
+        foreach (var group in existingGroups)
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                "DELETE FROM group_program_modules WHERE upper(GroupId) = upper({0})",
+                [group.Id.ToString()],
+                ct);
+        }
+        db.Groups.RemoveRange(existingGroups);
+        await db.SaveChangesAsync(ct);
+
+        foreach (var group in snapshot.Groups)
+        {
+            db.Groups.Add(new ClassroomGroup
+            {
+                Id = group.Id,
+                Name = Required(group.Name, "Название группы", 120),
+                Module = Trim(group.Module, 160),
+                Topics = Trim(group.Topics, 1000),
+                Location = location
+            });
+            foreach (var module in group.Modules)
+            {
+                if (!DateOnly.TryParse(module.Start, out var start) || !DateOnly.TryParse(module.End, out var end))
+                    continue;
+                db.GroupProgramModules.Add(new GroupProgramModule
+                {
+                    Id = module.Id == Guid.Empty ? Guid.NewGuid() : module.Id,
+                    GroupId = group.Id,
+                    Name = Trim(module.Name, 240),
+                    StartDate = start,
+                    EndDate = end,
+                    LessonCount = Math.Max(0, module.Lessons),
+                    Comment = Trim(module.Comment, 500),
+                    SortOrder = module.SortOrder
+                });
+            }
+        }
+        await db.SaveChangesAsync(ct);
+
+        foreach (var student in snapshot.Students)
+        {
+            db.Students.Add(new Student
+            {
+                Id = student.Id,
+                LastName = Required(student.LastName, "Фамилия", 120),
+                FirstName = Required(student.FirstName, "Имя", 120),
+                Age = student.Age,
+                Birthday = student.Birthday,
+                GroupId = student.GroupId,
+                Comment = Trim(student.Comment, 2000),
+                PortfolioUrl = Trim(student.PortfolioUrl, 500),
+                CrmId = Trim(student.CrmId, 120),
+                Kiberons = Math.Max(0, student.Kiberons),
+                Xp = Math.Max(0, student.Xp)
+            });
+        }
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+    }
 }
+
+public sealed record ProgramImportResult(bool Ran, int Groups, string Hash);

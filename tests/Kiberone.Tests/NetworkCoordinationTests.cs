@@ -34,6 +34,7 @@ public sealed class NetworkCoordinationTests
         var receipt = queue.Acknowledge("pc-a", new CommandAcknowledgement(command.Id, true));
         Assert.True(receipt.Succeeded);
         Assert.Empty(queue.GetPending("pc-a"));
+        Assert.Equal("ok", queue.GetRollout(command.Id).Single().State);
     }
 
     [Fact]

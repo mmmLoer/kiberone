@@ -1,0 +1,17 @@
+[Unit]
+Description=KIBERone location roster hub
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/kiberone-hub
+Environment=KIBERONE_HUB_DATA=/var/lib/kiberone-hub
+Environment=KIBERONE_HUB_SECRETS=/var/lib/kiberone-hub/location-secrets.json
+Environment=KIBERONE_HUB_URL=http://0.0.0.0:8787
+ExecStart=/usr/bin/dotnet /opt/kiberone-hub/Kiberone.Hub.dll
+Restart=always
+RestartSec=3
+User=root
+
+[Install]
+WantedBy=multi-user.target

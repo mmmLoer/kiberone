@@ -72,6 +72,33 @@ public sealed class ReliableCommandQueue(ClientRegistry registry, TimeProvider? 
     public IReadOnlyList<CommandReceipt> GetReceipts(int limit = 200) =>
         receipts.Reverse().Take(Math.Clamp(limit, 1, 1000)).ToList();
 
+    public IReadOnlyList<CommandRolloutItem> GetRollout(Guid commandId)
+    {
+        CleanupExpired();
+        var rows = new Dictionary<string, CommandRolloutItem>(StringComparer.OrdinalIgnoreCase);
+        foreach (var receipt in receipts.Where(item => item.CommandId == commandId))
+        {
+            rows[receipt.ClientId] = new CommandRolloutItem(
+                receipt.ClientId,
+                receipt.Succeeded ? "ok" : "error",
+                receipt.Error);
+        }
+
+        if (pending.TryGetValue(commandId, out var item))
+        {
+            lock (item.SyncRoot)
+            {
+                foreach (var clientId in item.Targets)
+                {
+                    if (!rows.ContainsKey(clientId))
+                        rows[clientId] = new CommandRolloutItem(clientId, "waiting", null);
+                }
+            }
+        }
+
+        return rows.Values.OrderBy(row => row.ClientId, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
     private void CleanupExpired()
     {
         var now = clock.GetUtcNow();

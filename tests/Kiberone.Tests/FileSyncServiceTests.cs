@@ -49,6 +49,18 @@ public sealed class FileSyncServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public void SetRosterRoot_StoresNewGroupsInChosenFolder()
+    {
+        var custom = Path.Combine(testRoot, "saves");
+        service.SetRosterRoot(custom);
+        var groupPath = service.EnsureGroupFolder("Python 01");
+
+        Assert.Equal(Path.GetFullPath(custom), service.RosterRoot);
+        Assert.StartsWith(Path.GetFullPath(custom), groupPath);
+        Assert.True(Directory.Exists(groupPath));
+    }
+
+    [Fact]
     public void EnsureGroupFolder_SanitizesEmptyAndPathCharacters()
     {
         var empty = service.EnsureGroupFolder("   ");

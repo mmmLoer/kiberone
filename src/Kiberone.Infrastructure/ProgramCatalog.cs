@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using Kiberone.Core;
 
@@ -44,6 +45,27 @@ public static class ProgramCatalog
 
     public static IReadOnlyList<string> LocationNames() =>
         Load2026().Select(x => x.Name).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+    public static string ContentHash()
+    {
+        using var stream = OpenCatalogStream();
+        using var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        var buffer = new byte[81920];
+        int read;
+        while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
+            hasher.AppendData(buffer.AsSpan(0, read));
+        return Convert.ToHexString(hasher.GetHashAndReset());
+    }
+
+    private static Stream OpenCatalogStream()
+    {
+        var assembly = typeof(ProgramCatalog).Assembly;
+        var name = assembly.GetManifestResourceNames()
+            .FirstOrDefault(x => x.EndsWith("program-2026-2027.json", StringComparison.OrdinalIgnoreCase))
+            ?? assembly.GetManifestResourceNames().FirstOrDefault(x => x.EndsWith("shb-2026-2027.json", StringComparison.OrdinalIgnoreCase))
+            ?? throw new FileNotFoundException("Не найден каталог программы 2026-2027.");
+        return assembly.GetManifestResourceStream(name) ?? throw new FileNotFoundException(name);
+    }
 }
 
 public sealed record LocationProgram(string Name, string Sheet, IReadOnlyList<ShbGroupProgram> Groups);
