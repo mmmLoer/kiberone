@@ -600,10 +600,17 @@ public partial class MainViewModel : ViewModelBase
     private void RebuildTypingPresentation()
     {
         TextGlyphs.Clear();
+        if (string.IsNullOrEmpty(TargetText))
+            return;
+
         // One active line only, with a short sliding window of characters.
         const int maxVisibleChars = 42;
-        var (lineStart, lineEnd) = GetCurrentLineRange(TargetText, TypedText.Length);
-        var caretInLine = Math.Clamp(TypedText.Length - lineStart, 0, Math.Max(0, lineEnd - lineStart));
+        var caret = Math.Clamp(TypedText.Length, 0, TargetText.Length);
+        var (lineStart, lineEnd) = GetCurrentLineRange(TargetText, Math.Min(caret, Math.Max(0, TargetText.Length - 1)));
+        if (lineEnd <= lineStart)
+            lineEnd = Math.Min(TargetText.Length, lineStart + 1);
+
+        var caretInLine = Math.Clamp(caret - lineStart, 0, lineEnd - lineStart);
         var lineLength = lineEnd - lineStart;
         var visibleStartInLine = 0;
         var visibleEndInLine = lineLength;
@@ -618,11 +625,13 @@ public partial class MainViewModel : ViewModelBase
         var end = lineStart + visibleEndInLine;
         for (var index = start; index < end; index++)
         {
-            var state = index < typedResults.Count
-                ? TypingGlyphState.Correct
-                : index == TypedText.Length
-                    ? lastAttemptWasWrong ? TypingGlyphState.Wrong : TypingGlyphState.Current
-                    : TypingGlyphState.Pending;
+            TypingGlyphState state;
+            if (index < TypedText.Length)
+                state = index < typedResults.Count && typedResults[index] ? TypingGlyphState.Correct : TypingGlyphState.Correct;
+            else if (index == TypedText.Length)
+                state = lastAttemptWasWrong ? TypingGlyphState.Wrong : TypingGlyphState.Current;
+            else
+                state = TypingGlyphState.Pending;
             TextGlyphs.Add(new TypingGlyphViewModel(TargetText[index], state));
         }
 
@@ -704,12 +713,26 @@ public enum TypingGlyphState { Pending, Current, Correct, Wrong }
 
 public sealed class TypingGlyphViewModel(char character, TypingGlyphState state)
 {
-    public string Character { get; } = character.ToString();
+    public string DisplayCharacter { get; } = char.IsWhiteSpace(character) ? "·" : character.ToString();
     public bool IsWhitespace { get; } = char.IsWhiteSpace(character);
-    public double GlyphMinWidth => IsWhitespace ? 16 : 0;
-    public string Foreground => state switch { TypingGlyphState.Correct => "#087F5B", TypingGlyphState.Wrong => "#C9362B", TypingGlyphState.Current => "#13181D", _ => "#6B7880" };
-    public string Background => state switch { TypingGlyphState.Correct => "#DDF7E9", TypingGlyphState.Wrong => "#FFE2DE", TypingGlyphState.Current => "#FFD52E", _ => "Transparent" };
-    public string Decoration => state == TypingGlyphState.Wrong ? "Underline" : "None";
+    public double GlyphMinWidth => IsWhitespace ? 18 : 14;
+    public string GlyphForeground => state switch
+    {
+        TypingGlyphState.Correct => "#087F5B",
+        TypingGlyphState.Wrong => "#C9362B",
+        TypingGlyphState.Current => "#13181D",
+        _ => "#8A969E"
+    };
+    public string GlyphBackground => state switch
+    {
+        TypingGlyphState.Correct => "#DDF7E9",
+        TypingGlyphState.Wrong => "#FFE2DE",
+        TypingGlyphState.Current => "#FFD52E",
+        _ => "#F3F6F8"
+    };
+    public string GlyphBorderBrush => state == TypingGlyphState.Current ? "#13181D" : "Transparent";
+    public double GlyphBorderThickness => state == TypingGlyphState.Current ? 2 : 0;
+    public string Decrations => state == TypingGlyphState.Wrong ? "Underline" : "None";
 }
 
 public sealed class KeyboardRowViewModel(IReadOnlyList<KeyboardKeyViewModel> keys)

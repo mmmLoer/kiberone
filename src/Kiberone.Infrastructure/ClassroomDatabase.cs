@@ -71,6 +71,20 @@ public static class ClassroomDatabase
 
     private static async Task UpgradeShortDefaultLessonsAsync(ClassroomDbContext db, CancellationToken cancellationToken)
     {
+        string[] obsoleteNames =
+        [
+            "Разминка: домашний ряд",
+            "Python: цикл for",
+            "Предложения: школа и код"
+        ];
+        foreach (var obsolete in obsoleteNames)
+        {
+            var old = await db.TypingLessons.FirstOrDefaultAsync(x => x.Name == obsolete, cancellationToken);
+            if (old is null) continue;
+            await db.TypingLessonSteps.Where(step => step.LessonId == old.Id).ExecuteDeleteAsync(cancellationToken);
+            db.TypingLessons.Remove(old);
+        }
+
         foreach (var seed in TypingLessonCatalog.Defaults)
         {
             var existing = await db.TypingLessons
@@ -85,7 +99,7 @@ public static class ClassroomDatabase
                 .Where(step => step.LessonId == existing.Id)
                 .SumAsync(step => (int?)step.Text.Length, cancellationToken) ?? 0;
             var stepCount = await db.TypingLessonSteps.CountAsync(step => step.LessonId == existing.Id, cancellationToken);
-            if (currentLength >= 800 && existing.MinimumCharacters >= seed.MinimumCharacters && stepCount == 1)
+            if (currentLength == seed.Text.Length && existing.MinimumCharacters == seed.MinimumCharacters && stepCount == 1)
                 continue;
 
             // Bypass the change tracker for deletes — tracked RemoveRange after SQL delete

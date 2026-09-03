@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using Kiberone.Core;
 
 namespace Kiberone.Infrastructure;
@@ -6,6 +7,12 @@ namespace Kiberone.Infrastructure;
 public sealed class ClassroomHubClient
 {
     public const string DefaultBaseUrl = "http://193.235.147.228:8787";
+
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        PropertyNameCaseInsensitive = true
+    };
 
     private readonly HttpClient http;
 
@@ -85,6 +92,6 @@ public sealed class ClassroomHubClient
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             return default;
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<T>(ct);
+        return await response.Content.ReadFromJsonAsync<T>(Json, ct);
     }
 }

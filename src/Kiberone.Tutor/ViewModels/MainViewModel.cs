@@ -263,6 +263,8 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             RefreshSoftwarePack();
             RefreshProgramStatus();
             await RefreshScreensAsync(force: true);
+            if (EnableStudentUpdates)
+                await TrySyncStudentUpdateFromHubAsync(quiet: true);
             StatusMessage = Lessons.Count == 0
                 ? "Создайте первый урок — он сохранится в локальной базе."
                 : $"Загружено уроков: {Lessons.Count}";
@@ -842,35 +844,61 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     }
 
     [RelayCommand]
-    private async Task DownloadStudentUpdateFromHubAsync()
+    private async Task DownloadStudentUpdateFromHubAsync() => await TrySyncStudentUpdateFromHubAsync(quiet: false);
+
+    private async Task TrySyncStudentUpdateFromHubAsync(bool quiet)
     {
         try
         {
-            IsBusy = true;
+            if (!quiet)
+                IsBusy = true;
             var hub = CreateHubClient();
             var manifest = await hub.GetStudentUpdateAsync();
             if (manifest is null)
             {
-                HubStatus = "На сервере нет обновления Student.";
-                StatusMessage = HubStatus;
+                if (!quiet)
+                {
+                    HubStatus = "На сервере нет обновления Student.";
+                    StatusMessage = HubStatus;
+                }
+                return;
+            }
+
+            var local = assets.GetStudentRelease();
+            if (local is not null
+                && Version.TryParse(local.Version, out var localVersion)
+                && Version.TryParse(manifest.Version, out var remoteVersion)
+                && remoteVersion <= localVersion
+                && string.Equals(local.Sha256, manifest.Sha256, StringComparison.OrdinalIgnoreCase))
+            {
+                if (!quiet)
+                {
+                    HubStatus = $"Уже актуально: Student {local.Version}.";
+                    StatusMessage = HubStatus;
+                }
                 return;
             }
 
             var bytes = await hub.DownloadStudentUpdateFileAsync();
             var stored = assets.ImportStudentRelease(manifest, bytes);
-            HubStatus = $"Обновление Student {stored.Version} сохранено для раздачи по классу.";
+            HubStatus = quiet
+                ? $"С сервера подтянуто обновление Student {stored.Version}."
+                : $"Обновление Student {stored.Version} сохранено для раздачи по классу.";
             HasError = false;
             StatusMessage = HubStatus;
         }
         catch (Exception error)
         {
+            if (quiet)
+                return;
             HasError = true;
             HubStatus = $"Не удалось скачать обновление Student: {error.Message}";
             StatusMessage = HubStatus;
         }
         finally
         {
-            IsBusy = false;
+            if (!quiet)
+                IsBusy = false;
         }
     }
 

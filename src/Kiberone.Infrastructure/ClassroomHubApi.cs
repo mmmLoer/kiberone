@@ -64,10 +64,20 @@ public static class ClassroomHubApi
                 return Results.BadRequest(new { error = error.Message });
             }
         });
-        app.MapGet("/api/update/student", () => store.GetStudentUpdate() is { } manifest ? Results.Json(manifest) : Results.NotFound());
+        app.MapGet("/api/update/student", () =>
+        {
+            var manifest = store.GetStudentUpdate();
+            return manifest is null
+                ? Results.NotFound()
+                : Results.Json(manifest, new JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+                });
+        });
         app.MapGet("/api/update/student/file", () => store.OpenStudentUpdate() is { } stream
             ? Results.File(stream, "application/octet-stream", "KIBERoneStudent.exe", enableRangeProcessing: true)
             : Results.NotFound());
+        app.MapGet("/api/update/installers", () => Results.Json(store.ListInstallerZips()));
     }
 }
 

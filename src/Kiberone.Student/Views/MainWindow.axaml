@@ -405,7 +405,7 @@
               <Border Classes="metric" Margin="0,0,6,0">
                 <StackPanel Spacing="3">
                   <TextBlock Text="Скорость" Classes="muted" FontSize="11"/>
-                  <TextBlock Text="{Binding Cpm, StringFormat={}{0:0} CPM}" Classes="metricValue"/>
+                  <TextBlock Text="{Binding Cpm, StringFormat={}{0:0} зн/мин}" Classes="metricValue"/>
                 </StackPanel>
               </Border>
               <Border Grid.Column="1" Classes="metric" Margin="6,0">
@@ -437,23 +437,11 @@
 
             <Border Classes="card" Padding="22" MinHeight="120">
               <StackPanel Spacing="16">
-                <Grid ColumnDefinitions="*,Auto">
-                  <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
-                    <TextBlock Text="Следующая клавиша" Classes="muted" FontSize="12"/>
-                    <Border Background="#FFB80D" CornerRadius="7" Padding="9,4">
-                      <TextBlock Text="{Binding CurrentCharacter}"
-                                 FontFamily="Cascadia Mono, Consolas"
-                                 FontWeight="Bold"
-                                 FontSize="16"/>
-                    </Border>
-                  </StackPanel>
-                  <TextBlock Grid.Column="1"
-                             Text="{Binding LastInputFeedback}"
-                             Foreground="#056D69"
-                             FontWeight="SemiBold"
-                             FontSize="12"
-                             VerticalAlignment="Center"/>
-                </Grid>
+                <TextBlock Text="{Binding LastInputFeedback}"
+                           Foreground="#056D69"
+                           FontWeight="SemiBold"
+                           FontSize="12"
+                           HorizontalAlignment="Center"/>
 
                 <ItemsControl ItemsSource="{Binding TextGlyphs}" HorizontalAlignment="Center">
                   <ItemsControl.ItemsPanel>
@@ -463,9 +451,15 @@
                   </ItemsControl.ItemsPanel>
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:TypingGlyphViewModel">
-                      <Border Background="{Binding Background}" CornerRadius="5" Padding="2,2" Margin="1" MinWidth="{Binding GlyphMinWidth}">
-                        <TextBlock Text="{Binding Character}"
-                                   Foreground="{Binding Foreground}"
+                      <Border Background="{Binding GlyphBackground}"
+                              CornerRadius="5"
+                              Padding="3,4"
+                              Margin="1"
+                              MinWidth="{Binding GlyphMinWidth}"
+                              BorderBrush="{Binding GlyphBorderBrush}"
+                              BorderThickness="{Binding GlyphBorderThickness}">
+                        <TextBlock Text="{Binding DisplayCharacter}"
+                                   Foreground="{Binding GlyphForeground}"
                                    FontFamily="Cascadia Mono, Consolas"
                                    FontSize="24"
                                    FontWeight="SemiBold"
@@ -565,7 +559,7 @@
               </StackPanel>
               <Grid ColumnDefinitions="*,*,*">
                 <Border Classes="metric" Margin="0,0,6,0">
-                  <StackPanel><TextBlock Text="Скорость" Classes="muted" FontSize="11"/><TextBlock Text="{Binding Cpm, StringFormat={}{0:0} CPM}" Classes="metricValue"/></StackPanel>
+                  <StackPanel><TextBlock Text="Скорость" Classes="muted" FontSize="11"/><TextBlock Text="{Binding Cpm, StringFormat={}{0:0} зн/мин}" Classes="metricValue"/></StackPanel>
                 </Border>
                 <Border Grid.Column="1" Classes="metric" Margin="6,0">
                   <StackPanel><TextBlock Text="Точность" Classes="muted" FontSize="11"/><TextBlock Text="{Binding Accuracy, StringFormat={}{0:0}%}" Classes="metricValue"/></StackPanel>
@@ -596,7 +590,7 @@
                 </Border>
                 <TextBlock Text="Сессия завершена" Classes="h1" TextWrapping="Wrap"/>
                 <TextBlock Text="Результат готов к синхронизации с Tutor." Classes="muted" TextWrapping="Wrap"/>
-                <TextBlock Text="{Binding Cpm, StringFormat={}{0:0} CPM}" Foreground="#068F8A" FontSize="34" FontWeight="Bold" Margin="0,12,0,0"/>
+                <TextBlock Text="{Binding Cpm, StringFormat={}{0:0} зн/мин}" Foreground="#068F8A" FontSize="34" FontWeight="Bold" Margin="0,12,0,0"/>
                 <TextBlock Text="{Binding Accuracy, StringFormat={}{0:0}% точность}" Foreground="#1F8E5B" FontSize="18" FontWeight="Bold"/>
                 <TextBlock Text="{Binding CorrectKeys, StringFormat={}{0} знаков}" FontSize="18" FontWeight="SemiBold"/>
                 <Button Content="Выбрать новый урок" Command="{Binding NavigateCommand}" CommandParameter="1" Classes="primary" Margin="0,8,0,0"/>

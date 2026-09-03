@@ -1243,6 +1243,7 @@
               <Button Content="Скачать VPN-конфиги обоих серверов" Command="{Binding DownloadVpnPeersCommand}" Classes="ghost" HorizontalAlignment="Left" IsVisible="False"/>
               <TextBlock Text="VPN: конфиги выдаёт сервер пути по локации класса (GET /config). Папка .conf больше не нужна." Classes="muted" TextWrapping="Wrap"/>
               <Button Content="Скачать обновление Student с сервера" Command="{Binding DownloadStudentUpdateFromHubCommand}" Classes="ghost" HorizontalAlignment="Left"/>
+              <TextBlock Text="Сервер сам собирает Student из git (scripts/ci-pull-and-release.sh) и кладёт файл в updates. Tutor забирает его сюда для раздачи по классу." Classes="muted" TextWrapping="Wrap"/>
               <TextBlock Text="Программа 2026–2027" FontWeight="Bold"/>
               <TextBlock Text="{Binding ProgramStatus}" Classes="muted" TextWrapping="Wrap"/>
               <Button Content="Обновить программу" Command="{Binding ImportProgramCommand}" Classes="ghost" HorizontalAlignment="Left"/>
@@ -1252,6 +1253,7 @@
               <NumericUpDown Value="{Binding SyncIntervalSeconds}" Minimum="5" Maximum="600"/>
               <CheckBox Content="Автоматически принимать безопасные файлы" IsChecked="{Binding AutoApproveSafeFiles}"/>
               <CheckBox Content="Разрешить обновления Student" IsChecked="{Binding EnableStudentUpdates}"/>
+              <TextBlock Text="Если включено — при запуске Tutor сам подтянет новую версию Student с сервера, когда она появится." Classes="muted" TextWrapping="Wrap"/>
               <CheckBox Content="Тёмная тема" IsChecked="{Binding IsDarkTheme}"/>
               <TextBlock Text="Папка настроек безопасной сети" FontWeight="Bold"/>
               <TextBlock Text="Можно скачать с сервера по паролю локации или указать папку вручную." Classes="muted" TextWrapping="Wrap"/>

@@ -6,9 +6,16 @@ namespace Kiberone.Infrastructure;
 public sealed class ClassroomHubStore
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
+    private static readonly JsonSerializerOptions UpdateJson = new(JsonSerializerDefaults.Web)
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        WriteIndented = true,
+        PropertyNameCaseInsensitive = true
+    };
     private readonly string rosterDirectory;
     private readonly string vpnDirectory;
     private readonly string updatesDirectory;
+    private readonly string installersDirectory;
     private readonly IReadOnlyDictionary<string, LocationSecretRecord> secrets;
     private readonly object gate = new();
 
@@ -17,15 +24,20 @@ public sealed class ClassroomHubStore
         rosterDirectory = Path.Combine(dataDirectory, "rosters");
         vpnDirectory = Path.Combine(dataDirectory, "vpn");
         updatesDirectory = Path.Combine(dataDirectory, "updates");
+        installersDirectory = Path.Combine(dataDirectory, "installers");
         Directory.CreateDirectory(rosterDirectory);
         Directory.CreateDirectory(vpnDirectory);
         Directory.CreateDirectory(updatesDirectory);
+        Directory.CreateDirectory(installersDirectory);
         foreach (var region in VpnRegionCatalog.All)
             Directory.CreateDirectory(RegionDirectory(region.Id));
         this.secrets = secrets
             .Where(x => !string.IsNullOrWhiteSpace(x.Location))
             .ToDictionary(x => x.Location.Trim(), x => x, StringComparer.OrdinalIgnoreCase);
     }
+
+    public string UpdatesDirectory => updatesDirectory;
+    public string InstallersDirectory => installersDirectory;
 
     public IReadOnlyList<HubLocationStatus> List()
     {
@@ -149,7 +161,8 @@ public sealed class ClassroomHubStore
         var manifestPath = Path.Combine(updatesDirectory, "student_manifest.json");
         if (!File.Exists(manifestPath))
             return null;
-        var manifest = JsonSerializer.Deserialize<AppUpdateManifest>(File.ReadAllText(manifestPath), Json);
+        var manifest = JsonSerializer.Deserialize<AppUpdateManifest>(File.ReadAllText(manifestPath), UpdateJson)
+            ?? JsonSerializer.Deserialize<AppUpdateManifest>(File.ReadAllText(manifestPath), Json);
         if (manifest is null || string.IsNullOrWhiteSpace(manifest.Filename))
             return null;
         var file = Path.Combine(updatesDirectory, Path.GetFileName(manifest.Filename));
@@ -165,6 +178,41 @@ public sealed class ClassroomHubStore
         return File.Exists(file)
             ? new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read)
             : null;
+    }
+
+    /// <summary>
+    /// CI drops KIBERoneStudent.exe + student_manifest.json into updates/. This republishes
+    /// from a built exe and writes a snake_case manifest Tutors already expect.
+    /// </summary>
+    public AppUpdateManifest PublishStudentUpdate(string sourceExePath, string version)
+    {
+        if (!File.Exists(sourceExePath))
+            throw new FileNotFoundException("Не найден собранный Student.exe.", sourceExePath);
+        if (string.IsNullOrWhiteSpace(version))
+            throw new ArgumentException("Нужна версия обновления.", nameof(version));
+
+        var bytes = File.ReadAllBytes(sourceExePath);
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant();
+        var filename = "KIBERoneStudent.exe";
+        Directory.CreateDirectory(updatesDirectory);
+        File.WriteAllBytes(Path.Combine(updatesDirectory, filename), bytes);
+        var manifest = new AppUpdateManifest(version.Trim(), filename, bytes.Length, hash, DateTimeOffset.UtcNow);
+        File.WriteAllText(
+            Path.Combine(updatesDirectory, "student_manifest.json"),
+            JsonSerializer.Serialize(manifest, UpdateJson));
+        return manifest;
+    }
+
+    public IReadOnlyList<string> ListInstallerZips()
+    {
+        if (!Directory.Exists(installersDirectory))
+            return [];
+        return Directory.GetFiles(installersDirectory, "KIBERone*-Setup-*-win-x64.zip")
+            .Select(Path.GetFileName)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Cast<string>()
+            .OrderByDescending(x => x, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private void EnsureAuthorized(string location, string password)
