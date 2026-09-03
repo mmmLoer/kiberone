@@ -574,7 +574,13 @@ public sealed class StudentAgent : IAsyncDisposable
 
     public static bool IsStudentExecutablePath(string path)
     {
-        var name = Path.GetFileNameWithoutExtension(path);
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        // Path APIs are OS-specific; installed Student paths are Windows-style even when unit-tested on macOS.
+        var fileName = path.Replace('\\', '/');
+        var slash = fileName.LastIndexOf('/');
+        if (slash >= 0)
+            fileName = fileName[(slash + 1)..];
+        var name = Path.GetFileNameWithoutExtension(fileName);
         return name.Equals("Kiberone.Student", StringComparison.OrdinalIgnoreCase)
                || name.Equals("KIBERoneStudent", StringComparison.OrdinalIgnoreCase);
     }
