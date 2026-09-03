@@ -276,7 +276,7 @@
               <Grid ColumnDefinitions="30,*">
                 <TextBlock Text="✓" FontWeight="Bold" Foreground="#068F8A" FontSize="18" VerticalAlignment="Center"/>
                 <TextBlock Grid.Column="1"
-                           Text="Список обновляется сам, пока есть связь с Tutor. Выбери урок — сначала увидишь текст, потом старт."
+                           Text="Список обновляется сам, пока есть связь с Tutor. Выбери урок — и сразу жми пробел, чтобы начать."
                            Foreground="#056D69"
                            TextWrapping="Wrap"
                            VerticalAlignment="Center"/>
@@ -319,11 +319,11 @@
         </ScrollViewer>
       </TabItem>
 
-      <!-- Assigned lesson preview -->
+      <!-- Ready screen without full-text preview -->
       <TabItem Header="Назначенный урок">
         <ScrollViewer>
           <Border Classes="card"
-                  MaxWidth="760"
+                  MaxWidth="640"
                   Margin="28"
                   HorizontalAlignment="Center"
                   VerticalAlignment="Top">
@@ -334,33 +334,21 @@
                 <TextBlock Text="{Binding LessonMeta}" Classes="muted" FontSize="14"/>
               </StackPanel>
 
-              <Border Background="#172126" CornerRadius="12" Padding="22">
-                <StackPanel Spacing="10">
-                  <TextBlock Text="ТЕКСТ УРОКА" Foreground="#9DB0B8" FontSize="10" FontWeight="Bold" LetterSpacing="1"/>
-                  <TextBlock Text="{Binding TargetText}"
+              <Border Background="#172126" CornerRadius="12" Padding="28">
+                <StackPanel Spacing="10" HorizontalAlignment="Center">
+                  <TextBlock Text="Нажмите ПРОБЕЛ"
                              Foreground="White"
-                             FontFamily="Cascadia Mono, Consolas"
-                             FontSize="19"
-                             FontWeight="SemiBold"
+                             FontSize="28"
+                             FontWeight="Bold"
+                             HorizontalAlignment="Center"/>
+                  <TextBlock Text="Текст урока откроется уже в тренажёре — по одной строке."
+                             Foreground="#9DB0B8"
+                             FontSize="14"
                              TextWrapping="Wrap"
-                             LineHeight="28"/>
+                             HorizontalAlignment="Center"
+                             TextAlignment="Center"/>
                 </StackPanel>
               </Border>
-
-              <Grid ColumnDefinitions="*,*" Margin="0,2,0,0">
-                <Border Classes="softCard" Margin="0,0,7,0">
-                  <StackPanel Spacing="4">
-                    <TextBlock Text="1 · ПРОВЕРЬ" Classes="eyebrow" FontSize="9"/>
-                    <TextBlock Text="Правильная раскладка включена" Classes="muted" TextWrapping="Wrap"/>
-                  </StackPanel>
-                </Border>
-                <Border Grid.Column="1" Classes="softCard" Margin="7,0,0,0">
-                  <StackPanel Spacing="4">
-                    <TextBlock Text="2 · НАЧНИ" Classes="eyebrow" FontSize="9"/>
-                    <TextBlock Text="Пробел запускает секундомер" Classes="muted" TextWrapping="Wrap"/>
-                  </StackPanel>
-                </Border>
-              </Grid>
 
               <Grid ColumnDefinitions="Auto,*">
                 <Button Content="Назад"
@@ -447,7 +435,7 @@
               </Border>
             </Grid>
 
-            <Border Classes="card" Padding="22" MinHeight="166">
+            <Border Classes="card" Padding="22" MinHeight="120">
               <StackPanel Spacing="16">
                 <Grid ColumnDefinitions="*,Auto">
                   <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
@@ -470,16 +458,16 @@
                 <ItemsControl ItemsSource="{Binding TextGlyphs}" HorizontalAlignment="Center">
                   <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
-                      <WrapPanel HorizontalAlignment="Center"/>
+                      <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"/>
                     </ItemsPanelTemplate>
                   </ItemsControl.ItemsPanel>
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:TypingGlyphViewModel">
-                      <Border Background="{Binding Background}" CornerRadius="5" Padding="3,2" Margin="1" MinWidth="{Binding GlyphMinWidth}">
+                      <Border Background="{Binding Background}" CornerRadius="5" Padding="2,2" Margin="1" MinWidth="{Binding GlyphMinWidth}">
                         <TextBlock Text="{Binding Character}"
                                    Foreground="{Binding Foreground}"
                                    FontFamily="Cascadia Mono, Consolas"
-                                   FontSize="27"
+                                   FontSize="24"
                                    FontWeight="SemiBold"
                                    TextDecorations="{Binding Decoration}"/>
                       </Border>

@@ -200,7 +200,7 @@ public partial class MainViewModel : ViewModelBase
     public string SectionSubtitle => SelectedSectionIndex switch
     {
         0 => "Твой следующий шаг появится здесь", 1 => "Выбери доступный материал",
-        2 => "Тьютор выбрал материал для группы", 3 => "Следуй тексту и нужной клавише",
+        2 => "Пробел запускает урок", 3 => "Одна строка · пробел — старт",
         4 => "Можно передохнуть", 5 => "Урок закончен",
         6 => "Уровень, кибероны и достижения", _ => "Связь с классом"
     };
@@ -390,7 +390,7 @@ public partial class MainViewModel : ViewModelBase
         if (lesson is null) return;
         LessonName = lesson.Name;
         ResetLesson(lesson.Text, lesson.MinimumCharacters);
-        SelectedSectionIndex = 2;
+        OpenTypingTrainer();
     }
 
     [RelayCommand]
@@ -410,7 +410,7 @@ public partial class MainViewModel : ViewModelBase
         };
         LessonName = lesson.Item1;
         ResetLesson(lesson.Item2, lesson.Item3);
-        SelectedSectionIndex = 2;
+        OpenTypingTrainer();
     }
 
     [RelayCommand]
@@ -432,12 +432,16 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private void StartAssignedLesson()
+    private void StartAssignedLesson() => OpenTypingTrainer();
+
+    private void OpenTypingTrainer()
     {
         SelectedSectionIndex = 3;
         IsLessonStarted = false;
         activeTime.Reset();
-        StatusMessage = "Нажмите пробел, чтобы начать урок.";
+        StatusMessage = GoalCharacters < TargetText.Length
+            ? $"Нажмите пробел, чтобы начать. Для зачёта достаточно {GoalCharacters} знаков."
+            : "Нажмите пробел, чтобы начать урок.";
         LastInputFeedback = "Нажмите ПРОБЕЛ, чтобы начать";
         RebuildTypingPresentation();
     }
@@ -478,7 +482,7 @@ public partial class MainViewModel : ViewModelBase
                     && minimumProperty.ValueKind == System.Text.Json.JsonValueKind.Number)
                     minimum = minimumProperty.GetInt32();
                 ResetLesson(text, minimum);
-                SelectedSectionIndex = 2;
+                OpenTypingTrainer();
                 return CommandExecutionResult.Success;
             case ClassroomCommandKinds.TypingFinish:
                 Finish();
@@ -596,12 +600,22 @@ public partial class MainViewModel : ViewModelBase
     private void RebuildTypingPresentation()
     {
         TextGlyphs.Clear();
-        // Long passages: show a sliding window so the UI stays responsive.
-        const int windowSize = 220;
-        var focus = Math.Clamp(TypedText.Length, 0, Math.Max(0, TargetText.Length - 1));
-        var start = Math.Max(0, focus - 40);
-        var end = Math.Min(TargetText.Length, start + windowSize);
-        start = Math.Max(0, end - windowSize);
+        // One active line only, with a short sliding window of characters.
+        const int maxVisibleChars = 42;
+        var (lineStart, lineEnd) = GetCurrentLineRange(TargetText, TypedText.Length);
+        var caretInLine = Math.Clamp(TypedText.Length - lineStart, 0, Math.Max(0, lineEnd - lineStart));
+        var lineLength = lineEnd - lineStart;
+        var visibleStartInLine = 0;
+        var visibleEndInLine = lineLength;
+        if (lineLength > maxVisibleChars)
+        {
+            visibleStartInLine = Math.Max(0, caretInLine - maxVisibleChars / 3);
+            visibleEndInLine = Math.Min(lineLength, visibleStartInLine + maxVisibleChars);
+            visibleStartInLine = Math.Max(0, visibleEndInLine - maxVisibleChars);
+        }
+
+        var start = lineStart + visibleStartInLine;
+        var end = lineStart + visibleEndInLine;
         for (var index = start; index < end; index++)
         {
             var state = index < typedResults.Count
@@ -637,6 +651,20 @@ public partial class MainViewModel : ViewModelBase
             var keys = row.Select(key => new KeyboardKeyViewModel(key, IsExpectedKey(key))).ToList();
             KeyboardRows.Add(new KeyboardRowViewModel(keys));
         }
+    }
+
+    private static (int Start, int End) GetCurrentLineRange(string text, int caret)
+    {
+        if (text.Length == 0)
+            return (0, 0);
+
+        caret = Math.Clamp(caret, 0, text.Length);
+        var start = caret == 0 ? 0 : text.LastIndexOf('\n', caret - 1);
+        start = start < 0 ? 0 : start + 1;
+        var end = text.IndexOf('\n', caret);
+        if (end < 0)
+            end = text.Length;
+        return (start, end);
     }
 
     private bool IsExpectedKey(string key)
