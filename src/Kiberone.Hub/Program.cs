@@ -18,4 +18,5 @@ var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls(Environment.GetEnvironmentVariable("KIBERONE_HUB_URL") ?? "http://0.0.0.0:8787");
 var app = builder.Build();
 ClassroomHubApi.Map(app, store);
+GithubPushReleaseHook.Map(app);
 app.Run();

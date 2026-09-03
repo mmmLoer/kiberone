@@ -8,6 +8,9 @@ WorkingDirectory=/opt/kiberone-hub
 Environment=KIBERONE_HUB_DATA=/var/lib/kiberone-hub
 Environment=KIBERONE_HUB_SECRETS=/var/lib/kiberone-hub/location-secrets.json
 Environment=KIBERONE_HUB_URL=http://0.0.0.0:8787
+EnvironmentFile=-/var/lib/kiberone-hub/webhook.env
+Environment=KIBERONE_RELEASE_UNIT=kiberone-release.service
+Environment=KIBERONE_GIT_BRANCH=main
 ExecStart=/usr/bin/dotnet /opt/kiberone-hub/Kiberone.Hub.dll
 Restart=always
 RestartSec=3

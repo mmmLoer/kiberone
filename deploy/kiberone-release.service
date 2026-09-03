@@ -10,6 +10,7 @@ Environment=DOTNET_ROOT=/usr/share/dotnet
 Environment=PATH=/usr/share/dotnet:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
 Environment=KIBERONE_HUB_DATA=/var/lib/kiberone-hub
 Environment=KIBERONE_GIT_BRANCH=main
+# On push webhook Hub restarts this unit immediately; timer remains a 15‑minute backup.
 Environment=KIBERONE_SKIP_BUILD_IF_UNCHANGED=1
 Environment=KIBERONE_ALLOW_MISSING_TUNNEL=1
 Environment=KIBERONE_NATIVE_CACHE=/var/lib/kiberone-hub/native-cache

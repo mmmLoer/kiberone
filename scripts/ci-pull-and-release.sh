@@ -7,6 +7,10 @@
 #   KIBERONE_GIT_BRANCH  – branch to track (default: main)
 #   KIBERONE_SKIP_BUILD_IF_UNCHANGED=1 – skip build when pull made no changes
 #
+# Triggered by:
+#   - systemd timer kiberone-release.timer (backup every 15 min)
+#   - GitHub push webhook → Hub POST /api/hooks/github → systemctl start kiberone-release.service
+#
 # Cron example (every 15 min):
 #   */15 * * * * /opt/kiberone/scripts/ci-pull-and-release.sh >> /var/log/kiberone-release.log 2>&1
 set -euo pipefail
