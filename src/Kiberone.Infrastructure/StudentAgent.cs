@@ -42,6 +42,7 @@ public sealed class StudentAgent : IAsyncDisposable
     private Task? loopTask;
     private ClientWebSocket? commandSocket;
     private int commandSocketLive;
+    private bool sessionOnline;
 
     public StudentAgent(string? pcNumber = null, string? watchFolder = null)
     {
@@ -110,15 +111,17 @@ public sealed class StudentAgent : IAsyncDisposable
             using var http = new HttpClient(new HttpClientHandler { UseProxy = false })
             {
                 BaseAddress = new Uri(address),
-                Timeout = TimeSpan.FromSeconds(10)
+                // File sync and Student updates need a long budget; short ops use linked CTS below.
+                Timeout = TimeSpan.FromMinutes(10)
             };
             http.DefaultRequestHeaders.Add("X-Sync-Token", beacon.Token);
             http.DefaultRequestHeaders.Add("X-Client-Id", clientId);
             Raise(true, "Подключено к классу", address);
+            sessionOnline = true;
             var consecutiveFailures = 0;
             var rosterLoaded = false;
             Task? socketTask = null;
-            while (!cancellationToken.IsCancellationRequested && consecutiveFailures < 3)
+            while (!cancellationToken.IsCancellationRequested && consecutiveFailures < 5)
             {
                 try
                 {
@@ -139,7 +142,13 @@ public sealed class StudentAgent : IAsyncDisposable
                         }
                         nextLessonsAt = DateTimeOffset.UtcNow.AddSeconds(15);
                     }
-                    await SendHeartbeatAsync(http, cancellationToken);
+
+                    using (var heartbeatCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+                    {
+                        heartbeatCts.CancelAfter(TimeSpan.FromSeconds(15));
+                        await SendHeartbeatAsync(http, heartbeatCts.Token);
+                    }
+
                     if (studentId is Guid assigned)
                         fileSync.StudentId = assigned;
                     socketTask = await EnsureCommandSocketAsync(beacon, http, socketTask, cancellationToken);
@@ -149,7 +158,15 @@ public sealed class StudentAgent : IAsyncDisposable
                     await FlushQuizAnswersAsync(http, cancellationToken);
                     if (DateTimeOffset.UtcNow >= nextSyncAt)
                     {
-                        await fileSync.SyncOnceAsync(http, cancellationToken);
+                        try
+                        {
+                            await fileSync.SyncOnceAsync(http, cancellationToken);
+                        }
+                        catch (Exception error)
+                        {
+                            // Keep the classroom session alive when one sync cycle fails.
+                            SyncStateChanged?.Invoke(new StudentSyncState($"Синхронизация не удалась: {error.Message}", 0, DateTimeOffset.UtcNow));
+                        }
                         nextSyncAt = DateTimeOffset.UtcNow.AddSeconds(syncSeconds);
                     }
                     if (ScreenProvider is not null && DateTimeOffset.UtcNow >= nextScreenAt)
@@ -168,14 +185,32 @@ public sealed class StudentAgent : IAsyncDisposable
                     if (updateRequested && availableUpdate is not null && stagedUpdatePath is null)
                     {
                         updateRequested = false;
-                        await StageUpdateAsync(http, availableUpdate, cancellationToken);
+                        try
+                        {
+                            await StageUpdateAsync(http, availableUpdate, cancellationToken);
+                        }
+                        catch (Exception error)
+                        {
+                            UpdateStateChanged?.Invoke($"Обновление не установлено: {error.Message}");
+                        }
+                    }
+                    if (!sessionOnline)
+                    {
+                        Raise(true, "Подключено к классу", address);
+                        sessionOnline = true;
                     }
                     consecutiveFailures = 0;
                 }
                 catch (Exception error) when (error is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
                 {
                     consecutiveFailures++;
-                    Raise(false, "Связь с классом прервалась. Пробуем ещё раз…", address);
+                    if (consecutiveFailures >= 2)
+                    {
+                        sessionOnline = false;
+                        Raise(false, "Связь с классом прервалась. Пробуем ещё раз…", address);
+                    }
+                    else
+                        SyncStateChanged?.Invoke(new StudentSyncState($"Временный сбой связи: {error.Message}", 0, DateTimeOffset.UtcNow));
                 }
                 await Task.Delay(TimeSpan.FromSeconds(3), cancellationToken);
             }

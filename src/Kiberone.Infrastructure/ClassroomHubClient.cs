@@ -21,7 +21,8 @@ public sealed class ClassroomHubClient
         http = new HttpClient
         {
             BaseAddress = new Uri((string.IsNullOrWhiteSpace(baseUrl) ? DefaultBaseUrl : baseUrl.Trim()).TrimEnd('/') + "/"),
-            Timeout = TimeSpan.FromSeconds(45)
+            // Student update packages are ~200MB+; keep this high for hub downloads.
+            Timeout = TimeSpan.FromMinutes(15)
         };
     }
 
@@ -83,8 +84,15 @@ public sealed class ClassroomHubClient
     public Task<AppUpdateManifest?> GetStudentUpdateAsync(CancellationToken ct = default) =>
         GetOptionalAsync<AppUpdateManifest>("api/update/student", ct);
 
-    public async Task<byte[]> DownloadStudentUpdateFileAsync(CancellationToken ct = default) =>
-        await http.GetByteArrayAsync("api/update/student/file", ct);
+    public async Task<byte[]> DownloadStudentUpdateFileAsync(CancellationToken ct = default)
+    {
+        using var response = await http.GetAsync("api/update/student/file", HttpCompletionOption.ResponseHeadersRead, ct);
+        response.EnsureSuccessStatusCode();
+        await using var stream = await response.Content.ReadAsStreamAsync(ct);
+        using var memory = new MemoryStream();
+        await stream.CopyToAsync(memory, ct);
+        return memory.ToArray();
+    }
 
     private async Task<T?> GetOptionalAsync<T>(string url, CancellationToken ct)
     {

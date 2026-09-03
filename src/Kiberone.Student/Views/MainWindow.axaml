@@ -738,6 +738,13 @@
                         Classes="primary"
                         HorizontalAlignment="Left"
                         MinWidth="210"/>
+                <Button Content="Установить обновление"
+                        Command="{Binding InstallUpdateCommand}"
+                        IsVisible="{Binding HasUpdate}"
+                        Classes="primary"
+                        HorizontalAlignment="Left"
+                        MinWidth="210"
+                        Margin="0,8,0,0"/>
                 <TextBlock Text="{Binding ConnectionActionMessage}"
                            Classes="muted"
                            FontSize="12"
