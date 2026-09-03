@@ -1,4 +1,5 @@
 using Kiberone.Vpn.WireGuard;
+using Kiberone.Core;
 
 namespace Kiberone.Vpn;
 
@@ -16,6 +17,9 @@ public sealed class VpnController
     private VpnBridgeClient? bridge;
     private bool bridgeResolved;
     private string? lastError;
+    private VpnRuntimeInfo lastRuntime = new(false, false);
+
+    public VpnRuntimeInfo LastRuntime => lastRuntime;
 
     public VpnController(VpnOptions? options = null)
     {
@@ -90,6 +94,7 @@ public sealed class VpnController
                 {
                     var bridged = activeBridge.Connect(path);
                     lastError = bridged.Connected ? null : bridged.LastError ?? "VPN не подключился.";
+                    lastRuntime = new VpnRuntimeInfo(bridged.Connected, bridged.Connected, null, null, null, lastError);
                     return bridged with { LastError = lastError };
                 }
 
@@ -104,7 +109,9 @@ public sealed class VpnController
                 TunnelService.Connect(path, ephemeral: false);
                 Thread.Sleep(400);
                 lastError = null;
-                return ToDirectStatus(TunnelService.GetStatus(path), true);
+                var connected = ToDirectStatus(TunnelService.GetStatus(path), true);
+                lastRuntime = new VpnRuntimeInfo(connected.Connected, connected.Connected, null, null, null, null);
+                return connected;
             }
             catch (Exception error)
             {
@@ -123,6 +130,7 @@ public sealed class VpnController
             if (activeBridge is not null)
             {
                 lastError = null;
+                lastRuntime = new VpnRuntimeInfo(false, false);
                 return activeBridge.Disconnect(path);
             }
 
@@ -131,10 +139,41 @@ public sealed class VpnController
                 TunnelService.Disconnect(path, waitForStop: true);
 
             lastError = null;
+            lastRuntime = new VpnRuntimeInfo(false, false);
             return File.Exists(path)
                 ? ToDirectStatus(TunnelService.GetStatus(path), true)
                 : new VpnStatus(false, "stopped", TunnelService.ServiceNameFromConfig(path), path, false, null);
         }
+    }
+
+    public VpnRuntimeInfo VerifyReachability(string? checkHost = null, string? region = null)
+    {
+        var status = GetStatus();
+        if (!status.Connected)
+        {
+            lastRuntime = new VpnRuntimeInfo(false, false, null, region, checkHost, lastError ?? "VPN не подключён.");
+            return lastRuntime;
+        }
+
+        string? configText = null;
+        try
+        {
+            if (File.Exists(ConfigPath))
+                configText = File.ReadAllText(ConfigPath);
+        }
+        catch
+        {
+            // ping still uses the requested host
+        }
+
+        var host = VpnHealthCheck.ResolveCheckHost(configText, checkHost, VpnRegionCatalog.Resolve(region).CheckHost);
+        var ping = VpnReachability.Ping(host, TimeSpan.FromSeconds(2), attempts: 4);
+        lastRuntime = VpnHealthCheck.FromPing(status with { PingMs = ping.RoundtripMs, CheckHost = host }, ping, region);
+        if (!ping.Ok)
+            lastError = $"VPN подключён, но ping {host} не прошёл: {ping.Error}";
+        else
+            lastError = null;
+        return lastRuntime;
     }
 
     public VpnStatus InstallConfig(ReadOnlySpan<byte> content)

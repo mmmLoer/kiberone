@@ -61,6 +61,7 @@ public sealed class StudentAgent : IAsyncDisposable
     public Func<string, CommandExecutionResult>? LaunchInstaller { get; set; }
     public Func<string, CommandExecutionResult>? ApplyWallpaperFile { get; set; }
     public Func<bool>? VpnStateProvider { get; set; }
+    public Func<VpnRuntimeInfo>? VpnRuntimeProvider { get; set; }
     public Func<bool>? ScreenLockStateProvider { get; set; }
     public event Action<StudentConnectionState>? ConnectionChanged;
     public event Action<ClassroomCommand>? CommandReceived;
@@ -166,6 +167,7 @@ public sealed class StudentAgent : IAsyncDisposable
 
     private async Task SendHeartbeatAsync(HttpClient http, CancellationToken cancellationToken)
     {
+        var vpn = VpnRuntimeProvider?.Invoke();
         var heartbeat = new HeartbeatRequest(
             clientId,
             pcNumber,
@@ -179,8 +181,10 @@ public sealed class StudentAgent : IAsyncDisposable
                 FocusModeStateProvider?.Invoke() ?? false,
                 string.Empty,
                 BatteryProvider?.Invoke(),
-                VpnStateProvider?.Invoke() ?? false,
-                ScreenLockStateProvider?.Invoke() ?? false));
+                vpn?.Connected ?? VpnStateProvider?.Invoke() ?? false,
+                ScreenLockStateProvider?.Invoke() ?? false,
+                vpn?.PingMs,
+                vpn?.Region));
         using var response = await http.PostAsJsonAsync("/heartbeat", heartbeat, JsonOptions, cancellationToken);
         response.EnsureSuccessStatusCode();
         var settings = await response.Content.ReadFromJsonAsync<HeartbeatResponse>(JsonOptions, cancellationToken);

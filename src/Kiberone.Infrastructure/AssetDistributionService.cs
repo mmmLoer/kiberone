@@ -78,6 +78,26 @@ public sealed class AssetDistributionService
         return new FileStream(Path.Combine(updatesRoot, release.Filename), FileMode.Open, FileAccess.Read, FileShare.Read);
     }
 
+    public StudentReleaseManifest ImportStudentRelease(AppUpdateManifest remote, byte[] content)
+    {
+        if (content.Length == 0)
+            throw new LessonValidationException(["Пустой файл обновления Student."]);
+        if (!IsSafeName(remote.Filename))
+            throw new LessonValidationException(["Некорректное имя файла обновления."]);
+        var hash = Convert.ToHexString(SHA256.HashData(content));
+        if (!hash.Equals(remote.Sha256, StringComparison.OrdinalIgnoreCase))
+            throw new LessonValidationException(["Хеш обновления Student не совпал."]);
+
+        Directory.CreateDirectory(updatesRoot);
+        var destination = Path.Combine(updatesRoot, remote.Filename);
+        File.WriteAllBytes(destination, content);
+        var stored = new StudentReleaseManifest(remote.Version, remote.Filename, content.Length, hash, remote.PublishedAt);
+        File.WriteAllText(
+            Path.Combine(updatesRoot, "student_manifest.json"),
+            JsonSerializer.Serialize(stored, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower, WriteIndented = true }));
+        return stored;
+    }
+
     public IReadOnlyList<DistributedAsset> ListStarterPack() => ListAssets(starterRoot);
 
     public void AddStarterFile(string sourcePath)

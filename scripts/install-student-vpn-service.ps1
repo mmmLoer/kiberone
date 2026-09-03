@@ -146,3 +146,10 @@ Write-Host "  Service:  $ServiceName (running)"
 Write-Host ""
 Write-Host "You can keep launching Student from dist\Student-win-x64."
 Write-Host "Tutor can push .conf files and enable VPN without UAC prompts."
+
+Write-Host ""
+Write-Host "Verifying VPN probes ..."
+& $installedExe /verify-vpn
+if ($LASTEXITCODE -ne 0) {
+    throw "VPN probe check failed. See messages above."
+}

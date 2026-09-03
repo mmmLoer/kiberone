@@ -5,5 +5,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Data\vpn-probe-1.conf" />
+    <EmbeddedResource Include="Data\vpn-probe-2.conf" />
+  </ItemGroup>
 
 </Project>

@@ -7,6 +7,8 @@ dist/
 data/
 !src/Kiberone.Infrastructure/Data/
 !src/Kiberone.Infrastructure/Data/**
+!src/Kiberone.Core/Data/
+!src/Kiberone.Core/Data/**
 *.db
 *.db-shm
 *.db-wal

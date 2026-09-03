@@ -41,4 +41,50 @@ public sealed class ClassroomHubClient
             throw new InvalidOperationException(string.IsNullOrWhiteSpace(body) ? $"Сервер ответил {(int)response.StatusCode}." : body);
         }
     }
+
+    public async Task<IReadOnlyList<VpnRegionInfo>> ListVpnRegionsAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var rows = await http.GetFromJsonAsync<List<VpnRegionInfo>>("api/vpn/regions", ct);
+            return rows is { Count: > 0 } ? rows : VpnRegionCatalog.All;
+        }
+        catch
+        {
+            return VpnRegionCatalog.All;
+        }
+    }
+
+    public async Task<VpnPeerPack> DownloadVpnPeersAsync(string regionId, string location, string password, CancellationToken ct = default)
+    {
+        using var response = await http.PostAsJsonAsync(
+            $"api/vpn/regions/{Uri.EscapeDataString(regionId.Trim())}/peers",
+            new VpnPeerDownloadRequest(location, password),
+            ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+            throw new UnauthorizedAccessException("Неверный пароль локации.");
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(ct);
+            throw new InvalidOperationException(string.IsNullOrWhiteSpace(body) ? $"Сервер ответил {(int)response.StatusCode}." : body);
+        }
+
+        return await response.Content.ReadFromJsonAsync<VpnPeerPack>(ct)
+               ?? throw new InvalidOperationException("Сервер не вернул VPN-конфиги.");
+    }
+
+    public Task<AppUpdateManifest?> GetStudentUpdateAsync(CancellationToken ct = default) =>
+        GetOptionalAsync<AppUpdateManifest>("api/update/student", ct);
+
+    public async Task<byte[]> DownloadStudentUpdateFileAsync(CancellationToken ct = default) =>
+        await http.GetByteArrayAsync("api/update/student/file", ct);
+
+    private async Task<T?> GetOptionalAsync<T>(string url, CancellationToken ct)
+    {
+        using var response = await http.GetAsync(url, ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            return default;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<T>(ct);
+    }
 }

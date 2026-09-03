@@ -15,6 +15,12 @@ sealed class Program
             return;
         }
 
+        if (args.Any(arg => string.Equals(arg, "/verify-vpn", StringComparison.OrdinalIgnoreCase)))
+        {
+            Environment.Exit(VpnInstallVerifier.Run());
+            return;
+        }
+
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 

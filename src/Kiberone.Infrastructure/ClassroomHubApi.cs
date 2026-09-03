@@ -31,5 +31,46 @@ public static class ClassroomHubApi
                 return Results.BadRequest(new { error = error.Message });
             }
         });
+        app.MapGet("/api/vpn/regions", () => Results.Json(store.ListVpnRegions()));
+        app.MapPost("/api/vpn/regions/{region}/peers", async (string region, HttpRequest request, CancellationToken ct) =>
+        {
+            var body = await JsonSerializer.DeserializeAsync<VpnPeerDownloadRequest>(request.Body, new JsonSerializerOptions(JsonSerializerDefaults.Web), ct);
+            if (body is null || string.IsNullOrWhiteSpace(body.Location) || string.IsNullOrWhiteSpace(body.Password))
+                return Results.BadRequest(new { error = "Нужны локация и пароль." });
+            try
+            {
+                return Results.Json(store.GetVpnPeers(region, body.Location, body.Password));
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return Results.Json(new { error = "Неверный пароль локации." }, statusCode: 403);
+            }
+        });
+        app.MapPut("/api/vpn/regions/{region}/peers", async (string region, HttpRequest request, CancellationToken ct) =>
+        {
+            var body = await JsonSerializer.DeserializeAsync<VpnPeerUploadRequest>(request.Body, new JsonSerializerOptions(JsonSerializerDefaults.Web), ct);
+            if (body is null || string.IsNullOrWhiteSpace(body.Location) || string.IsNullOrWhiteSpace(body.Password) || body.Files is null)
+                return Results.BadRequest(new { error = "Нужны пароль, локация и файлы конфигов." });
+            try
+            {
+                return Results.Json(store.PutVpnPeers(region, body.Location, body.Password, body.Files));
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return Results.Json(new { error = "Неверный пароль локации." }, statusCode: 403);
+            }
+            catch (InvalidOperationException error)
+            {
+                return Results.BadRequest(new { error = error.Message });
+            }
+        });
+        app.MapGet("/api/update/student", () => store.GetStudentUpdate() is { } manifest ? Results.Json(manifest) : Results.NotFound());
+        app.MapGet("/api/update/student/file", () => store.OpenStudentUpdate() is { } stream
+            ? Results.File(stream, "application/octet-stream", "KIBERoneStudent.exe", enableRangeProcessing: true)
+            : Results.NotFound());
     }
 }
+
+public sealed record VpnPeerDownloadRequest(string Location, string Password);
+
+public sealed record VpnPeerUploadRequest(string Location, string Password, IReadOnlyList<VpnPeerFile> Files);

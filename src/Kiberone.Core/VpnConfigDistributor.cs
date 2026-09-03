@@ -7,11 +7,14 @@ public static class VpnConfigDistributor
         string PcNumber,
         string Hostname,
         string ConfigFilePath,
-        string ConfigFileName);
+        string ConfigFileName,
+        string? FallbackConfigFilePath = null,
+        string? FallbackConfigFileName = null);
 
     public static IReadOnlyList<Assignment> Assign(
         IEnumerable<ClassroomClientSnapshot> clients,
-        string configsFolder)
+        string configsFolder,
+        string? fallbackFolder = null)
     {
         if (!Directory.Exists(configsFolder))
             return [];
@@ -63,7 +66,20 @@ public static class VpnConfigDistributor
             assignments.Add(new Assignment(client.ClientId, client.PcNumber, client.Hostname, config.Path, config.FileName));
         }
 
-        return assignments;
+        if (string.IsNullOrWhiteSpace(fallbackFolder) || !Directory.Exists(fallbackFolder))
+            return assignments;
+
+        return assignments.Select(assignment =>
+        {
+            var fallback = Path.Combine(fallbackFolder, assignment.ConfigFileName);
+            if (!File.Exists(fallback))
+                return assignment;
+            return assignment with
+            {
+                FallbackConfigFilePath = fallback,
+                FallbackConfigFileName = assignment.ConfigFileName
+            };
+        }).ToList();
     }
 
     public static string DescribeAssignments(IReadOnlyList<Assignment> assignments, int onlineClientCount, int configCount)

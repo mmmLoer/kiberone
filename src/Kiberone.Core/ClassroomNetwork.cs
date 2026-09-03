@@ -23,7 +23,17 @@ public sealed record ClientRuntimeInfo(
     string ActiveApp,
     int? BatteryPercent,
     bool VpnConnected = false,
-    bool ScreenLocked = false);
+    bool ScreenLocked = false,
+    int? VpnPingMs = null,
+    string? VpnRegion = null);
+
+public sealed record VpnRuntimeInfo(
+    bool Connected,
+    bool Healthy,
+    int? PingMs = null,
+    string? Region = null,
+    string? CheckHost = null,
+    string? Error = null);
 
 public sealed record HeartbeatResponse(
     bool Ok,

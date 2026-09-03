@@ -133,7 +133,9 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [ObservableProperty] private string settingsStatus = "Настройки действуют только на этом Tutor.";
     [ObservableProperty] private string vpnConfigsFolder = string.Empty;
     [ObservableProperty] private string studentSavesFolder = DefaultStudentSavesFolder();
-    [ObservableProperty] private string vpnDistributionStatus = "Укажите папку с .conf файлами — конфиги раздадутся ученикам автоматически.";
+    [ObservableProperty] private string vpnLocationName = VpnRegionCatalog.Primary.Name;
+    [ObservableProperty] private string? setupVpnLocationName = VpnRegionCatalog.Primary.Name;
+    [ObservableProperty] private string vpnDistributionStatus = "Выберите сервер VPN — конфиги можно скачать с хаба или указать папку.";
     [ObservableProperty] private StarterAssetCardViewModel? selectedStarterAsset;
     [ObservableProperty] private string wallpaperName = "Обои ещё не выбраны";
     [ObservableProperty] private string softwareStatus = "Соберите пакет: папки урока и установщики .exe / .msi.";
@@ -238,6 +240,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     public string VersionLabel => $"Tutor {BuildInfo.Version}";
     public IReadOnlyList<string> AuditCategories { get; } = ["Все", "Синхронизация", "Магазин", "Печать", "Викторина", "Команды", "Ученики", "Система"];
     public IReadOnlyList<string> Locations { get; } = ProgramCatalog.LocationNames();
+    public IReadOnlyList<string> VpnLocationNames { get; } = VpnRegionCatalog.Names();
     public bool IsSetupWelcome => NeedsLocationSetup && SetupStep == 0;
     public bool IsSetupLocation => NeedsLocationSetup && SetupStep == 1;
     public bool IsSetupDownload => NeedsLocationSetup && SetupStep == 2;
@@ -311,9 +314,12 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     {
         if (string.IsNullOrWhiteSpace(VpnConfigsFolder) || !Directory.Exists(VpnConfigsFolder))
         {
+            var cached = VpnRegionCatalog.CacheFolder(VpnRegionCatalog.Resolve(VpnLocationName).Id);
             VpnDistributionStatus = string.IsNullOrWhiteSpace(VpnConfigsFolder)
-                ? "Укажите папку с .conf файлами — конфиги раздадутся ученикам автоматически."
+                ? "Скачайте конфиги с сервера или укажите папку с .conf."
                 : $"Папка не найдена: {VpnConfigsFolder}";
+            if (Directory.Exists(cached) && Directory.GetFiles(cached, "*.conf").Length > 0)
+                VpnDistributionStatus = $"Локальный кэш «{VpnLocationName}»: {Directory.GetFiles(cached, "*.conf").Length} конфигов. Нажмите «Скачать VPN», если нужно обновить.";
             return;
         }
 
@@ -321,15 +327,37 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         try
         {
             configCount = Directory.GetFiles(VpnConfigsFolder, "*.conf", SearchOption.TopDirectoryOnly).Length;
+            var assignments = VpnConfigDistributor.Assign(onlineClients, VpnConfigsFolder, FallbackVpnFolder());
+            VpnDistributionStatus = $"{VpnLocationName}: {VpnConfigDistributor.DescribeAssignments(assignments, onlineClients.Count, configCount)}";
         }
         catch (Exception error)
         {
             VpnDistributionStatus = $"Не удалось прочитать папку VPN: {error.Message}";
-            return;
         }
+    }
 
-        var assignments = VpnConfigDistributor.Assign(onlineClients, VpnConfigsFolder);
-        VpnDistributionStatus = VpnConfigDistributor.DescribeAssignments(assignments, onlineClients.Count, configCount);
+    private string? FallbackVpnFolder()
+    {
+        var fallback = VpnRegionCatalog.CacheFolder(VpnRegionCatalog.Other(VpnLocationName).Id);
+        return Directory.Exists(fallback) ? fallback : null;
+    }
+
+    private string EffectiveVpnFolder()
+    {
+        if (!string.IsNullOrWhiteSpace(VpnConfigsFolder) && Directory.Exists(VpnConfigsFolder))
+            return VpnConfigsFolder;
+        return VpnRegionCatalog.CacheFolder(VpnRegionCatalog.Resolve(VpnLocationName).Id);
+    }
+
+    partial void OnVpnLocationNameChanged(string value)
+    {
+        if (loadingSettings) return;
+        var cached = VpnRegionCatalog.CacheFolder(VpnRegionCatalog.Resolve(value).Id);
+        if (Directory.Exists(cached) && Directory.GetFiles(cached, "*.conf").Length > 0)
+            VpnConfigsFolder = cached;
+        RefreshVpnDistributionStatus(clients.GetAll().Where(client => client.IsOnline).ToList());
+        if (!NeedsLocationSetup)
+            SaveSettings();
     }
 
     partial void OnVpnConfigsFolderChanged(string value) => RefreshVpnDistributionStatus(clients.GetAll().Where(client => client.IsOnline).ToList());
@@ -615,6 +643,8 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     {
         if (string.IsNullOrWhiteSpace(SetupStudentSavesFolder))
             SetupStudentSavesFolder = DefaultStudentSavesFolder();
+        if (string.IsNullOrWhiteSpace(SetupVpnLocationName))
+            SetupVpnLocationName = VpnLocationName;
         SetupStep = 1;
     }
 
@@ -626,6 +656,8 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     {
         loadingSettings = true;
         LocationName = SetupLocationName!.Trim();
+        if (!string.IsNullOrWhiteSpace(SetupVpnLocationName))
+            VpnLocationName = SetupVpnLocationName.Trim();
         if (!string.IsNullOrWhiteSpace(SetupStudentSavesFolder))
             ApplyStudentSavesFolder(SetupStudentSavesFolder);
         loadingSettings = false;
@@ -724,6 +756,103 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         {
             HasError = true;
             HubStatus = $"Не удалось отправить: {error.Message}";
+            StatusMessage = HubStatus;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task DownloadVpnPeersAsync()
+    {
+        if (string.IsNullOrWhiteSpace(LocationName))
+        {
+            HubStatus = "Сначала выберите локацию класса.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(LocationUploadPassword))
+        {
+            HubStatus = "Чтобы скачать VPN-конфиги, введите пароль локации.";
+            return;
+        }
+
+        try
+        {
+            IsBusy = true;
+            var hub = CreateHubClient();
+            var downloaded = 0;
+            foreach (var region in VpnRegionCatalog.All)
+            {
+                var pack = await hub.DownloadVpnPeersAsync(region.Id, LocationName, LocationUploadPassword);
+                var folder = VpnRegionCatalog.CacheFolder(region.Id);
+                Directory.CreateDirectory(folder);
+                foreach (var leftover in Directory.GetFiles(folder, "*.conf"))
+                    File.Delete(leftover);
+                foreach (var file in pack.Files)
+                {
+                    var name = Path.GetFileName(file.FileName);
+                    if (string.IsNullOrWhiteSpace(name)) continue;
+                    await File.WriteAllTextAsync(Path.Combine(folder, name), file.Content);
+                    downloaded++;
+                }
+            }
+
+            var selected = VpnRegionCatalog.CacheFolder(VpnRegionCatalog.Resolve(VpnLocationName).Id);
+            if (Directory.Exists(selected))
+                VpnConfigsFolder = selected;
+            RefreshVpnDistributionStatus(clients.GetAll().Where(client => client.IsOnline).ToList());
+            HubStatus = downloaded == 0
+                ? "На сервере пока нет VPN-конфигов для этих серверов. Загрузите .conf на хаб."
+                : $"Скачано VPN-конфигов: {downloaded}. Выбран «{VpnLocationName}».";
+            HasError = false;
+            StatusMessage = HubStatus;
+            SaveSettings();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            HasError = true;
+            HubStatus = "Неверный пароль локации. VPN-конфиги не скачаны.";
+            StatusMessage = HubStatus;
+        }
+        catch (Exception error)
+        {
+            HasError = true;
+            HubStatus = $"Не удалось скачать VPN: {error.Message}";
+            StatusMessage = HubStatus;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task DownloadStudentUpdateFromHubAsync()
+    {
+        try
+        {
+            IsBusy = true;
+            var hub = CreateHubClient();
+            var manifest = await hub.GetStudentUpdateAsync();
+            if (manifest is null)
+            {
+                HubStatus = "На сервере нет обновления Student.";
+                StatusMessage = HubStatus;
+                return;
+            }
+
+            var bytes = await hub.DownloadStudentUpdateFileAsync();
+            var stored = assets.ImportStudentRelease(manifest, bytes);
+            HubStatus = $"Обновление Student {stored.Version} сохранено для раздачи по классу.";
+            HasError = false;
+            StatusMessage = HubStatus;
+        }
+        catch (Exception error)
+        {
+            HasError = true;
+            HubStatus = $"Не удалось скачать обновление Student: {error.Message}";
             StatusMessage = HubStatus;
         }
         finally
@@ -1309,7 +1438,8 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             ShowOtherLocationStudents,
             HubUrl.Trim(),
             !NeedsLocationSetup,
-            StudentSavesFolder.Trim());
+            StudentSavesFolder.Trim(),
+            VpnRegionCatalog.Resolve(VpnLocationName).Id);
         var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KIBERone", "Tutor");
         Directory.CreateDirectory(directory);
         File.WriteAllText(Path.Combine(directory, "settings.json"), JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
@@ -1341,6 +1471,13 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             AutoApproveSafeFiles = saved.AutoApproveSafeFiles;
             EnableStudentUpdates = saved.EnableStudentUpdates;
             VpnConfigsFolder = saved.VpnConfigsFolder ?? string.Empty;
+            VpnLocationName = VpnRegionCatalog.Resolve(saved.VpnRegionId).Name;
+            if (string.IsNullOrWhiteSpace(VpnConfigsFolder))
+            {
+                var cached = VpnRegionCatalog.CacheFolder(VpnRegionCatalog.Resolve(VpnLocationName).Id);
+                if (Directory.Exists(cached) && Directory.GetFiles(cached, "*.conf").Length > 0)
+                    VpnConfigsFolder = cached;
+            }
             if (!string.IsNullOrWhiteSpace(saved.StudentSavesFolder))
                 StudentSavesFolder = saved.StudentSavesFolder;
             fileSync.SetRosterRoot(StudentSavesFolder);
@@ -1354,6 +1491,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             {
                 SetupStep = 0;
                 SetupLocationName = string.IsNullOrWhiteSpace(saved.LocationName) ? null : saved.LocationName;
+                SetupVpnLocationName = VpnLocationName;
                 SetupStudentSavesFolder = StudentSavesFolder;
             }
             SettingsStatus = "Локальные настройки загружены.";
@@ -1891,9 +2029,11 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
                 return;
             }
 
-            if (!string.IsNullOrWhiteSpace(VpnConfigsFolder) && Directory.Exists(VpnConfigsFolder))
+            if (!string.IsNullOrWhiteSpace(EffectiveVpnFolder()) && Directory.Exists(EffectiveVpnFolder()))
             {
-                var assignments = VpnConfigDistributor.Assign(online, VpnConfigsFolder);
+                var region = VpnRegionCatalog.Resolve(VpnLocationName);
+                var fallbackRegion = VpnRegionCatalog.Other(VpnLocationName);
+                var assignments = VpnConfigDistributor.Assign(online, EffectiveVpnFolder(), FallbackVpnFolder());
                 if (assignments.Count == 0)
                 {
                     HasError = true;
@@ -1905,28 +2045,36 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
                 foreach (var assignment in assignments)
                 {
                     var content = await File.ReadAllBytesAsync(assignment.ConfigFilePath);
+                    byte[]? fallback = null;
+                    if (!string.IsNullOrWhiteSpace(assignment.FallbackConfigFilePath) && File.Exists(assignment.FallbackConfigFilePath))
+                        fallback = await File.ReadAllBytesAsync(assignment.FallbackConfigFilePath);
                     SendClientCommand(
                         assignment.ClientId,
                         ClassroomCommandKinds.VpnInstallConfig,
                         new
                         {
                             config_base64 = Convert.ToBase64String(content),
+                            fallback_config_base64 = fallback is null ? null : Convert.ToBase64String(fallback),
                             source_name = assignment.ConfigFileName,
-                            auto_connect = true
+                            auto_connect = true,
+                            check_host = region.CheckHost,
+                            vpn_region = region.Id,
+                            fallback_vpn_region = fallback is null ? null : fallbackRegion.Id,
+                            fallback_check_host = fallback is null ? null : fallbackRegion.CheckHost
                         });
                     ApplyCommandedModeToClient(assignment.ClientId, ClassroomCommandKinds.VpnInstallConfig);
                 }
 
-                var configCount = Directory.GetFiles(VpnConfigsFolder, "*.conf", SearchOption.TopDirectoryOnly).Length;
-                VpnDistributionStatus = VpnConfigDistributor.DescribeAssignments(assignments, online.Count, configCount);
+                var configCount = Directory.GetFiles(EffectiveVpnFolder(), "*.conf", SearchOption.TopDirectoryOnly).Length;
+                VpnDistributionStatus = $"{region.Name}: {VpnConfigDistributor.DescribeAssignments(assignments, online.Count, configCount)}";
                 HasError = false;
                 StatusMessage = $"VPN: {VpnDistributionStatus}";
                 return;
             }
 
-            SendClassCommand(ClassroomCommandKinds.VpnConnect, new { });
+            SendClassCommand(ClassroomCommandKinds.VpnConnect, new { check_host = VpnRegionCatalog.Resolve(VpnLocationName).CheckHost, vpn_region = VpnRegionCatalog.Resolve(VpnLocationName).Id });
             HasError = true;
-            StatusMessage = "Папка с VPN-конфигами не указана. Укажите её в поле выше или установите peer.conf вручную на каждом ПК.";
+            StatusMessage = "Нет VPN-конфигов. Скачайте их с сервера или укажите папку с .conf.";
         }
         catch (Exception error)
         {
@@ -2965,7 +3113,8 @@ public sealed record TutorLocalSettings(
     bool ShowOtherLocationStudents = false,
     string HubUrl = "",
     bool LocationSetupCompleted = false,
-    string StudentSavesFolder = "");
+    string StudentSavesFolder = "",
+    string VpnRegionId = "");
 
 public partial class QuizQuestionEditorViewModel : ObservableObject
 {

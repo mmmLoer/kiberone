@@ -19,6 +19,8 @@ public partial class App : Avalonia.Application
     private MainViewModel? viewModel;
     private ScreenLockManager? screenLock;
 
+    private VpnRuntimeInfo lastVpnRuntime = new(false, false);
+
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
@@ -42,7 +44,8 @@ public partial class App : Avalonia.Application
             });
             agent = new StudentAgent();
             vpn = new VpnController();
-            agent.VpnStateProvider = () => vpn.IsConnected;
+            agent.VpnStateProvider = () => lastVpnRuntime.Connected;
+            agent.VpnRuntimeProvider = () => lastVpnRuntime;
             agent.BatteryProvider = BatteryInfo.TryGetBatteryPercent;
             agent.VpnCommandHandler = HandleVpnCommand;
             agent.LaunchInstaller = DesktopWallpaper.LaunchInstaller;
@@ -95,9 +98,7 @@ public partial class App : Avalonia.Application
             var result = command.Kind switch
             {
                 ClassroomCommandKinds.VpnInstallConfig => HandleVpnInstallConfig(command),
-                ClassroomCommandKinds.VpnConnect => vpn.Connect().Connected
-                    ? ReportVpnSuccess()
-                    : ReportVpnFailure(vpn.GetStatus().LastError ?? "Не удалось подключить VPN."),
+                ClassroomCommandKinds.VpnConnect => ConnectWithHealth(command),
                 ClassroomCommandKinds.VpnDisconnect => ReportVpnDisconnected(),
                 ClassroomCommandKinds.VpnStatus => ReportVpnStatus(),
                 _ => ReportVpnFailure($"Неизвестная VPN-команда: {command.Kind}")
@@ -134,14 +135,64 @@ public partial class App : Avalonia.Application
         vpn.InstallConfig(content);
         viewModel?.SetVpnState(vpn.GetStatus(), "Конфиг получен от тьютора");
 
-        var autoConnect = command.Payload.TryGetProperty("auto_connect", out var connectFlag) && connectFlag.GetBoolean();
+        var autoConnect = !command.Payload.TryGetProperty("auto_connect", out var connectFlag) || connectFlag.GetBoolean();
         if (!autoConnect)
             return CommandExecutionResult.Success;
 
-        return vpn.Connect().Connected
-            ? ReportVpnSuccess()
-            : ReportVpnFailure(vpn.GetStatus().LastError ?? "Конфиг установлен, но VPN не подключился.");
+        var checkHost = ReadString(command, "check_host");
+        var region = ReadString(command, "vpn_region");
+        var connected = ConnectWithHealth(checkHost, region);
+        if (connected.Succeeded)
+            return connected;
+
+        if (!command.Payload.TryGetProperty("fallback_config_base64", out var fallbackEncoded)
+            || fallbackEncoded.GetString() is not { Length: > 0 } fallbackBase64)
+            return connected;
+
+        try
+        {
+            vpn.InstallConfig(Convert.FromBase64String(fallbackBase64));
+        }
+        catch (Exception error)
+        {
+            return ReportVpnFailure($"Основной VPN не ответил, запасной конфиг не принят: {error.Message}");
+        }
+
+        var fallbackRegion = ReadString(command, "fallback_vpn_region") ?? region;
+        var fallbackHost = ReadString(command, "fallback_check_host") ?? checkHost;
+        var fallback = ConnectWithHealth(fallbackHost, fallbackRegion);
+        return fallback.Succeeded
+            ? fallback
+            : ReportVpnFailure($"Не ответили ни основной, ни запасной VPN. {fallback.Error}");
     }
+
+    private CommandExecutionResult ConnectWithHealth(ClassroomCommand command) =>
+        ConnectWithHealth(ReadString(command, "check_host"), ReadString(command, "vpn_region"));
+
+    private CommandExecutionResult ConnectWithHealth(string? checkHost, string? region)
+    {
+        if (vpn is null)
+            return ReportVpnFailure("VPN не инициализирован.");
+
+        var status = vpn.Connect();
+        if (!status.Connected)
+            return ReportVpnFailure(status.LastError ?? "Не удалось подключить VPN.");
+
+        lastVpnRuntime = vpn.VerifyReachability(checkHost, region);
+        viewModel?.SetVpnState(vpn.GetStatus() with
+        {
+            PingMs = lastVpnRuntime.PingMs,
+            CheckHost = lastVpnRuntime.CheckHost,
+            LastError = lastVpnRuntime.Error
+        }, lastVpnRuntime.Healthy ? null : lastVpnRuntime.Error);
+
+        return lastVpnRuntime.Healthy
+            ? CommandExecutionResult.Success
+            : ReportVpnFailure(lastVpnRuntime.Error ?? "VPN подключён, но ping не прошёл.");
+    }
+
+    private static string? ReadString(ClassroomCommand command, string name) =>
+        command.Payload.TryGetProperty(name, out var value) ? value.GetString() : null;
 
     private CommandExecutionResult ReportVpnSuccess()
     {
@@ -158,6 +209,7 @@ public partial class App : Avalonia.Application
     private CommandExecutionResult ReportVpnDisconnected()
     {
         vpn?.Disconnect();
+        lastVpnRuntime = new VpnRuntimeInfo(false, false);
         viewModel?.SetVpnState(vpn?.GetStatus(), "Отключён тьютором");
         return CommandExecutionResult.Success;
     }

@@ -6,4 +6,6 @@ public sealed record VpnStatus(
     string ServiceName,
     string ConfigPath,
     bool ConfigExists,
-    string? LastError = null);
+    string? LastError = null,
+    int? PingMs = null,
+    string? CheckHost = null);

@@ -44,6 +44,14 @@ Write-Host "  VPN repair: $serviceScriptInstalled"
 
 if ($null -eq $vpnError) {
     Write-Host "  VPN service: KIBERoneStudentVpn (running)"
+    Write-Host "Checking embedded VPN test clients ..."
+    & $installedExe /verify-vpn
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host ""
+        Write-Warning "Student is installed, but VPN probe check failed."
+        Write-Warning "Rerun Install-Student.cmd or Repair-Student-Vpn.cmd as admin."
+        exit $LASTEXITCODE
+    }
 } else {
     Write-Host ""
     Write-Warning "Student is installed, but VPN service is not running."
