@@ -147,7 +147,7 @@ public static class TunnelService
                 if (!Win32.QueryServiceStatus(service, status))
                     return new TunnelStatus(false, "query_failed", shortName, configFile);
 
-                var running = status.dwCurrentState is Win32.ServiceState.Running or Win32.ServiceState.StartPending;
+                var running = status.dwCurrentState == Win32.ServiceState.Running;
                 return new TunnelStatus(running, status.dwCurrentState.ToString().ToLowerInvariant(), shortName, configFile);
             }
             finally

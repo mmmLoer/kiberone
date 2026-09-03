@@ -6,7 +6,15 @@ public static class VpnInstallVerifier
 {
     public static int Run()
     {
-        Console.OutputEncoding = System.Text.Encoding.UTF8;
+        try
+        {
+            Console.OutputEncoding = System.Text.Encoding.UTF8;
+        }
+        catch
+        {
+            // Service/elevated hosts may have no console.
+        }
+
         Console.WriteLine("Проверка VPN после установки Student");
         Console.WriteLine();
 

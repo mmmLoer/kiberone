@@ -137,27 +137,37 @@ public sealed class VpnBridgeServer
             EnsureClassroomSafeConfig(configPath);
 
             var current = TunnelService.GetStatus(configPath);
-            if (current.Connected)
+            if (current.Connected || current.State is "startpending" or "running")
             {
-                VpnLog.Info("bridge", $"Tunnel already running: {current.ServiceName}");
-                return BuildStatus(configPath, ok: true);
+                VpnLog.Info("bridge", $"Restarting existing tunnel: {current.ServiceName} ({current.State})");
+                TunnelService.Disconnect(configPath, waitForStop: true);
             }
 
             VpnLog.Info("bridge", $"Starting tunnel for {configPath}");
             TunnelService.Connect(configPath, ephemeral: false);
 
-            for (var attempt = 0; attempt < 20; attempt++)
+            for (var attempt = 0; attempt < 40; attempt++)
             {
                 Thread.Sleep(250);
                 var status = TunnelService.GetStatus(configPath);
-                if (status.Connected)
+                if (string.Equals(status.State, "running", StringComparison.OrdinalIgnoreCase))
                 {
-                    VpnLog.Info("bridge", $"Tunnel connected on attempt {attempt + 1}: {status.State}");
+                    // Give WireGuard a moment to finish handshake/routes before reporting success.
+                    Thread.Sleep(1000);
+                    status = TunnelService.GetStatus(configPath);
+                    if (!string.Equals(status.State, "running", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    VpnLog.Info("bridge", $"Tunnel running on attempt {attempt + 1}");
                     return BuildStatus(configPath, ok: true);
                 }
+
+                if (string.Equals(status.State, "stopped", StringComparison.OrdinalIgnoreCase) && attempt > 4)
+                    break;
             }
 
             var finalStatus = TunnelService.GetStatus(configPath);
+            try { TunnelService.Disconnect(configPath, waitForStop: true); } catch { /* best effort */ }
             var message = $"Туннель не поднялся. Состояние: {finalStatus.State}. Лог: {VpnLog.PrimaryLogPath}";
             VpnLog.Warn("bridge", message);
             return new VpnBridgeResponse(
@@ -172,11 +182,13 @@ public sealed class VpnBridgeServer
         {
             var message = $"Win32 {error.NativeErrorCode}: {error.Message}. Exe={Environment.ProcessPath} Base={AppContext.BaseDirectory}. Лог: {VpnLog.PrimaryLogPath}";
             VpnLog.Error("bridge", "TunnelService.Connect failed", error);
+            try { TunnelService.Disconnect(configPath, waitForStop: true); } catch { }
             return new VpnBridgeResponse(false, ConfigPath: configPath, ConfigExists: true, Error: message);
         }
         catch (Exception error)
         {
             VpnLog.Error("bridge", "Connect failed", error);
+            try { TunnelService.Disconnect(configPath, waitForStop: true); } catch { }
             return new VpnBridgeResponse(false, ConfigPath: configPath, ConfigExists: File.Exists(configPath), Error: error.Message);
         }
     }

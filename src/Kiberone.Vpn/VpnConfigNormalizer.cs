@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -32,30 +33,97 @@ public static partial class VpnConfigNormalizer
             match =>
             {
                 var value = match.Groups["value"].Value;
-                if (!UsesFullTunnel(value))
+                if (!ShouldRewriteAllowedIps(value))
                     return match.Value;
 
-                VpnLog.Info("config", "Replacing full-tunnel AllowedIPs with classroom split (LAN stays local).");
+                VpnLog.Info("config", "Rewriting AllowedIPs to classroom IPv4 split (LAN local, no IPv6 tunnel).");
                 return $"AllowedIPs = {ClassroomAllowedIpv4}";
             });
 
+        normalized = EnsureDns(normalized);
+        normalized = StripIpv6Addresses(normalized);
         return normalized;
     }
 
-    private static bool UsesFullTunnel(string allowedIps)
+    private static bool ShouldRewriteAllowedIps(string allowedIps)
     {
-        foreach (var part in allowedIps.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        var parts = allowedIps.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+            return true;
+
+        foreach (var part in parts)
         {
             if (part.Equals("0.0.0.0/0", StringComparison.OrdinalIgnoreCase)
-                || part.Equals("::/0", StringComparison.OrdinalIgnoreCase))
+                || part.Equals("::/0", StringComparison.OrdinalIgnoreCase)
+                || part.StartsWith("2000::/", StringComparison.OrdinalIgnoreCase)
+                || part.Contains(':', StringComparison.Ordinal))
             {
                 return true;
             }
         }
 
-        return false;
+        // Server-issued "internet minus LAN" lists are long; pin to our known-safe IPv4 split.
+        return parts.Length >= 8;
+    }
+
+    private static string EnsureDns(string content)
+    {
+        if (DnsLine().IsMatch(content))
+            return content;
+
+        VpnLog.Info("config", "Adding DNS = 1.1.1.1 for classroom VPN.");
+        return InterfaceHeader().Replace(content, "$0\nDNS = 1.1.1.1", 1);
+    }
+
+    private static string StripIpv6Addresses(string content)
+    {
+        return AddressLine().Replace(content, match =>
+        {
+            var kept = match.Groups["value"].Value
+                .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .Where(part => !part.Contains(':', StringComparison.Ordinal))
+                .ToArray();
+            if (kept.Length == 0)
+                return match.Value;
+            return $"Address = {string.Join(", ", kept)}";
+        });
+    }
+
+    public static string? TryGetEndpointHost(string content)
+    {
+        var endpoint = EndpointLine().Match(content);
+        if (!endpoint.Success)
+            return null;
+
+        var value = endpoint.Groups["value"].Value.Trim();
+        var host = value;
+        var bracket = value.IndexOf(']', StringComparison.Ordinal);
+        if (value.StartsWith('[') && bracket > 0)
+            host = value[1..bracket];
+        else
+        {
+            var colon = value.LastIndexOf(':');
+            if (colon > 0 && IPAddress.TryParse(value[..colon], out _))
+                host = value[..colon];
+            else if (colon > 0)
+                host = value[..colon];
+        }
+
+        return string.IsNullOrWhiteSpace(host) ? null : host;
     }
 
     [GeneratedRegex(@"^AllowedIPs\s*=\s*(?<value>.+)$", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
     private static partial Regex AllowedIpsLine();
+
+    [GeneratedRegex(@"^DNS\s*=\s*.+$", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
+    private static partial Regex DnsLine();
+
+    [GeneratedRegex(@"^\[Interface\]\s*$", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
+    private static partial Regex InterfaceHeader();
+
+    [GeneratedRegex(@"^Address\s*=\s*(?<value>.+)$", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
+    private static partial Regex AddressLine();
+
+    [GeneratedRegex(@"^Endpoint\s*=\s*(?<value>.+)$", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
+    private static partial Regex EndpointLine();
 }

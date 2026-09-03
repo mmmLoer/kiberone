@@ -179,16 +179,22 @@ public partial class App : Avalonia.Application
             return ReportVpnFailure(status.LastError ?? "Не удалось подключить VPN.");
 
         lastVpnRuntime = vpn.VerifyReachability(checkHost, region);
+        if (!lastVpnRuntime.Healthy)
+        {
+            VpnLog.Warn("student", $"VPN health failed after connect: {lastVpnRuntime.Error}. Rolling back tunnel.");
+            try { vpn.Disconnect(); } catch (Exception error) { VpnLog.Warn("student", $"Rollback disconnect failed: {error.Message}"); }
+            lastVpnRuntime = new VpnRuntimeInfo(false, false, null, region, lastVpnRuntime.CheckHost, lastVpnRuntime.Error);
+            return ReportVpnFailure(lastVpnRuntime.Error ?? "VPN поднялся, но интернет через него не заработал. Туннель отключён.");
+        }
+
         viewModel?.SetVpnState(vpn.GetStatus() with
         {
             PingMs = lastVpnRuntime.PingMs,
             CheckHost = lastVpnRuntime.CheckHost,
-            LastError = lastVpnRuntime.Error
-        }, lastVpnRuntime.Healthy ? null : lastVpnRuntime.Error);
+            LastError = null
+        }, null);
 
-        return lastVpnRuntime.Healthy
-            ? CommandExecutionResult.Success
-            : ReportVpnFailure(lastVpnRuntime.Error ?? "VPN подключён, но ping не прошёл.");
+        return CommandExecutionResult.Success;
     }
 
     private static string? ReadString(ClassroomCommand command, string name) =>
