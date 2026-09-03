@@ -2,6 +2,13 @@
 
 Каноническая инструкция перенесена в репозиторий из операционного runbook.
 
+## Push → сборка сразу
+
+GitHub webhook на `POST http://193.235.147.228:8787/api/hooks/github` при пуше в `main` сразу делает `systemctl restart kiberone-release.service`.
+Таймер раз в 15 минут остаётся запасным.
+
+Секрет лежит в `/var/lib/kiberone-hub/webhook.env` на VPS.
+
 ## Быстрый старт на сервере
 
 1. Clone `main`, SDK 8, `tunnel.dll` + `wireguard.dll` в `src/Kiberone.VpnAgent/native/`.
