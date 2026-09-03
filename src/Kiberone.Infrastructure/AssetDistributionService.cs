@@ -189,6 +189,8 @@ public sealed class AssetDistributionService
 
     public async Task SaveScreenAsync(string clientId, Stream content, CancellationToken ct = default)
     {
+        if (clientId.Contains(',', StringComparison.Ordinal))
+            clientId = clientId.Split(',', 2, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)[0];
         var destination = Path.Combine(screensRoot, SafeKey(clientId) + ".jpg");
         var temporary = destination + ".tmp";
         try
@@ -215,9 +217,33 @@ public sealed class AssetDistributionService
 
     public Stream? OpenScreen(string clientId)
     {
-        var path = Path.Combine(screensRoot, SafeKey(clientId) + ".jpg");
+        var path = ScreenPath(clientId);
+        if (!File.Exists(path))
+            TryAdoptLegacyScreen(clientId, path);
         return File.Exists(path) ? new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite) : null;
     }
+
+    private void TryAdoptLegacyScreen(string clientId, string destination)
+    {
+        // Older Student builds posted X-Client-Id twice, so files were stored under SafeKey("id,id").
+        foreach (var legacyId in new[] { $"{clientId},{clientId}", $"{clientId}, {clientId}" })
+        {
+            var legacyPath = Path.Combine(screensRoot, SafeKey(legacyId) + ".jpg");
+            if (!File.Exists(legacyPath)) continue;
+            try
+            {
+                File.Move(legacyPath, destination, overwrite: true);
+                return;
+            }
+            catch
+            {
+                try { File.Copy(legacyPath, destination, overwrite: true); } catch { }
+                return;
+            }
+        }
+    }
+
+    private string ScreenPath(string clientId) => Path.Combine(screensRoot, SafeKey(clientId) + ".jpg");
 
     private static IReadOnlyList<DistributedAsset> ListAssets(string root)
     {

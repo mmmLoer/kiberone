@@ -142,16 +142,20 @@ public sealed class ClassroomServer(
         application.MapGet("/command-receipts", (HttpContext context, int? limit) =>
             IsTutor(context) ? Results.Ok(commands.GetReceipts(limit ?? 200)) : Results.Unauthorized());
         application.Map("/ws", HandleCommandSocketAsync);
-        application.MapGet("/typing/lessons", (CancellationToken ct) => lessons.ListLessonsAsync(ct));
+        application.MapGet("/typing/lessons", async (CancellationToken ct) =>
+            Results.Ok(await lessons.ListCatalogAsync(ct)));
         application.MapGet("/typing/lessons/{id:guid}", async (Guid id, CancellationToken ct) =>
             await lessons.GetLessonAsync(id, ct) is { } lesson ? Results.Ok(lesson) : Results.NotFound());
-        application.MapPost("/typing/lessons", async ([FromBody] CreateLessonRequest request, CancellationToken ct) =>
+        application.MapPost("/typing/lessons", async (HttpContext context, [FromBody] CreateLessonRequest request, CancellationToken ct) =>
         {
+            if (!IsTutor(context)) return Results.Unauthorized();
             var lesson = await lessons.CreateLessonAsync(request, ct);
             return Results.Created($"/typing/lessons/{lesson.Id}", lesson);
         });
-        application.MapPut("/typing/lessons/{id:guid}", async (Guid id, [FromBody] UpdateLessonRequest request, CancellationToken ct) =>
-            await lessons.UpdateLessonAsync(id, request, ct) is { } lesson ? Results.Ok(lesson) : Results.NotFound());
+        application.MapPut("/typing/lessons/{id:guid}", async (HttpContext context, Guid id, [FromBody] UpdateLessonRequest request, CancellationToken ct) =>
+            !IsTutor(context)
+                ? Results.Unauthorized()
+                : await lessons.UpdateLessonAsync(id, request, ct) is { } lesson ? Results.Ok(lesson) : Results.NotFound());
         application.MapPost("/typing/sessions", async ([FromBody] StartTypingSessionRequest request, CancellationToken ct) =>
         {
             var session = await lessons.StartSessionAsync(request, ct);
@@ -253,7 +257,8 @@ public sealed class ClassroomServer(
             : Results.NotFound());
         application.MapPost("/screen", async (HttpContext context, CancellationToken ct) =>
         {
-            await assets.SaveScreenAsync(context.Request.Headers["X-Client-Id"].ToString(), context.Request.Body, ct);
+            var clientId = NormalizeClientIdHeader(context.Request.Headers["X-Client-Id"].ToString());
+            await assets.SaveScreenAsync(clientId, context.Request.Body, ct);
             return Results.Ok(new { ok = true });
         });
         application.MapGet("/screen", (HttpContext context, string client_id) =>
@@ -321,6 +326,13 @@ public sealed class ClassroomServer(
 
     private static bool IsTutor(HttpContext context) =>
         context.Request.Headers["X-Tutor"].ToString().Equals("1", StringComparison.Ordinal);
+
+    private static string NormalizeClientIdHeader(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return value;
+        // HttpClient used to send X-Client-Id twice; ASP.NET joins values as "id,id".
+        return value.Split(',', 2, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)[0];
+    }
 
     private static bool TokensMatch(string supplied, string expected)
     {

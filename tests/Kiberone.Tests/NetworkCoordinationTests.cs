@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json;
 using Kiberone.Core;
 using Kiberone.Infrastructure;
@@ -114,6 +115,31 @@ public sealed class NetworkCoordinationTests
 
         Assert.Equal(expected, actual);
         Assert.Null(DiscoveryProtocol.Parse("not-json"u8));
+    }
+
+    [Theory]
+    [InlineData("utun5", true)]
+    [InlineData("WireGuard Tunnel", true)]
+    [InlineData("Wintun Userspace Tunnel", true)]
+    [InlineData("en0", false)]
+    [InlineData("Ethernet", false)]
+    [InlineData("Wi-Fi", false)]
+    public void LocalAddressResolver_DetectsTunnelAdapterNames(string name, bool expected) =>
+        Assert.Equal(expected, LocalAddressResolver.IsTunnelName(name));
+
+    [Fact]
+    public void LocalAddressResolver_PrefersNonTunnelPrivateAddress()
+    {
+        var preferred = LocalAddressResolver.GetPreferredIpv4Address();
+        var lan = LocalAddressResolver.GetLanIpv4Endpoints();
+        if (lan.Count > 0)
+            Assert.Contains(lan, endpoint => endpoint.Address.Equals(preferred));
+
+        foreach (var endpoint in lan)
+        {
+            Assert.False(LocalAddressResolver.IsTunnelName(endpoint.InterfaceName));
+            Assert.NotEqual(IPAddress.Broadcast, endpoint.Broadcast);
+        }
     }
 
     [Fact]

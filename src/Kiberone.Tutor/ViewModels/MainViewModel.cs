@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using Kiberone.Core;
 using Kiberone.Infrastructure;
 using Avalonia.Media.Imaging;
+using Avalonia.Threading;
 using System.Text.Json;
 
 namespace Kiberone.Tutor.ViewModels;
@@ -30,10 +31,8 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     public ObservableCollection<ScreenPreviewCardViewModel> ScreenPreviews { get; } = [];
     public ObservableCollection<AuditEventCardViewModel> AuditEvents { get; } = [];
     public ObservableCollection<WinnerCardViewModel> Winners { get; } = [];
-    public ObservableCollection<LessonStepEditorViewModel> Steps { get; } =
-    [
-        new() { Title = "Разминка", Text = "Начните печатать текст урока здесь." }
-    ];
+    public ObservableCollection<LessonStepEditorViewModel> Steps { get; } = [];
+    [ObservableProperty] private string lessonText = TypingLessonCatalog.DefaultLiveLessonText;
     public IReadOnlyList<string> LessonKinds { get; } = Enum.GetNames<LessonContentKind>();
     public IReadOnlyList<string> KeyboardLayouts { get; } = ["ru-RU", "en-US"];
 
@@ -41,7 +40,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [ObservableProperty] private string description = string.Empty;
     [ObservableProperty] private string selectedLessonKind = nameof(LessonContentKind.Custom);
     [ObservableProperty] private string selectedKeyboardLayout = "ru-RU";
-    [ObservableProperty] private int minimumCharacters = 50;
+    [ObservableProperty] private int minimumCharacters = 120;
     [ObservableProperty] private int durationMinutes = 10;
     [ObservableProperty] private bool isBusy;
     [ObservableProperty] private string statusMessage = "Подключаем локальную базу и сервер…";
@@ -113,7 +112,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     public ObservableCollection<ChartBarViewModel> StatsCpmBars { get; } = [];
     public ObservableCollection<ChartBarViewModel> StatsAccuracyBars { get; } = [];
     [ObservableProperty] private string liveLessonName = "Практика класса";
-    [ObservableProperty] private string liveLessonText = "for i in range(10): print(i)";
+    [ObservableProperty] private string liveLessonText = TypingLessonCatalog.DefaultLiveLessonText;
     [ObservableProperty] private string liveLessonState = "Урок не запущен";
     [ObservableProperty] private bool hasLessonResultsNotification;
     [ObservableProperty] private string lessonResultsSummary = string.Empty;
@@ -263,7 +262,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             await RefreshCoreAsync();
             RefreshSoftwarePack();
             RefreshProgramStatus();
-            await RefreshScreensAsync();
+            await RefreshScreensAsync(force: true);
             StatusMessage = Lessons.Count == 0
                 ? "Создайте первый урок — он сохранится в локальной базе."
                 : $"Загружено уроков: {Lessons.Count}";
@@ -284,10 +283,8 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         ConnectedClientLabel = ConnectedClientCount switch
         {
             0 => "Нет учеников",
-            1 => vpnCount == 1 ? "1 ученик онлайн · VPN вкл" : "1 ученик онлайн",
-            _ => vpnCount > 0
-                ? $"{ConnectedClientCount} учеников онлайн · VPN: {vpnCount}"
-                : $"{ConnectedClientCount} учеников онлайн"
+            1 => vpnCount == 1 ? "1 онлайн · VPN: 1" : "1 онлайн · VPN: 0",
+            _ => $"{ConnectedClientCount} онлайн · VPN: {vpnCount}"
         };
         ApplyPresence(all);
         RefreshVpnDistributionStatus(online);
@@ -354,28 +351,35 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
 
     partial void OnVpnConfigsFolderChanged(string value) => RefreshVpnDistributionStatus(clients.GetAll().Where(client => client.IsOnline).ToList());
 
-    public Task RefreshScreensAsync()
+    private DateTimeOffset nextScreenUiRefreshAt = DateTimeOffset.MinValue;
+
+    public Task RefreshScreensAsync(bool force = false)
     {
         try
         {
+            if (!force && DateTimeOffset.UtcNow < nextScreenUiRefreshAt)
+                return Task.CompletedTask;
+
+            nextScreenUiRefreshAt = DateTimeOffset.UtcNow.AddSeconds(Math.Clamp(ScreenRefreshSeconds, 5, 300));
+
+            var next = new List<ScreenPreviewCardViewModel>();
+            foreach (var client in clients.GetAll().OrderBy(x => x.PcNumber))
+                next.Add(new ScreenPreviewCardViewModel(client, TryLoadScreenBitmap(client.ClientId)));
+
             var previous = ScreenPreviews.ToList();
             ScreenPreviews.Clear();
-            foreach (var card in previous)
-            {
-                try { card.Dispose(); } catch { }
-            }
-
-            foreach (var client in clients.GetAll().OrderBy(x => x.PcNumber))
-            {
-                using var stream = assets.OpenScreen(client.ClientId);
-                Bitmap? preview = null;
-                if (stream is not null)
-                {
-                    try { preview = new Bitmap(stream); } catch { preview = null; }
-                }
-                ScreenPreviews.Add(new ScreenPreviewCardViewModel(client, preview));
-            }
+            foreach (var card in next)
+                ScreenPreviews.Add(card);
             NotifyCollectionStates();
+
+            // Dispose after the UI has unbound the old bitmaps — disposing every 2s caused blank previews.
+            Dispatcher.UIThread.Post(() =>
+            {
+                foreach (var card in previous)
+                {
+                    try { card.Dispose(); } catch { }
+                }
+            }, DispatcherPriority.Background);
         }
         catch (Exception error)
         {
@@ -385,8 +389,25 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         return Task.CompletedTask;
     }
 
+    private Bitmap? TryLoadScreenBitmap(string clientId)
+    {
+        using var stream = assets.OpenScreen(clientId);
+        if (stream is null) return null;
+        try
+        {
+            using var copy = new MemoryStream();
+            stream.CopyTo(copy);
+            copy.Position = 0;
+            return new Bitmap(copy);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     [RelayCommand]
-    private Task RefreshScreenGridAsync() => RefreshScreensAsync();
+    private Task RefreshScreenGridAsync() => RefreshScreensAsync(force: true);
 
     public string SectionTitle => SelectedSectionIndex switch
     {
@@ -1074,11 +1095,94 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     }
 
     [RelayCommand]
-    private void StartLiveLesson()
+    private void StartLiveLesson() => DeliverLessonToClass(LiveLessonName, LiveLessonText, MinimumCharacters);
+
+    [RelayCommand]
+    private async Task LoadLessonAsync(LessonCardViewModel? card)
     {
-        if (string.IsNullOrWhiteSpace(LiveLessonText)) { ShowSelectionError("Введите текст живого урока."); return; }
-        SendClassCommand(ClassroomCommandKinds.TypingStart, new { lesson_name = LiveLessonName, text = LiveLessonText });
-        LiveLessonState = $"Идёт урок «{LiveLessonName}» · {ConnectedClientCount} подключено";
+        if (card is null) return;
+        try
+        {
+            var lesson = await lessons.GetLessonAsync(card.Id);
+            if (lesson is null)
+            {
+                ShowSelectionError("Урок не найден.");
+                return;
+            }
+
+            LessonName = lesson.Name;
+            Description = lesson.Description;
+            SelectedLessonKind = lesson.ContentKind.ToString();
+            SelectedKeyboardLayout = lesson.KeyboardLayout;
+            MinimumCharacters = lesson.MinimumCharacters;
+            DurationMinutes = lesson.DurationMinutes;
+            LessonText = TypingLessonCatalog.GetLessonText(lesson);
+            ShowTypingStatistics = false;
+            NotifyViewModes();
+            SelectedSectionIndex = 1;
+            HasError = false;
+            StatusMessage = $"Открыт урок «{lesson.Name}». Мин. для зачёта: {lesson.MinimumCharacters} знаков.";
+        }
+        catch (Exception error)
+        {
+            HasError = true;
+            StatusMessage = error.Message;
+        }
+    }
+
+    [RelayCommand]
+    private async Task LaunchLessonAsync(LessonCardViewModel? card)
+    {
+        if (card is null) return;
+        try
+        {
+            var lesson = await lessons.GetLessonAsync(card.Id);
+            if (lesson is null)
+            {
+                ShowSelectionError("Урок не найден.");
+                return;
+            }
+
+            var text = TypingLessonCatalog.GetLessonText(lesson);
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                ShowSelectionError("В уроке нет текста.");
+                return;
+            }
+
+            DeliverLessonToClass(lesson.Name, text, lesson.MinimumCharacters);
+            SelectedSectionIndex = 1;
+            HasError = false;
+            StatusMessage = LiveLessonState;
+        }
+        catch (Exception error)
+        {
+            HasError = true;
+            StatusMessage = error.Message;
+        }
+    }
+
+    private void DeliverLessonToClass(string lessonName, string text, int minimumCharacters)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            ShowSelectionError("Введите текст урока.");
+            return;
+        }
+
+        var goal = TypingLessonCatalog.SuggestGoalCharacters(text, minimumCharacters);
+        LiveLessonName = string.IsNullOrWhiteSpace(lessonName) ? "Урок печати" : lessonName.Trim();
+        LiveLessonText = text;
+        MinimumCharacters = goal;
+        SendClassCommand(ClassroomCommandKinds.TypingStart, new
+        {
+            lesson_name = LiveLessonName,
+            text,
+            minimum_characters = goal
+        });
+        LiveLessonState = $"Урок «{LiveLessonName}» отправлен классу · зачёт с {goal} знаков · {ConnectedClientCount} онлайн";
+        StatusMessage = LiveLessonState;
+        HasError = false;
     }
 
     [RelayCommand]
@@ -1205,13 +1309,17 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
 
         foreach (var target in targets)
         {
-            OpenRosterFolder(fileSync.EnsureStudentModuleFolder(
-                target.Group,
-                target.LastName,
-                target.FirstName,
-                fileSync.GetLessonModule(target.Id)
-                    ?? Groups.FirstOrDefault(x => x.Id == target.GroupId)?.Module
-                    ?? target.LessonModule), target.Name);
+            var clientId = ResolveStudentClientId(target);
+            var path = !string.IsNullOrWhiteSpace(clientId)
+                ? fileSync.GetClientFolderPath(clientId)
+                : fileSync.EnsureStudentModuleFolder(
+                    target.Group,
+                    target.LastName,
+                    target.FirstName,
+                    fileSync.GetLessonModule(target.Id)
+                        ?? Groups.FirstOrDefault(x => x.Id == target.GroupId)?.Module
+                        ?? target.LessonModule);
+            OpenRosterFolder(path, target.Name);
         }
     }
 
@@ -1357,6 +1465,11 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
 
     private static void OpenFolderInOs(string path)
     {
+        if (string.IsNullOrWhiteSpace(path))
+            throw new InvalidOperationException("Путь к папке пустой.");
+
+        Directory.CreateDirectory(path);
+
         if (OperatingSystem.IsWindows())
         {
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
@@ -1370,13 +1483,25 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
 
         if (OperatingSystem.IsMacOS())
         {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
-                FileName = "open",
+                FileName = "/usr/bin/open",
                 ArgumentList = { path },
-                UseShellExecute = false
-            });
-            return;
+                UseShellExecute = false,
+                RedirectStandardError = true,
+                RedirectStandardOutput = true
+            }) ?? throw new InvalidOperationException("Не удалось запустить Finder.");
+
+            if (!process.WaitForExit(4000))
+                return;
+
+            if (process.ExitCode == 0)
+                return;
+
+            var error = process.StandardError.ReadToEnd().Trim();
+            throw new InvalidOperationException(string.IsNullOrWhiteSpace(error)
+                ? $"Finder не открыл папку (код {process.ExitCode}): {path}"
+                : error);
         }
 
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
@@ -2105,15 +2230,6 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     }
 
     [RelayCommand]
-    private void AddStep() => Steps.Add(new LessonStepEditorViewModel { Title = $"Этап {Steps.Count + 1}" });
-
-    [RelayCommand]
-    private void RemoveLastStep()
-    {
-        if (Steps.Count > 1) Steps.RemoveAt(Steps.Count - 1);
-    }
-
-    [RelayCommand]
     private async Task CreateLessonAsync()
     {
         if (IsBusy) return;
@@ -2124,14 +2240,12 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             var kind = Enum.TryParse<LessonContentKind>(SelectedLessonKind, out var parsed) ? parsed : LessonContentKind.Custom;
             var request = new CreateLessonRequest(
                 LessonName, Description, kind, SelectedKeyboardLayout, MinimumCharacters, DurationMinutes,
-                Steps.Select(x => new LessonStepDraft(x.Title, x.Text, x.TargetCpm > 0 ? x.TargetCpm : null,
-                    x.TargetAccuracy > 0 ? x.TargetAccuracy : null)).ToList());
+                [new LessonStepDraft("Текст", LessonText)]);
             var lesson = await lessons.CreateLessonAsync(request);
-            StatusMessage = $"Урок «{lesson.Name}» сохранён. Версия {lesson.Version}.";
+            StatusMessage = $"Урок «{lesson.Name}» сохранён и уже доступен ученикам.";
             LessonName = string.Empty;
             Description = string.Empty;
-            Steps.Clear();
-            Steps.Add(new LessonStepEditorViewModel { Title = "Разминка" });
+            LessonText = TypingLessonCatalog.DefaultLiveLessonText;
             await RefreshCoreAsync();
         }
         catch (LessonValidationException validation)
@@ -2151,6 +2265,45 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     }
 
     [RelayCommand]
+    private async Task SaveAndLaunchLessonAsync()
+    {
+        if (IsBusy) return;
+        if (string.IsNullOrWhiteSpace(LessonName) || string.IsNullOrWhiteSpace(LessonText))
+        {
+            ShowSelectionError("Укажите название и текст урока.");
+            return;
+        }
+
+        IsBusy = true;
+        HasError = false;
+        try
+        {
+            var kind = Enum.TryParse<LessonContentKind>(SelectedLessonKind, out var parsed) ? parsed : LessonContentKind.Custom;
+            var request = new CreateLessonRequest(
+                LessonName, Description, kind, SelectedKeyboardLayout, MinimumCharacters, DurationMinutes,
+                [new LessonStepDraft("Текст", LessonText)]);
+            var lesson = await lessons.CreateLessonAsync(request);
+            await RefreshCoreAsync();
+            DeliverLessonToClass(lesson.Name, TypingLessonCatalog.GetLessonText(lesson), lesson.MinimumCharacters);
+            StatusMessage = $"Урок «{lesson.Name}» сохранён, доступен в каталоге и принудительно запущен классу.";
+        }
+        catch (LessonValidationException validation)
+        {
+            HasError = true;
+            StatusMessage = string.Join(" ", validation.Errors);
+        }
+        catch (Exception error)
+        {
+            HasError = true;
+            StatusMessage = $"Не удалось отправить урок: {error.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
     private Task RefreshAsync() => RefreshCoreAsync();
 
     [RelayCommand]
@@ -2158,7 +2311,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     {
         ShowClassScreens = !ShowClassScreens;
         NotifyViewModes();
-        if (ShowClassScreens) _ = RefreshScreensAsync();
+        if (ShowClassScreens) _ = RefreshScreensAsync(force: true);
     }
 
     [RelayCommand]
@@ -2173,7 +2326,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     {
         ShowClassScreens = true;
         NotifyViewModes();
-        _ = RefreshScreensAsync();
+        _ = RefreshScreensAsync(force: true);
     }
 
     [RelayCommand]
@@ -2872,7 +3025,7 @@ public sealed class LessonCardViewModel(TypingLessonTemplate lesson)
 {
     public Guid Id { get; } = lesson.Id;
     public string Name { get; } = lesson.Name;
-    public string Details { get; } = $"{lesson.Steps.Count} этапов · {lesson.DurationMinutes} мин · {lesson.MinimumCharacters} знаков";
+    public string Details { get; } = $"{lesson.DurationMinutes} мин · зачёт с {lesson.MinimumCharacters} знаков";
     public string Kind { get; } = lesson.ContentKind.ToString();
     public string Version { get; } = $"v{lesson.Version}";
 }
@@ -3004,6 +3157,8 @@ public partial class StudentCardViewModel : ObservableObject
     [ObservableProperty] private string batteryLabel = "—";
     [ObservableProperty] private string detailsLine = "оффлайн · батарея —";
     [ObservableProperty] private string lastUpdateLabel = "нет связи";
+    [ObservableProperty] private string vpnStatusLabel = "VPN выкл";
+    [ObservableProperty] private string connectionStatusLabel = "оффлайн";
     [ObservableProperty] private string? clientId;
     [ObservableProperty] private string pcLabel = "ПК не привязан";
     [ObservableProperty] private string watchFolder = string.Empty;
@@ -3012,7 +3167,7 @@ public partial class StudentCardViewModel : ObservableObject
     [ObservableProperty] private bool isFocusOn;
     [ObservableProperty] private bool isVpnOn;
     public bool HasLinkedPc => !string.IsNullOrWhiteSpace(ClientId);
-    public string QuickActionsTitle => HasLinkedPc ? Name : $"{Name} · нет компьютера";
+    public string QuickActionsTitle => HasLinkedPc ? $"{Name} · {ConnectionStatusLabel} · {VpnStatusLabel}" : $"{Name} · нет компьютера";
     public bool HasActiveModes => IsScreenLocked || IsWatchdogOn || IsFocusOn || IsVpnOn;
 
     private bool? commandedScreenLocked;
@@ -3026,15 +3181,22 @@ public partial class StudentCardViewModel : ObservableObject
         WatchFolder = client?.WatchFolder ?? string.Empty;
         IsOnline = client?.IsOnline == true;
         IsOffline = !IsOnline;
-        PresenceLabel = IsOnline ? "онлайн" : "оффлайн";
+        ConnectionStatusLabel = IsOnline
+            ? (client is null ? "онлайн" : $"онлайн · ПК {client.PcNumber}")
+            : "оффлайн";
         PresenceColor = IsOnline ? "#068F8A" : "#9AA7AE";
         BatteryLabel = client?.Extra.BatteryPercent is int pct ? $"{pct}%" : "—";
-        DetailsLine = $"{PresenceLabel} · батарея {BatteryLabel}";
         LastUpdateLabel = FormatLastUpdate(client?.LastSeenAt);
+
+        var vpnConnected = client?.Extra.VpnConnected == true;
+        IsVpnOn = vpnConnected;
+        VpnStatusLabel = FormatVpnStatus(vpnConnected, client?.Extra.VpnRegion, client?.Extra.VpnPingMs);
+
         PresenceLabel = string.IsNullOrWhiteSpace(LessonModule)
-            ? PresenceLabel
-            : $"{PresenceLabel} · {LessonModule}";
-        IsVpnOn = client?.Extra.VpnConnected == true;
+            ? ConnectionStatusLabel
+            : $"{ConnectionStatusLabel} · {LessonModule}";
+        DetailsLine = $"{ConnectionStatusLabel} · {VpnStatusLabel} · батарея {BatteryLabel}";
+
         IsWatchdogOn = client?.Extra.WatchdogActive == true;
         IsFocusOn = client?.Extra.FocusModeActive == true;
         var reportedLock = client?.Extra.ScreenLocked == true;
@@ -3056,9 +3218,9 @@ public partial class StudentCardViewModel : ObservableObject
     {
         LessonModule = module ?? string.Empty;
         OnPropertyChanged(nameof(LessonModule));
-        PresenceLabel = IsOnline ? "онлайн" : "оффлайн";
-        if (!string.IsNullOrWhiteSpace(LessonModule))
-            PresenceLabel = $"{PresenceLabel} · {LessonModule}";
+        PresenceLabel = string.IsNullOrWhiteSpace(LessonModule)
+            ? ConnectionStatusLabel
+            : $"{ConnectionStatusLabel} · {LessonModule}";
         OnPropertyChanged(nameof(PresenceLabel));
     }
 
@@ -3089,14 +3251,31 @@ public partial class StudentCardViewModel : ObservableObject
             case ClassroomCommandKinds.VpnConnect:
             case ClassroomCommandKinds.VpnInstallConfig:
                 IsVpnOn = true;
+                VpnStatusLabel = "VPN подключается…";
                 break;
             case ClassroomCommandKinds.VpnDisconnect:
                 IsVpnOn = false;
+                VpnStatusLabel = "VPN выкл";
                 break;
             default:
                 return;
         }
         OnPropertyChanged(nameof(HasActiveModes));
+        OnPropertyChanged(nameof(QuickActionsTitle));
+        DetailsLine = $"{ConnectionStatusLabel} · {VpnStatusLabel} · батарея {BatteryLabel}";
+    }
+
+    private static string FormatVpnStatus(bool connected, string? regionId, int? pingMs)
+    {
+        if (!connected)
+            return "VPN выкл";
+
+        var region = string.IsNullOrWhiteSpace(regionId)
+            ? "вкл"
+            : VpnRegionCatalog.Resolve(regionId).Name;
+        return pingMs is int ms and >= 0
+            ? $"VPN · {region} · {ms} мс"
+            : $"VPN · {region}";
     }
 
     public override string ToString() => Name;
@@ -3306,7 +3485,14 @@ public sealed class ScreenPreviewCardViewModel : IDisposable
     {
         ClientId = client.ClientId;
         Title = $"ПК {client.PcNumber} · {client.Hostname}";
-        Status = client.IsOnline ? "● онлайн" : $"не в сети · {client.LastSeenAt.ToLocalTime():t}";
+        var vpn = client.Extra.VpnConnected
+            ? client.Extra.VpnPingMs is int ms
+                ? $"VPN · {VpnRegionCatalog.Resolve(client.Extra.VpnRegion).Name} · {ms} мс"
+                : $"VPN · {VpnRegionCatalog.Resolve(client.Extra.VpnRegion).Name}"
+            : "VPN выкл";
+        Status = client.IsOnline
+            ? $"● онлайн · {vpn}"
+            : $"не в сети · {client.LastSeenAt.ToLocalTime():t}";
         WatchFolder = client.WatchFolder;
         StudentId = client.StudentId;
         Preview = preview;

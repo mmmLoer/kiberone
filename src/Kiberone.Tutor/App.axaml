@@ -290,6 +290,10 @@
             <Setter Property="BorderBrush" Value="{DynamicResource TealBrush}" />
             <Setter Property="Background" Value="{DynamicResource SoftHoverBrush}" />
         </Style>
+        <Style Selector="Border.listCardInner:pointerover">
+            <Setter Property="BorderBrush" Value="{DynamicResource TealBrush}" />
+            <Setter Property="Background" Value="{DynamicResource SoftHoverBrush}" />
+        </Style>
         <Style Selector="Border.listCardInner.selected">
             <Setter Property="BorderBrush" Value="{DynamicResource TealBrush}" />
             <Setter Property="Background" Value="{DynamicResource MintBrush}" />

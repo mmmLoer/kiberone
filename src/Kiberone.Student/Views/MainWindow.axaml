@@ -8,7 +8,8 @@
         MinWidth="980"
         MinHeight="680"
         Title="KIBERone Classroom — Ученик"
-        Focusable="True">
+        Focusable="True"
+        x:Name="StudentRoot">
   <Grid RowDefinitions="72,*" ColumnDefinitions="208,*">
 
     <!-- Product header -->
@@ -252,7 +253,7 @@
         </ScrollViewer>
       </TabItem>
 
-      <!-- Practice library -->
+      <!-- Practice library from Tutor -->
       <TabItem Header="Выбор урока">
         <ScrollViewer>
           <StackPanel Margin="28"
@@ -260,8 +261,8 @@
                       HorizontalAlignment="Stretch"
                       Spacing="22">
             <StackPanel Spacing="6">
-              <TextBlock Text="Выбери тренировку" Classes="h1"/>
-              <TextBlock Text="Начни с привычного языка или потренируй код. Каждая разминка занимает около 10 минут."
+              <TextBlock Text="Уроки тьютора" Classes="h1"/>
+              <TextBlock Text="{Binding TutorLessonsStatus}"
                          Classes="muted"
                          FontSize="15"
                          TextWrapping="Wrap"/>
@@ -275,92 +276,45 @@
               <Grid ColumnDefinitions="30,*">
                 <TextBlock Text="✓" FontWeight="Bold" Foreground="#068F8A" FontSize="18" VerticalAlignment="Center"/>
                 <TextBlock Grid.Column="1"
-                           Text="Текст сначала откроется для проверки — урок не начнётся внезапно."
+                           Text="Список обновляется сам, пока есть связь с Tutor. Выбери урок — сначала увидишь текст, потом старт."
                            Foreground="#056D69"
                            TextWrapping="Wrap"
                            VerticalAlignment="Center"/>
               </Grid>
             </Border>
 
-            <WrapPanel>
-              <Button Command="{Binding SelectPracticeLessonCommand}" CommandParameter="letters" Classes="lesson">
-                <Grid ColumnDefinitions="46,*">
-                  <Border Width="38" Height="38" Background="#FFF3C9" CornerRadius="10">
-                    <TextBlock Text="А" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                  </Border>
-                  <StackPanel Grid.Column="1" Spacing="5" Margin="12,0,0,0">
-                    <TextBlock Text="Буквы" FontSize="17" FontWeight="SemiBold"/>
-                    <TextBlock Text="Русский · домашний ряд" Classes="muted" FontSize="12"/>
-                    <TextBlock Text="Лёгкий старт" Foreground="#068F8A" FontSize="11" FontWeight="SemiBold"/>
-                  </StackPanel>
-                </Grid>
-              </Button>
+            <ItemsControl ItemsSource="{Binding TutorLessons}" IsVisible="{Binding HasTutorLessons}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:TutorLessonCardViewModel">
+                  <Button Command="{Binding #StudentRoot.DataContext.SelectTutorLessonCommand}"
+                          CommandParameter="{Binding}"
+                          Classes="lesson">
+                    <Grid ColumnDefinitions="46,*">
+                      <Border Width="38" Height="38" Background="#E0F5F2" CornerRadius="10">
+                        <TextBlock Text="✎" FontSize="16" FontWeight="Bold" Foreground="#068F8A" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                      </Border>
+                      <StackPanel Grid.Column="1" Spacing="5" Margin="12,0,0,0">
+                        <TextBlock Text="{Binding Name}" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap" MaxWidth="220"/>
+                        <TextBlock Text="{Binding Description}" Classes="muted" FontSize="12" TextWrapping="Wrap" MaxWidth="220"/>
+                        <TextBlock Text="{Binding Details}" Foreground="#068F8A" FontSize="11" FontWeight="SemiBold"/>
+                      </StackPanel>
+                    </Grid>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
 
-              <Button Command="{Binding SelectPracticeLessonCommand}" CommandParameter="words" Classes="lesson">
-                <Grid ColumnDefinitions="46,*">
-                  <Border Width="38" Height="38" Background="#E0F5F2" CornerRadius="10">
-                    <TextBlock Text="сл" FontSize="14" FontWeight="Bold" Foreground="#068F8A" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                  </Border>
-                  <StackPanel Grid.Column="1" Spacing="5" Margin="12,0,0,0">
-                    <TextBlock Text="Простые слова" FontSize="17" FontWeight="SemiBold"/>
-                    <TextBlock Text="Русский · точность" Classes="muted" FontSize="12"/>
-                    <TextBlock Text="Базовый уровень" Foreground="#068F8A" FontSize="11" FontWeight="SemiBold"/>
-                  </StackPanel>
-                </Grid>
-              </Button>
-
-              <Button Command="{Binding SelectPracticeLessonCommand}" CommandParameter="sentences" Classes="lesson">
-                <Grid ColumnDefinitions="46,*">
-                  <Border Width="38" Height="38" Background="#EEF1F3" CornerRadius="10">
-                    <TextBlock Text="¶" FontSize="18" FontWeight="Bold" Foreground="#6B7880" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                  </Border>
-                  <StackPanel Grid.Column="1" Spacing="5" Margin="12,0,0,0">
-                    <TextBlock Text="Предложения" FontSize="17" FontWeight="SemiBold"/>
-                    <TextBlock Text="Русский · ритм" Classes="muted" FontSize="12"/>
-                    <TextBlock Text="Средний уровень" Foreground="#068F8A" FontSize="11" FontWeight="SemiBold"/>
-                  </StackPanel>
-                </Grid>
-              </Button>
-
-              <Button Command="{Binding SelectPracticeLessonCommand}" CommandParameter="python" Classes="lesson">
-                <Grid ColumnDefinitions="46,*">
-                  <Border Width="38" Height="38" Background="#FFF3C9" CornerRadius="10">
-                    <TextBlock Text="Py" FontSize="14" FontWeight="Bold" Foreground="#8B6500" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                  </Border>
-                  <StackPanel Grid.Column="1" Spacing="5" Margin="12,0,0,0">
-                    <TextBlock Text="Python" FontSize="17" FontWeight="SemiBold"/>
-                    <TextBlock Text="English · циклы" Classes="muted" FontSize="12"/>
-                    <TextBlock Text="Код" Foreground="#068F8A" FontSize="11" FontWeight="SemiBold"/>
-                  </StackPanel>
-                </Grid>
-              </Button>
-
-              <Button Command="{Binding SelectPracticeLessonCommand}" CommandParameter="csharp" Classes="lesson">
-                <Grid ColumnDefinitions="46,*">
-                  <Border Width="38" Height="38" Background="#E9E3F8" CornerRadius="10">
-                    <TextBlock Text="C#" FontSize="14" FontWeight="Bold" Foreground="#65518F" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                  </Border>
-                  <StackPanel Grid.Column="1" Spacing="5" Margin="12,0,0,0">
-                    <TextBlock Text="C#" FontSize="17" FontWeight="SemiBold"/>
-                    <TextBlock Text="English · переменные" Classes="muted" FontSize="12"/>
-                    <TextBlock Text="Код" Foreground="#068F8A" FontSize="11" FontWeight="SemiBold"/>
-                  </StackPanel>
-                </Grid>
-              </Button>
-
-              <Button Command="{Binding SelectPracticeLessonCommand}" CommandParameter="html" Classes="lesson">
-                <Grid ColumnDefinitions="46,*">
-                  <Border Width="38" Height="38" Background="#FFE7DA" CornerRadius="10">
-                    <TextBlock Text="&lt;/&gt;" FontSize="12" FontWeight="Bold" Foreground="#A24C28" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                  </Border>
-                  <StackPanel Grid.Column="1" Spacing="5" Margin="12,0,0,0">
-                    <TextBlock Text="HTML + CSS" FontSize="17" FontWeight="SemiBold"/>
-                    <TextBlock Text="English · разметка" Classes="muted" FontSize="12"/>
-                    <TextBlock Text="Код" Foreground="#068F8A" FontSize="11" FontWeight="SemiBold"/>
-                  </StackPanel>
-                </Grid>
-              </Button>
-            </WrapPanel>
+            <Border IsVisible="{Binding HasNoTutorLessons}" Classes="card" Padding="18">
+              <StackPanel Spacing="8">
+                <TextBlock Text="Уроков пока нет" FontWeight="Bold" FontSize="16"/>
+                <TextBlock Text="{Binding TutorLessonsStatus}" Classes="muted" TextWrapping="Wrap"/>
+              </StackPanel>
+            </Border>
           </StackPanel>
         </ScrollViewer>
       </TabItem>
@@ -476,6 +430,7 @@
                 <StackPanel Spacing="3">
                   <TextBlock Text="Прогресс" Classes="muted" FontSize="11"/>
                   <TextBlock Text="{Binding Progress, StringFormat={}{0:0}%}" Classes="metricValue"/>
+                  <TextBlock Text="{Binding GoalLabel}" Classes="muted" FontSize="10" TextWrapping="Wrap"/>
                 </StackPanel>
               </Border>
               <Border Grid.Column="3" Classes="metric" Margin="6,0">

@@ -62,6 +62,21 @@ public sealed class AssetDistributionServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task OpenScreen_AdoptsLegacyDuplicateClientIdKey()
+    {
+        await using var jpeg = new MemoryStream([0xFF, 0xD8, 0xFF, 0xD9]);
+        // Write under the old mistaken key without going through SaveScreen normalization.
+        var screens = Path.Combine(root, "data", "screens");
+        Directory.CreateDirectory(screens);
+        var legacyKey = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("pc-legacy,pc-legacy")))[..24].ToLowerInvariant();
+        await File.WriteAllBytesAsync(Path.Combine(screens, legacyKey + ".jpg"), [0xFF, 0xD8, 0xFF, 0xD9]);
+
+        await using var stored = service.OpenScreen("pc-legacy");
+        Assert.NotNull(stored);
+        Assert.Equal(4, stored.Length);
+    }
+
+    [Fact]
     public void StarterFolder_IsDeliveredAsZip()
     {
         var folder = Path.Combine(root, "data", "starter-pack", "Python Start");

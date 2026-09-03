@@ -41,19 +41,12 @@ public static class ClassroomDatabase
 
         if (!await db.TypingLessons.AnyAsync(cancellationToken))
         {
-            db.TypingLessons.AddRange(
-                new TypingLessonTemplate
-                {
-                    Name = "Разминка: домашний ряд", Description = "Базовая постановка пальцев", ContentKind = LessonContentKind.Letters,
-                    KeyboardLayout = "ru-RU", MinimumCharacters = 20, DurationMinutes = 5,
-                    Steps = [new TypingLessonStep { Order = 0, Title = "ФЫВА ОЛДЖ", Text = "фыва олдж фыва олдж фыва олдж" }]
-                },
-                new TypingLessonTemplate
-                {
-                    Name = "Python: цикл for", Description = "Печать короткого фрагмента кода", ContentKind = LessonContentKind.Code,
-                    KeyboardLayout = "en-US", MinimumCharacters = 25, DurationMinutes = 7,
-                    Steps = [new TypingLessonStep { Order = 0, Title = "Цикл", Text = "for i in range(10): print(i)" }]
-                });
+            foreach (var seed in TypingLessonCatalog.Defaults)
+                db.TypingLessons.Add(ToTemplate(seed));
+        }
+        else
+        {
+            await UpgradeShortDefaultLessonsAsync(db, cancellationToken);
         }
 
         if (!await db.Achievements.AnyAsync(x => !x.Code.StartsWith("sys_"), cancellationToken))
@@ -75,6 +68,67 @@ public static class ClassroomDatabase
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
+
+    private static async Task UpgradeShortDefaultLessonsAsync(ClassroomDbContext db, CancellationToken cancellationToken)
+    {
+        foreach (var seed in TypingLessonCatalog.Defaults)
+        {
+            var existing = await db.TypingLessons
+                .FirstOrDefaultAsync(x => x.Name == seed.Name, cancellationToken);
+            if (existing is null)
+            {
+                db.TypingLessons.Add(ToTemplate(seed));
+                continue;
+            }
+
+            var currentLength = await db.TypingLessonSteps
+                .Where(step => step.LessonId == existing.Id)
+                .SumAsync(step => (int?)step.Text.Length, cancellationToken) ?? 0;
+            var stepCount = await db.TypingLessonSteps.CountAsync(step => step.LessonId == existing.Id, cancellationToken);
+            if (currentLength >= 800 && existing.MinimumCharacters >= seed.MinimumCharacters && stepCount == 1)
+                continue;
+
+            // Bypass the change tracker for deletes — tracked RemoveRange after SQL delete
+            // causes DbUpdateConcurrencyException (0 rows affected) on SQLite.
+            await db.TypingLessonSteps
+                .Where(step => step.LessonId == existing.Id)
+                .ExecuteDeleteAsync(cancellationToken);
+
+            existing.Description = seed.Description;
+            existing.ContentKind = seed.ContentKind;
+            existing.KeyboardLayout = seed.KeyboardLayout;
+            existing.MinimumCharacters = seed.MinimumCharacters;
+            existing.DurationMinutes = seed.DurationMinutes;
+            existing.Version += 1;
+            existing.UpdatedAt = DateTimeOffset.UtcNow;
+            db.TypingLessonSteps.Add(new TypingLessonStep
+            {
+                LessonId = existing.Id,
+                Order = 0,
+                Title = "Текст",
+                Text = seed.Text
+            });
+        }
+    }
+
+    private static TypingLessonTemplate ToTemplate(TypingLessonSeed seed) => new()
+    {
+        Name = seed.Name,
+        Description = seed.Description,
+        ContentKind = seed.ContentKind,
+        KeyboardLayout = seed.KeyboardLayout,
+        MinimumCharacters = seed.MinimumCharacters,
+        DurationMinutes = seed.DurationMinutes,
+        Steps =
+        [
+            new TypingLessonStep
+            {
+                Order = 0,
+                Title = "Текст",
+                Text = seed.Text
+            }
+        ]
+    };
 
     private static async Task EnsureGamificationSchemaAsync(ClassroomDbContext db, CancellationToken cancellationToken)
     {

@@ -73,6 +73,7 @@ public partial class App : Avalonia.Application
             agent.UpdateAvailable += update => Dispatcher.UIThread.Post(() => viewModel.SetUpdate(update));
             agent.UpdateStateChanged += state => Dispatcher.UIThread.Post(() => viewModel.SetUpdateState(state));
             agent.StudentsAvailable += students => Dispatcher.UIThread.Post(() => viewModel.SetStudents(students, agent.PreferredGroupName));
+            agent.LessonsAvailable += lessons => Dispatcher.UIThread.Post(() => viewModel.SetTutorLessons(lessons));
             agent.PreferredGroupChanged += group => Dispatcher.UIThread.Post(() => viewModel.ApplyPreferredGroup(group));
             viewModel.UpdateRequested = agent.RequestUpdateInstallation;
             viewModel.QuizAnswerRequested = agent.SubmitQuizAnswer;

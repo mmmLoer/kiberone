@@ -42,7 +42,7 @@ public sealed class TypingMetricsTests
         var errors = LessonValidator.Validate(request);
 
         Assert.Contains(errors, x => x.Contains("Название", StringComparison.Ordinal));
-        Assert.Contains(errors, x => x.Contains("этап", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(errors, x => x.Contains("текст", StringComparison.OrdinalIgnoreCase));
     }
 
     private static ParticipantMetrics Metrics(string name, int correct, int wrong, double cpm) => new(

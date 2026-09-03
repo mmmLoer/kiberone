@@ -77,7 +77,8 @@ public partial class App : Application
                 try
                 {
                     viewModel.RefreshClients();
-                    _ = viewModel.RefreshScreensAsync();
+                    if (viewModel.ShowClassScreens || viewModel.IsSection5)
+                        _ = viewModel.RefreshScreensAsync();
                 }
                 catch (Exception error)
                 {

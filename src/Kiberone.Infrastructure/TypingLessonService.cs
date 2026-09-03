@@ -16,6 +16,27 @@ public sealed class TypingLessonService(DbContextOptions<ClassroomDbContext> opt
         return lessons.OrderByDescending(x => x.UpdatedAt).ToList();
     }
 
+    public async Task<IReadOnlyList<TypingLessonOffer>> ListCatalogAsync(CancellationToken cancellationToken = default)
+    {
+        var lessons = await ListLessonsAsync(cancellationToken);
+        return lessons
+            .Select(lesson =>
+            {
+                var text = TypingLessonCatalog.GetLessonText(lesson);
+                return new TypingLessonOffer(
+                    lesson.Id,
+                    lesson.Name,
+                    lesson.Description,
+                    lesson.ContentKind.ToString(),
+                    lesson.KeyboardLayout,
+                    lesson.MinimumCharacters,
+                    lesson.DurationMinutes,
+                    text);
+            })
+            .Where(offer => !string.IsNullOrWhiteSpace(offer.Text))
+            .ToList();
+    }
+
     public async Task<TypingLessonTemplate?> GetLessonAsync(Guid id, CancellationToken cancellationToken = default)
     {
         await using var db = new ClassroomDbContext(options);

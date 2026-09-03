@@ -31,6 +31,7 @@ public sealed class StudentAgent : IAsyncDisposable
     private DateTimeOffset nextSyncAt = DateTimeOffset.MinValue;
     private int syncSeconds = 300;
     private DateTimeOffset nextScreenAt = DateTimeOffset.MinValue;
+    private DateTimeOffset nextLessonsAt = DateTimeOffset.MinValue;
     private StudentUpdateInfo? availableUpdate;
     private bool updateRequested;
     private string? stagedUpdatePath;
@@ -69,6 +70,7 @@ public sealed class StudentAgent : IAsyncDisposable
     public event Action<StudentUpdateInfo>? UpdateAvailable;
     public event Action<string>? UpdateStateChanged;
     public event Action<IReadOnlyList<StudentSummary>>? StudentsAvailable;
+    public event Action<IReadOnlyList<TypingLessonOffer>>? LessonsAvailable;
     public event Action<string?>? PreferredGroupChanged;
     public string? PreferredGroupName { get; private set; }
 
@@ -125,6 +127,18 @@ public sealed class StudentAgent : IAsyncDisposable
                         await LoadRosterAsync(http, cancellationToken);
                         rosterLoaded = true;
                     }
+                    if (DateTimeOffset.UtcNow >= nextLessonsAt)
+                    {
+                        try
+                        {
+                            await LoadLessonsAsync(http, cancellationToken);
+                        }
+                        catch (Exception error)
+                        {
+                            UpdateStateChanged?.Invoke($"Каталог уроков не обновился: {error.Message}");
+                        }
+                        nextLessonsAt = DateTimeOffset.UtcNow.AddSeconds(15);
+                    }
                     await SendHeartbeatAsync(http, cancellationToken);
                     if (studentId is Guid assigned)
                         fileSync.StudentId = assigned;
@@ -140,7 +154,15 @@ public sealed class StudentAgent : IAsyncDisposable
                     }
                     if (ScreenProvider is not null && DateTimeOffset.UtcNow >= nextScreenAt)
                     {
-                        await SendScreenAsync(http, cancellationToken);
+                        try
+                        {
+                            await SendScreenAsync(http, cancellationToken);
+                        }
+                        catch (Exception error)
+                        {
+                            // Do not fail the whole agent loop when a single screenshot upload fails.
+                            UpdateStateChanged?.Invoke($"Снимок экрана не отправился: {error.Message}");
+                        }
                         nextScreenAt = DateTimeOffset.UtcNow.AddSeconds(30);
                     }
                     if (updateRequested && availableUpdate is not null && stagedUpdatePath is null)
@@ -404,13 +426,20 @@ public sealed class StudentAgent : IAsyncDisposable
         StudentsAvailable?.Invoke(students);
     }
 
+    private async Task LoadLessonsAsync(HttpClient http, CancellationToken cancellationToken)
+    {
+        var catalog = await http.GetFromJsonAsync<List<TypingLessonOffer>>("/typing/lessons", JsonOptions, cancellationToken) ?? [];
+        LessonsAvailable?.Invoke(catalog);
+    }
+
     private async Task SendScreenAsync(HttpClient http, CancellationToken cancellationToken)
     {
         var bytes = ScreenProvider?.Invoke();
         if (bytes is null || bytes.Length == 0) return;
         using var content = new ByteArrayContent(bytes);
         content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg");
-        content.Headers.Add("X-Client-Id", clientId);
+        // X-Client-Id is already on DefaultRequestHeaders — do not set it again or ASP.NET joins "id,id"
+        // and the Tutor looks up the screen under a different hash.
         using var response = await http.PostAsync("/screen", content, cancellationToken);
         response.EnsureSuccessStatusCode();
     }

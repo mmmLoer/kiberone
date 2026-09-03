@@ -170,6 +170,16 @@ public sealed record TypingSessionSnapshot(
     double AverageAccuracy,
     int TotalCharacters);
 
+public sealed record TypingLessonOffer(
+    Guid Id,
+    string Name,
+    string Description,
+    string ContentKind,
+    string KeyboardLayout,
+    int MinimumCharacters,
+    int DurationMinutes,
+    string Text);
+
 public sealed record TypingWinner(Guid StudentId, string StudentName, string Category, string Value, int XpReward);
 
 public static class TypingMetrics
@@ -233,17 +243,16 @@ public static class LessonValidator
         if (string.IsNullOrWhiteSpace(keyboardLayout)) errors.Add("Необходимо выбрать раскладку.");
         if (minimumCharacters is < 1 or > 100_000) errors.Add("Минимум символов должен быть от 1 до 100000.");
         if (durationMinutes is < 1 or > 180) errors.Add("Длительность должна быть от 1 до 180 минут.");
-        if (steps.Count == 0) errors.Add("Добавьте хотя бы один этап урока.");
-        if (steps.Count > 50) errors.Add("В одном уроке может быть не более 50 этапов.");
+        if (steps.Count == 0) errors.Add("Добавьте текст урока.");
+        if (steps.Count > 1) errors.Add("Урок должен быть без этапов — один текст.");
 
         for (var index = 0; index < steps.Count; index++)
         {
             var step = steps[index];
-            if (string.IsNullOrWhiteSpace(step.Title)) errors.Add($"Этап {index + 1}: укажите название.");
-            if (string.IsNullOrWhiteSpace(step.Text)) errors.Add($"Этап {index + 1}: добавьте текст.");
-            if (step.Text.Length > 50_000) errors.Add($"Этап {index + 1}: текст превышает 50000 символов.");
-            if (step.TargetAccuracy is < 0 or > 100) errors.Add($"Этап {index + 1}: точность должна быть от 0 до 100%.");
-            if (step.TargetCpm is < 1 or > 2_000) errors.Add($"Этап {index + 1}: CPM должен быть от 1 до 2000.");
+            if (string.IsNullOrWhiteSpace(step.Text)) errors.Add("Добавьте текст урока.");
+            if (step.Text.Length > 50_000) errors.Add("Текст урока превышает 50000 символов.");
+            if (step.TargetAccuracy is < 0 or > 100) errors.Add("Точность должна быть от 0 до 100%.");
+            if (step.TargetCpm is < 1 or > 2_000) errors.Add("CPM должен быть от 1 до 2000.");
         }
 
         return errors;

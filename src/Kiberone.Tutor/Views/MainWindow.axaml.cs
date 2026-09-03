@@ -1,7 +1,9 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using Avalonia.VisualTree;
 using Kiberone.Tutor;
 using Kiberone.Tutor.ViewModels;
 
@@ -21,6 +23,9 @@ public partial class MainWindow : Window
 
     private void OnClassStudentPointerPressed(object? sender, PointerPressedEventArgs e)
     {
+        // Clicks on the ⋯ button should open its flyout, not only select the row.
+        if (e.Source is Visual source && source.FindAncestorOfType<Button>() is not null)
+            return;
         if (sender is not Control control || control.DataContext is not StudentCardViewModel student)
             return;
         if (DataContext is not MainViewModel viewModel)
@@ -29,6 +34,14 @@ public partial class MainWindow : Window
         var toggle = e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Meta);
         viewModel.SelectClassStudentCore(student, toggle);
         e.Handled = true;
+    }
+
+    private void OnClassStudentMenuClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Control control || control.DataContext is not StudentCardViewModel student)
+            return;
+        if (DataContext is MainViewModel viewModel)
+            viewModel.SelectClassStudentCore(student, toggle: false);
     }
 
     public async Task<string?> PickStudentSavesFolderAsync()

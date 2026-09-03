@@ -23,6 +23,7 @@
             <Button Content="Класс сейчас" Command="{Binding NavigateCommand}" CommandParameter="0" Classes="nav compact" Classes.active="{Binding IsSection0}"/>
             <Button Content="Ученики и группы" Command="{Binding NavigateCommand}" CommandParameter="2" Classes="nav compact" Classes.active="{Binding IsSection2}"/>
             <Button Content="Уроки печати" Command="{Binding NavigateCommand}" CommandParameter="1" Classes="nav compact" Classes.active="{Binding IsSection1}"/>
+            <Button Content="Живой урок" Command="{Binding NavigateCommand}" CommandParameter="7" Classes="nav compact" Classes.active="{Binding IsSection7}"/>
 
             <TextBlock Text="УПРАВЛЕНИЕ" Classes="eyebrow" Margin="13,14,0,6"/>
             <Button Content="Пульт класса" Command="{Binding NavigateCommand}" CommandParameter="6" Classes="nav compact" Classes.active="{Binding IsSection6}"/>
@@ -149,6 +150,7 @@
                         <Button Content="Не закрывать приложения" Classes="commandRow" Command="{Binding WatchdogAllOnCommand}" />
                         <Button Content="Можно закрыть приложения" Classes="commandRow" Command="{Binding WatchdogAllOffCommand}" />
                         <Button Content="Только нужные окна" Classes="commandRow" Command="{Binding FocusAllOnCommand}" />
+                        <Button Content="Все окна" Classes="commandRow" Command="{Binding FocusAllOffCommand}" />
                         <Button Content="Обновить сохранения у всех" Classes="commandRow" Command="{Binding SyncAllNowCommand}" />
                         <TextBox Text="{Binding ClassroomMessage}" Watermark="Сообщение классу" />
                         <Button Content="Отправить всем" Classes="primary commandRow" Command="{Binding SendMessageAllCommand}" HorizontalContentAlignment="Center" />
@@ -188,51 +190,85 @@
                       <ItemsControl ItemsSource="{Binding ClassRosterStudents}">
                         <ItemsControl.ItemTemplate>
                           <DataTemplate x:DataType="vm:StudentCardViewModel">
-                            <Button Classes="listCard" HorizontalContentAlignment="Stretch"
-                                    PointerPressed="OnClassStudentPointerPressed">
-                              <Border Classes="listCardInner" Padding="12,10" Classes.selected="{Binding IsClassSelected}">
-                                <Grid>
-                                  <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="16" />
-                                    <ColumnDefinition Width="*" MinWidth="72" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                  </Grid.ColumnDefinitions>
-                                  <Grid Width="10" Height="10" VerticalAlignment="Center">
-                                    <Border Width="10" Height="10" CornerRadius="100" Background="{DynamicResource TealBrush}" IsVisible="{Binding IsOnline}" />
-                                    <Border Width="10" Height="10" CornerRadius="100" Background="{DynamicResource OfflineDotBrush}" IsVisible="{Binding IsOffline}" />
-                                  </Grid>
-                                  <StackPanel Grid.Column="1" Spacing="2" Margin="0,0,8,0">
-                                    <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Text="{Binding PresenceLabel}" Classes="muted" FontSize="12" TextTrimming="CharacterEllipsis" />
-                                  </StackPanel>
-                                  <TextBlock Grid.Column="2" Text="{Binding Group}" Foreground="{DynamicResource TealBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="140" Margin="0,0,10,0" />
-                                  <Border Grid.Column="3" Classes="pill" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="0,0,10,0">
-                                    <TextBlock Text="{Binding BatteryLabel}" FontSize="12" FontWeight="Bold" />
-                                  </Border>
-                                  <StackPanel Grid.Column="4" VerticalAlignment="Center" Spacing="4" Margin="0,0,8,0">
-                                    <TextBlock Text="{Binding LastUpdateLabel}" Classes="muted" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                    <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding HasActiveModes}">
-                                      <Border Classes="modeIcon" IsVisible="{Binding IsScreenLocked}" ToolTip.Tip="Экран заблокирован">
-                                        <TextBlock Text="🔒" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                      </Border>
-                                      <Border Classes="modeIcon" IsVisible="{Binding IsWatchdogOn}" ToolTip.Tip="Нельзя закрыть приложение">
-                                        <TextBlock Text="🐕" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                      </Border>
-                                      <Border Classes="modeIcon" IsVisible="{Binding IsFocusOn}" ToolTip.Tip="Фокус включён">
-                                        <TextBlock Text="◎" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource TealBrush}" />
-                                      </Border>
-                                      <Border Classes="modeIcon" IsVisible="{Binding IsVpnOn}" ToolTip.Tip="Безопасная сеть">
-                                        <TextBlock Text="🛡" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                      </Border>
-                                    </StackPanel>
-                                  </StackPanel>
-                                  <TextBlock Grid.Column="5" Text="⋯" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" Margin="8,0,0,0" />
+                            <Border Classes="listCardInner" Padding="12,10" Margin="0,0,0,8"
+                                    Classes.selected="{Binding IsClassSelected}"
+                                    PointerPressed="OnClassStudentPointerPressed"
+                                    Cursor="Hand">
+                              <Grid>
+                                <Grid.ColumnDefinitions>
+                                  <ColumnDefinition Width="16" />
+                                  <ColumnDefinition Width="*" MinWidth="72" />
+                                  <ColumnDefinition Width="Auto" />
+                                  <ColumnDefinition Width="Auto" />
+                                  <ColumnDefinition Width="Auto" />
+                                  <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Grid Width="10" Height="10" VerticalAlignment="Center">
+                                  <Border Width="10" Height="10" CornerRadius="100" Background="{DynamicResource TealBrush}" IsVisible="{Binding IsOnline}" />
+                                  <Border Width="10" Height="10" CornerRadius="100" Background="{DynamicResource OfflineDotBrush}" IsVisible="{Binding IsOffline}" />
                                 </Grid>
-                              </Border>
-                            </Button>
+                                <StackPanel Grid.Column="1" Spacing="2" Margin="0,0,8,0">
+                                  <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                  <WrapPanel Orientation="Horizontal">
+                                    <Border Classes="pillOnline" IsVisible="{Binding IsOnline}" Margin="0,0,6,0">
+                                      <TextBlock Text="{Binding ConnectionStatusLabel}" Foreground="{DynamicResource TealBrush}" FontSize="11" FontWeight="Bold" />
+                                    </Border>
+                                    <Border Classes="pill" IsVisible="{Binding IsOffline}" Margin="0,0,6,0">
+                                      <TextBlock Text="оффлайн" Classes="muted" FontSize="11" FontWeight="Bold" />
+                                    </Border>
+                                    <Border Classes="pillOnline" IsVisible="{Binding IsVpnOn}" Margin="0,0,6,0">
+                                      <TextBlock Text="{Binding VpnStatusLabel}" Foreground="{DynamicResource TealBrush}" FontSize="11" FontWeight="Bold" />
+                                    </Border>
+                                    <Border Classes="pill" IsVisible="{Binding !IsVpnOn}" Margin="0,0,6,0">
+                                      <TextBlock Text="VPN выкл" Classes="muted" FontSize="11" FontWeight="Bold" />
+                                    </Border>
+                                  </WrapPanel>
+                                </StackPanel>
+                                <TextBlock Grid.Column="2" Text="{Binding Group}" Foreground="{DynamicResource TealBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="140" Margin="0,0,10,0" />
+                                <Border Grid.Column="3" Classes="pill" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="0,0,10,0">
+                                  <TextBlock Text="{Binding BatteryLabel}" FontSize="12" FontWeight="Bold" />
+                                </Border>
+                                <StackPanel Grid.Column="4" VerticalAlignment="Center" Spacing="4" Margin="0,0,8,0">
+                                  <TextBlock Text="{Binding LastUpdateLabel}" Classes="muted" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                  <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding HasActiveModes}">
+                                    <Border Classes="modeIcon" IsVisible="{Binding IsScreenLocked}" ToolTip.Tip="Экран заблокирован">
+                                      <TextBlock Text="🔒" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                    <Border Classes="modeIcon" IsVisible="{Binding IsWatchdogOn}" ToolTip.Tip="Нельзя закрыть приложение">
+                                      <TextBlock Text="🐕" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                    <Border Classes="modeIcon" IsVisible="{Binding IsFocusOn}" ToolTip.Tip="Фокус включён">
+                                      <TextBlock Text="◎" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource TealBrush}" />
+                                    </Border>
+                                    <Border Classes="modeIcon" IsVisible="{Binding IsVpnOn}" ToolTip.Tip="Безопасная сеть">
+                                      <TextBlock Text="🛡" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                  </StackPanel>
+                                </StackPanel>
+                                <Button Grid.Column="5" Classes="ghost" MinWidth="36" MinHeight="36" Padding="0"
+                                        VerticalAlignment="Center" HorizontalContentAlignment="Center"
+                                        ToolTip.Tip="Команды ученику"
+                                        Click="OnClassStudentMenuClick">
+                                  <Button.Flyout>
+                                    <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                      <MenuItem Header="{Binding Name}" IsEnabled="False" />
+                                      <MenuItem Header="Заблокировать экран" Command="{Binding #TutorRoot.DataContext.StudentLockCommand}" CommandParameter="{Binding}" />
+                                      <MenuItem Header="Разблокировать экран" Command="{Binding #TutorRoot.DataContext.StudentUnlockCommand}" CommandParameter="{Binding}" />
+                                      <MenuItem Header="Не закрывать приложение" Command="{Binding #TutorRoot.DataContext.StudentWatchdogOnCommand}" CommandParameter="{Binding}" />
+                                      <MenuItem Header="Можно закрыть приложение" Command="{Binding #TutorRoot.DataContext.StudentWatchdogOffCommand}" CommandParameter="{Binding}" />
+                                      <MenuItem Header="Только нужные окна" Command="{Binding #TutorRoot.DataContext.StudentFocusOnCommand}" CommandParameter="{Binding}" />
+                                      <MenuItem Header="Все окна" Command="{Binding #TutorRoot.DataContext.StudentFocusOffCommand}" CommandParameter="{Binding}" />
+                                      <MenuItem Header="Обновить сохранения" Command="{Binding #TutorRoot.DataContext.StudentSyncCommand}" CommandParameter="{Binding}" />
+                                      <MenuItem Header="Отправить сообщение" Command="{Binding #TutorRoot.DataContext.StudentMessageCommand}" CommandParameter="{Binding}" />
+                                      <Separator />
+                                      <MenuItem Header="Папка работ" Command="{Binding #TutorRoot.DataContext.OpenStudentFolderCommand}" CommandParameter="{Binding}" />
+                                      <MenuItem Header="Карточка ученика" Command="{Binding #TutorRoot.DataContext.OpenStudentFromClassCommand}" CommandParameter="{Binding}" />
+                                    </MenuFlyout>
+                                  </Button.Flyout>
+                                  <TextBlock Text="⋯" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource MutedBrush}" HorizontalAlignment="Center" />
+                                </Button>
+                              </Grid>
+                            </Border>
                           </DataTemplate>
                         </ItemsControl.ItemTemplate>
                       </ItemsControl>
@@ -325,7 +361,7 @@
         <Grid RowDefinitions="Auto,Auto,*,Auto">
           <StackPanel>
             <TextBlock Text="Мои уроки" Classes="h2" />
-            <TextBlock Text="Черновики и опубликованные маршруты" Classes="muted" Margin="0,4,0,16" />
+            <TextBlock Text="Все сохранённые уроки сами появляются у учеников. «Отправить классу» принудительно запускает выбранный." Classes="muted" Margin="0,4,0,16" TextWrapping="Wrap" />
           </StackPanel>
           <Border Grid.Row="1" Background="{DynamicResource SurfaceSoftBrush}" CornerRadius="10" Padding="12" Margin="0,0,0,12">
             <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" />
@@ -336,7 +372,7 @@
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:LessonCardViewModel">
                   <Border BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="12" Padding="16" Margin="0,0,0,10">
-                    <Grid ColumnDefinitions="*,Auto">
+                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
                       <StackPanel>
                         <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="16" />
                         <TextBlock Text="{Binding Details}" Classes="muted" Margin="0,4,0,0" />
@@ -345,6 +381,10 @@
                       <Border Grid.Column="1" Background="{DynamicResource AmberSoftBrush}" CornerRadius="100" Padding="8,4" VerticalAlignment="Top">
                         <TextBlock Text="{Binding Version}" FontWeight="Bold" />
                       </Border>
+                      <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8" Margin="0,12,0,0">
+                        <Button Content="Открыть" Classes="ghost" Command="{Binding #TutorRoot.DataContext.LoadLessonCommand}" CommandParameter="{Binding}" />
+                        <Button Content="Отправить классу" Classes="primary" Command="{Binding #TutorRoot.DataContext.LaunchLessonCommand}" CommandParameter="{Binding}" />
+                      </StackPanel>
                     </Grid>
                   </Border>
                 </DataTemplate>
@@ -366,8 +406,8 @@
         <ScrollViewer>
           <StackPanel Spacing="16">
             <StackPanel>
-              <TextBlock Text="Новый маршрут" Classes="h2" />
-              <TextBlock Text="Разбейте урок на этапы — прогресс сохранится отдельно по каждому." Classes="muted" />
+              <TextBlock Text="Новый урок" Classes="h2" />
+              <TextBlock Text="Один текст без этапов. После сохранения урок сразу доступен всем ученикам в разделе «Уроки печати»." Classes="muted" TextWrapping="Wrap" />
             </StackPanel>
             <Grid ColumnDefinitions="*,*">
               <StackPanel Spacing="6">
@@ -393,34 +433,20 @@
                 <NumericUpDown Value="{Binding DurationMinutes}" Minimum="1" Maximum="180" />
               </StackPanel>
               <StackPanel Grid.Row="1" Grid.Column="1" Spacing="6" Margin="12,12,0,0">
-                <TextBlock Text="Мин. знаков" FontWeight="Bold" />
+                <TextBlock Text="Мин. знаков для зачёта" FontWeight="Bold" />
                 <NumericUpDown Value="{Binding MinimumCharacters}" Minimum="1" Maximum="100000" />
+                <TextBlock Text="Ученику не нужно печатать весь текст — только этот минимум." Classes="muted" FontSize="11" TextWrapping="Wrap" />
               </StackPanel>
             </Grid>
-            <Grid ColumnDefinitions="*,Auto">
-              <TextBlock Text="Этапы урока" Classes="h2" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,8,0" />
-              <WrapPanel Grid.Column="1" Orientation="Horizontal">
-                <Button Content="− Последний" Command="{Binding RemoveLastStepCommand}" Margin="0,0,8,0" />
-                <Button Content="+ Добавить этап" Command="{Binding AddStepCommand}" Classes="accent" />
-              </WrapPanel>
+            <StackPanel Spacing="6">
+              <TextBlock Text="Текст урока" Classes="h2" />
+              <TextBox Text="{Binding LessonText}" Watermark="Текст для набора"
+                       AcceptsReturn="True" TextWrapping="Wrap" MinHeight="180" />
+            </StackPanel>
+            <Grid ColumnDefinitions="*,*">
+              <Button Content="Сохранить" Command="{Binding CreateLessonCommand}" IsEnabled="{Binding !IsBusy}" HorizontalAlignment="Stretch" Margin="0,0,6,0" />
+              <Button Grid.Column="1" Content="Сохранить и отправить классу" Command="{Binding SaveAndLaunchLessonCommand}" IsEnabled="{Binding !IsBusy}" Classes="primary" HorizontalAlignment="Stretch" Margin="6,0,0,0" />
             </Grid>
-            <ItemsControl ItemsSource="{Binding Steps}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="vm:LessonStepEditorViewModel">
-                  <Border BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="12" Padding="16" Margin="0,0,0,10">
-                    <StackPanel Spacing="10">
-                      <TextBox Text="{Binding Title}" Watermark="Название этапа" FontWeight="Bold" />
-                      <TextBox Text="{Binding Text}" Watermark="Текст для набора" AcceptsReturn="True" MinHeight="100" TextWrapping="Wrap" />
-                      <Grid ColumnDefinitions="*,*">
-                        <NumericUpDown Value="{Binding TargetCpm}" Minimum="0" Maximum="2000" Watermark="Цель CPM" />
-                        <NumericUpDown Grid.Column="1" Value="{Binding TargetAccuracy}" Minimum="0" Maximum="100" Watermark="Цель точности" Margin="12,0,0,0" />
-                      </Grid>
-                    </StackPanel>
-                  </Border>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-            <Button Content="Сохранить урок" Command="{Binding CreateLessonCommand}" IsEnabled="{Binding !IsBusy}" Classes="primary" HorizontalAlignment="Stretch" />
           </StackPanel>
         </ScrollViewer>
       </Border>
@@ -650,10 +676,16 @@
                                         <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="15" TextTrimming="CharacterEllipsis" />
                                         <WrapPanel Orientation="Horizontal">
                                           <Border Classes="pillOnline" IsVisible="{Binding IsOnline}" Margin="0,0,8,4">
-                                            <TextBlock Text="онлайн" Foreground="{DynamicResource TealBrush}" FontSize="11" FontWeight="Bold" />
+                                            <TextBlock Text="{Binding ConnectionStatusLabel}" Foreground="{DynamicResource TealBrush}" FontSize="11" FontWeight="Bold" />
                                           </Border>
                                           <Border Classes="pill" IsVisible="{Binding IsOffline}" Margin="0,0,8,4">
                                             <TextBlock Text="оффлайн" Classes="muted" FontSize="11" FontWeight="Bold" />
+                                          </Border>
+                                          <Border Classes="pillOnline" IsVisible="{Binding IsVpnOn}" Margin="0,0,8,4">
+                                            <TextBlock Text="{Binding VpnStatusLabel}" Foreground="{DynamicResource TealBrush}" FontSize="11" FontWeight="Bold" />
+                                          </Border>
+                                          <Border Classes="pill" IsVisible="{Binding !IsVpnOn}" Margin="0,0,8,4">
+                                            <TextBlock Text="VPN выкл" Classes="muted" FontSize="11" FontWeight="Bold" />
                                           </Border>
                                           <Border Classes="pill" Margin="0,0,0,4">
                                             <TextBlock Text="{Binding BatteryLabel, StringFormat=⚡ {0}}" FontSize="11" FontWeight="Bold" />
@@ -993,6 +1025,7 @@
                 <StackPanel>
                   <TextBlock Text="Живой урок печати" Classes="h2" />
                   <TextBlock Text="{Binding LiveLessonState}" Classes="muted" FontSize="14" Margin="0,6,0,0" />
+                  <TextBlock Text="Текст может быть длинным: ученик печатает только минимум знаков для зачёта." Classes="muted" FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap" />
                 </StackPanel>
                 <Border Grid.Column="1" Classes="status" VerticalAlignment="Top">
                   <TextBlock Text="{Binding ConnectedClientLabel}" Foreground="{DynamicResource TealBrush}" FontWeight="Bold" TextTrimming="CharacterEllipsis" MaxWidth="280" />
@@ -1002,17 +1035,22 @@
                 <StackPanel Spacing="6">
                   <TextBlock Text="Название урока" FontWeight="Bold" />
                   <TextBox Text="{Binding LiveLessonName}" Watermark="Например, Циклы Python" />
+                  <TextBlock Text="Мин. знаков для зачёта" FontWeight="Bold" Margin="0,10,0,0" />
+                  <NumericUpDown Value="{Binding MinimumCharacters}" Minimum="1" Maximum="100000" />
                 </StackPanel>
                 <StackPanel Grid.Column="1" Spacing="6" Margin="14,0,0,0">
                   <TextBlock Text="Текст для учеников" FontWeight="Bold" />
-                  <TextBox Text="{Binding LiveLessonText}" Watermark="Введите текст упражнения" />
+                  <TextBox Text="{Binding LiveLessonText}" Watermark="Введите текст упражнения"
+                           AcceptsReturn="True" TextWrapping="Wrap" MinHeight="140" MaxHeight="280" />
                 </StackPanel>
               </Grid>
-              <Border Grid.Row="2" Background="{DynamicResource PreviewPanelBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="10" Margin="0,18,0,0" Padding="28,22" MinHeight="120">
+              <Border Grid.Row="2" Background="{DynamicResource PreviewPanelBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="10" Margin="0,18,0,0" Padding="28,22" MinHeight="120" MaxHeight="220">
+                <ScrollViewer>
                 <StackPanel>
-                  <TextBlock Text="{Binding LiveLessonText}" FontFamily="Cascadia Mono, Consolas" FontSize="22" FontWeight="Bold" TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding LiveLessonText}" FontFamily="Cascadia Mono, Consolas" FontSize="16" FontWeight="Bold" TextWrapping="Wrap" />
                   <TextBlock Text="Этот текст увидят ученики после запуска" Classes="muted" FontSize="13" Margin="0,18,0,0" />
                 </StackPanel>
+                </ScrollViewer>
               </Border>
               <TextBlock Grid.Row="3" Text="Средние показатели появятся во время урока" FontWeight="Bold" FontSize="15" Margin="0,24,0,0" />
               <Grid Grid.Row="4" ColumnDefinitions="*,*,*" Margin="0,16,0,20">

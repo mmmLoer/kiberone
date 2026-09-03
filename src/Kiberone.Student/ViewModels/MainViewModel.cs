@@ -24,6 +24,8 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private double cpm;
     [ObservableProperty] private double accuracy = 100;
     [ObservableProperty] private double progress;
+    [ObservableProperty] private int goalCharacters = 120;
+    [ObservableProperty] private string goalLabel = "Зачёт: 0 / 120 знаков";
     [ObservableProperty] private bool isPaused;
     [ObservableProperty] private bool isFinished;
     [ObservableProperty] private string statusMessage = "Печатайте — Backspace отключён, Escape ставит урок на паузу.";
@@ -56,6 +58,10 @@ public partial class MainViewModel : ViewModelBase
     public ObservableCollection<StudentChoiceViewModel> Students { get; } = [];
     public ObservableCollection<string> LoginGroups { get; } = [];
     public ObservableCollection<StudentChoiceViewModel> LoginStudents { get; } = [];
+    public ObservableCollection<TutorLessonCardViewModel> TutorLessons { get; } = [];
+    [ObservableProperty] private string tutorLessonsStatus = "Ждём уроки от тьютора…";
+    public bool HasTutorLessons => TutorLessons.Count > 0;
+    public bool HasNoTutorLessons => !HasTutorLessons;
     [ObservableProperty] private string? selectedLoginGroup;
     [ObservableProperty] private StudentChoiceViewModel? selectedStudent;
     [ObservableProperty] private bool isLoginVisible = true;
@@ -84,7 +90,7 @@ public partial class MainViewModel : ViewModelBase
     {
         if (IsPaused || IsFinished) return;
         if (!IsLessonStarted) StartLesson();
-        if (TypedText.Length >= TargetText.Length)
+        if (TypedText.Length >= GoalCharacters || TypedText.Length >= TargetText.Length)
         {
             Finish();
             return;
@@ -114,7 +120,7 @@ public partial class MainViewModel : ViewModelBase
             DetectLayoutMismatch(expected, character);
         }
         UpdateMetrics();
-        if (TypedText.Length >= TargetText.Length) Finish();
+        if (TypedText.Length >= GoalCharacters || TypedText.Length >= TargetText.Length) Finish();
     }
 
     public void StartLesson()
@@ -360,21 +366,50 @@ public partial class MainViewModel : ViewModelBase
         if (int.TryParse(sectionIndex, out var parsed)) SelectedSectionIndex = Math.Clamp(parsed, 0, 7);
     }
 
+    public void SetTutorLessons(IReadOnlyList<TypingLessonOffer> lessons)
+    {
+        TutorLessons.Clear();
+        foreach (var lesson in lessons.OrderBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase))
+            TutorLessons.Add(new TutorLessonCardViewModel(lesson));
+        TutorLessonsStatus = TutorLessons.Count == 0
+            ? (IsConnected ? "У тьютора пока нет уроков печати." : "Подключитесь к классу — уроки подтянутся сами.")
+            : $"Доступно уроков от тьютора: {TutorLessons.Count}";
+        OnPropertyChanged(nameof(HasTutorLessons));
+        OnPropertyChanged(nameof(HasNoTutorLessons));
+    }
+
+    partial void OnIsConnectedChanged(bool value)
+    {
+        if (!value && TutorLessons.Count == 0)
+            TutorLessonsStatus = "Подключитесь к классу — уроки подтянутся сами.";
+    }
+
+    [RelayCommand]
+    private void SelectTutorLesson(TutorLessonCardViewModel? lesson)
+    {
+        if (lesson is null) return;
+        LessonName = lesson.Name;
+        ResetLesson(lesson.Text, lesson.MinimumCharacters);
+        SelectedSectionIndex = 2;
+    }
+
     [RelayCommand]
     private void SelectPracticeLesson(string? lessonKey)
     {
+        // Kept for older UI bindings; prefer Tutor catalog.
+        if (TutorLessons.Count > 0)
+        {
+            SelectTutorLesson(TutorLessons[0]);
+            return;
+        }
+
         var lesson = lessonKey switch
         {
-            "letters" => ("Буквы · домашний ряд", "фыва олдж фыва олдж фыва олдж"),
-            "words" => ("Простые слова", "мама папа школа класс урок код"),
-            "sentences" => ("Предложения", "Я учусь печатать быстро и точно."),
-            "python" => ("Python · циклы", "for i in range(10): print(i)"),
-            "csharp" => ("C# · переменные", "var score = 100; Console.WriteLine(score);"),
-            "html" => ("HTML + CSS", "<main class=\"card\">Hello</main>"),
-            _ => ("Разминка", "фыва олдж")
+            "python" => ("Python · циклы", TypingLessonCatalog.Defaults[1].Text, TypingLessonCatalog.Defaults[1].MinimumCharacters),
+            _ => ("Разминка", TypingLessonCatalog.Defaults[0].Text, 80)
         };
         LessonName = lesson.Item1;
-        ResetLesson(lesson.Item2);
+        ResetLesson(lesson.Item2, lesson.Item3);
         SelectedSectionIndex = 2;
     }
 
@@ -438,7 +473,11 @@ public partial class MainViewModel : ViewModelBase
                 LessonName = command.Payload.TryGetProperty("lesson_name", out var nameProperty)
                     ? nameProperty.GetString() ?? "Назначенный урок"
                     : "Назначенный урок";
-                ResetLesson(text);
+                int? minimum = null;
+                if (command.Payload.TryGetProperty("minimum_characters", out var minimumProperty)
+                    && minimumProperty.ValueKind == System.Text.Json.JsonValueKind.Number)
+                    minimum = minimumProperty.GetInt32();
+                ResetLesson(text, minimum);
                 SelectedSectionIndex = 2;
                 return CommandExecutionResult.Success;
             case ClassroomCommandKinds.TypingFinish:
@@ -499,9 +538,11 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
-    private void ResetLesson(string text)
+    private void ResetLesson(string text, int? minimumCharacters = null)
     {
         TargetText = text;
+        GoalCharacters = TypingLessonCatalog.SuggestGoalCharacters(text, minimumCharacters);
+        GoalLabel = $"Зачёт: 0 / {GoalCharacters} знаков · в тексте {text.Length}";
         TypedText = string.Empty;
         CorrectKeys = 0;
         WrongKeys = 0;
@@ -522,8 +563,10 @@ public partial class MainViewModel : ViewModelBase
         LastInputFeedback = "Нажмите ПРОБЕЛ, чтобы начать";
         LayoutWarning = string.Empty;
         HasLayoutWarning = false;
-        CurrentCharacter = text[0].ToString();
-        StatusMessage = "Урок назначен тьютором. Нажмите пробел, чтобы начать.";
+        CurrentCharacter = text.Length > 0 ? text[0].ToString() : "✓";
+        StatusMessage = GoalCharacters < text.Length
+            ? $"Для зачёта наберите {GoalCharacters} знаков. Весь текст печатать не обязательно."
+            : "Урок назначен. Нажмите пробел, чтобы начать.";
         RebuildTypingPresentation();
     }
 
@@ -532,7 +575,9 @@ public partial class MainViewModel : ViewModelBase
         activeTime.Stop();
         pauseTime.Stop();
         IsFinished = true;
-        StatusMessage = "Этап завершён. Результат готов к отправке тьютору.";
+        StatusMessage = GoalCharacters < TargetText.Length
+            ? $"Зачёт получен ({TypedText.Length} из {GoalCharacters} знаков). Можно остановиться или потренироваться дальше в следующий раз."
+            : "Этап завершён. Результат готов к отправке тьютору.";
         UpdateMetrics();
         SelectedSectionIndex = 5;
     }
@@ -541,7 +586,8 @@ public partial class MainViewModel : ViewModelBase
     {
         Cpm = TypingMetrics.Cpm(CorrectKeys, activeTime.Elapsed.TotalSeconds);
         Accuracy = TypingMetrics.Accuracy(CorrectKeys, WrongKeys);
-        Progress = TypingMetrics.Progress(TypedText.Length, TargetText.Length);
+        Progress = TypingMetrics.Progress(TypedText.Length, GoalCharacters);
+        GoalLabel = $"Зачёт: {Math.Min(TypedText.Length, GoalCharacters)} / {GoalCharacters} знаков · в тексте {TargetText.Length}";
         CurrentCharacter = TypedText.Length < TargetText.Length ? TargetText[TypedText.Length].ToString() : "✓";
         ElapsedLabel = $"{(int)activeTime.Elapsed.TotalMinutes:00}:{activeTime.Elapsed.Seconds:00}";
         RebuildTypingPresentation();
@@ -550,7 +596,13 @@ public partial class MainViewModel : ViewModelBase
     private void RebuildTypingPresentation()
     {
         TextGlyphs.Clear();
-        for (var index = 0; index < TargetText.Length; index++)
+        // Long passages: show a sliding window so the UI stays responsive.
+        const int windowSize = 220;
+        var focus = Math.Clamp(TypedText.Length, 0, Math.Max(0, TargetText.Length - 1));
+        var start = Math.Max(0, focus - 40);
+        var end = Math.Min(TargetText.Length, start + windowSize);
+        start = Math.Max(0, end - windowSize);
+        for (var index = start; index < end; index++)
         {
             var state = index < typedResults.Count
                 ? TypingGlyphState.Correct
@@ -578,18 +630,21 @@ public partial class MainViewModel : ViewModelBase
                 new[] { "Tab", "q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "[", "]", "\\" },
                 new[] { "Caps", "a", "s", "d", "f", "g", "h", "j", "k", "l", ";", "'", "Enter" },
                 new[] { "Shift", "z", "x", "c", "v", "b", "n", "m", ",", ".", "/", "Shift" },
-                new[] { "Ctrl", "Alt", "ПРОБЕЛ", "Alt", "Ctrl" }
+                new[] { "Ctrl", "Alt", "SPACE", "Alt", "Ctrl" }
             };
         foreach (var row in rows)
-            KeyboardRows.Add(new KeyboardRowViewModel(row.Select(key => new KeyboardKeyViewModel(key, IsExpectedKey(key))).ToList()));
+        {
+            var keys = row.Select(key => new KeyboardKeyViewModel(key, IsExpectedKey(key))).ToList();
+            KeyboardRows.Add(new KeyboardRowViewModel(keys));
+        }
     }
 
     private bool IsExpectedKey(string key)
     {
-        if (TypedText.Length >= TargetText.Length) return false;
+        if (TypedText.Length >= TargetText.Length || TypedText.Length >= GoalCharacters) return false;
         var expected = char.ToLowerInvariant(TargetText[TypedText.Length]);
-        if (char.IsWhiteSpace(expected)) return key == "ПРОБЕЛ";
-        return key.Length == 1 && key[0] == expected;
+        if (char.IsWhiteSpace(expected)) return key is "ПРОБЕЛ" or "SPACE";
+        return key.Length == 1 && char.ToLowerInvariant(key[0]) == expected;
     }
 
     private void DetectLayoutMismatch(char expected, char actual)
@@ -661,6 +716,18 @@ public sealed class KeyboardKeyViewModel
         '9' or 'щ' or 'o' or 'д' or 'l' or 'ю' or '.' => "#FFE5D5",
         _ => "#E2F3D8"
     };
+}
+
+public sealed class TutorLessonCardViewModel(TypingLessonOffer lesson)
+{
+    public Guid Id { get; } = lesson.Id;
+    public string Name { get; } = lesson.Name;
+    public string Description { get; } = string.IsNullOrWhiteSpace(lesson.Description)
+        ? $"{lesson.DurationMinutes} мин · зачёт с {lesson.MinimumCharacters} знаков"
+        : lesson.Description;
+    public string Details { get; } = $"{lesson.KeyboardLayout} · {lesson.ContentKind} · зачёт {lesson.MinimumCharacters}";
+    public string Text { get; } = lesson.Text;
+    public int MinimumCharacters { get; } = lesson.MinimumCharacters;
 }
 
 public sealed class StudentChoiceViewModel(StudentSummary student)
