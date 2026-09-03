@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$version = "0.9.0"
+$version = "0.10.0"
 $installersDir = Join-Path $projectRoot "dist\installers"
 $stagingRoot = Join-Path $installersDir "_staging"
 
@@ -48,6 +48,7 @@ function New-TutorInstaller {
     Copy-Item -Path (Join-Path $PublishDir "*") -Destination (Join-Path $stage "app") -Recurse -Force
     Copy-Item (Join-Path $projectRoot "install\Setup-Tutor.ps1") $stage -Force
     Copy-Item (Join-Path $projectRoot "install\Install-Tutor.cmd") $stage -Force
+    Copy-Item (Join-Path $projectRoot "install\Create-Tutor-Shortcut.ps1") $stage -Force
     Copy-Item (Join-Path $projectRoot "install\README-Tutor.txt") $stage -Force
 
     if (Test-Path $ZipPath) { Remove-Item $ZipPath -Force }

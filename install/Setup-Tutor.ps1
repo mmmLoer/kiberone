@@ -21,15 +21,10 @@ Get-ChildItem -LiteralPath $sourceDir -Force | ForEach-Object {
     Copy-Item -LiteralPath $_.FullName -Destination $InstallDir -Recurse -Force
 }
 
-$desktop = [Environment]::GetFolderPath("Desktop")
-$shortcutPath = Join-Path $desktop "KIBERone Tutor.lnk"
-$wsh = New-Object -ComObject WScript.Shell
-$shortcut = $wsh.CreateShortcut($shortcutPath)
-$shortcut.TargetPath = Join-Path $InstallDir "Kiberone.Tutor.exe"
-$shortcut.WorkingDirectory = $InstallDir
-$shortcut.Description = "KIBERone Classroom Tutor"
-$shortcut.Save()
+$installedExe = Join-Path $InstallDir "Kiberone.Tutor.exe"
+if (-not (Test-Path -LiteralPath $installedExe)) {
+    throw "Installation incomplete: $installedExe not found."
+}
 
 Write-Host "Installed KIBERone Tutor."
-Write-Host "  App:      $InstallDir\Kiberone.Tutor.exe"
-Write-Host "  Shortcut: $shortcutPath"
+Write-Host "  App: $installedExe"
