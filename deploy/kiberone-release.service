@@ -1,0 +1,20 @@
+[Unit]
+Description=KIBERone pull git and publish win-x64 Student update to Hub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/kiberone
+Environment=KIBERONE_HUB_DATA=/var/lib/kiberone-hub
+Environment=KIBERONE_GIT_BRANCH=main
+Environment=KIBERONE_SKIP_BUILD_IF_UNCHANGED=1
+Environment=KIBERONE_ALLOW_MISSING_TUNNEL=1
+Environment=KIBERONE_NATIVE_CACHE=/var/lib/kiberone-hub/native-cache
+Environment=EnableWindowsTargeting=true
+Environment=DOTNET_CLI_TELEMETRY_OPTOUT=1
+ExecStart=/opt/kiberone/scripts/ci-pull-and-release.sh
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

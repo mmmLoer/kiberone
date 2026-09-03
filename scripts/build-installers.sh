@@ -25,17 +25,49 @@ echo "=== KIBERone release build v${VERSION} (linux → win-x64) ==="
 
 NATIVE_DIR="$ROOT/src/Kiberone.VpnAgent/native"
 mkdir -p "$NATIVE_DIR"
-for dll in tunnel.dll wireguard.dll; do
-  if [[ -f "$NATIVE_DIR/$dll" ]]; then
-    continue
+
+ensure_wireguard_dll() {
+  if [[ -f "$NATIVE_DIR/wireguard.dll" ]]; then
+    return 0
   fi
-  fallback="$ROOT/dist/Student-win-x64/native/$dll"
+  echo "Downloading wireguard.dll (amd64)…"
+  local tmp
+  tmp="$(mktemp -d)"
+  curl -fsSL -o "$tmp/wireguard-nt.zip" https://download.wireguard.com/wireguard-nt/wireguard-nt-1.1.zip
+  unzip -qo "$tmp/wireguard-nt.zip" -d "$tmp"
+  cp "$tmp/wireguard-nt/bin/amd64/wireguard.dll" "$NATIVE_DIR/wireguard.dll"
+  rm -rf "$tmp"
+}
+
+ensure_native_dlls() {
+  ensure_wireguard_dll
+  if [[ -f "$NATIVE_DIR/tunnel.dll" ]]; then
+    return 0
+  fi
+  local fallback="$ROOT/dist/Student-win-x64/native/tunnel.dll"
   if [[ -f "$fallback" ]]; then
-    cp "$fallback" "$NATIVE_DIR/$dll"
-    echo "Restored $dll from previous dist build."
-  else
-    echo "Missing $dll. Place tunnel.dll and wireguard.dll in src/Kiberone.VpnAgent/native/" >&2
-    exit 1
+    cp "$fallback" "$NATIVE_DIR/tunnel.dll"
+    echo "Restored tunnel.dll from previous dist build."
+    return 0
+  fi
+  if [[ -f "${KIBERONE_NATIVE_CACHE:-/var/lib/kiberone-hub/native-cache}/tunnel.dll" ]]; then
+    cp "${KIBERONE_NATIVE_CACHE:-/var/lib/kiberone-hub/native-cache}/tunnel.dll" "$NATIVE_DIR/tunnel.dll"
+    echo "Restored tunnel.dll from KIBERONE_NATIVE_CACHE."
+    return 0
+  fi
+  if [[ "${KIBERONE_ALLOW_MISSING_TUNNEL:-0}" == "1" ]]; then
+    echo "WARNING: tunnel.dll missing — Student update will build without VPN native support." >&2
+    return 0
+  fi
+  echo "Missing tunnel.dll. Place it in src/Kiberone.VpnAgent/native/ or set KIBERONE_ALLOW_MISSING_TUNNEL=1" >&2
+  exit 1
+}
+
+ensure_native_dlls
+
+for dll in tunnel.dll wireguard.dll; do
+  if [[ ! -f "$NATIVE_DIR/$dll" ]]; then
+    continue
   fi
 done
 
@@ -46,9 +78,11 @@ dotnet publish "$ROOT/src/Kiberone.Student/Kiberone.Student.csproj" \
   -p:EnableWindowsTargeting=true
 
 mkdir -p "$ROOT/dist/Student-win-x64/native" "$ROOT/dist/Student-win-x64/service"
-cp "$NATIVE_DIR/tunnel.dll" "$ROOT/dist/Student-win-x64/native/"
+if [[ -f "$NATIVE_DIR/tunnel.dll" ]]; then
+  cp "$NATIVE_DIR/tunnel.dll" "$ROOT/dist/Student-win-x64/native/"
+  cp "$NATIVE_DIR/tunnel.dll" "$ROOT/dist/Student-win-x64/"
+fi
 cp "$NATIVE_DIR/wireguard.dll" "$ROOT/dist/Student-win-x64/native/"
-cp "$NATIVE_DIR/tunnel.dll" "$ROOT/dist/Student-win-x64/"
 cp "$NATIVE_DIR/wireguard.dll" "$ROOT/dist/Student-win-x64/"
 cp "$ROOT/scripts/install-student-vpn-service.ps1" "$ROOT/dist/Student-win-x64/service/"
 
