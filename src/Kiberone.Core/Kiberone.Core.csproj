@@ -6,8 +6,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <EmbeddedResource Include="Data\vpn-probe-1.conf" />
-    <EmbeddedResource Include="Data\vpn-probe-2.conf" />
+    <EmbeddedResource Include="Data\vpn-probe-*.conf" />
   </ItemGroup>
 
 </Project>

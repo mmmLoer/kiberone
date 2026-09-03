@@ -133,9 +133,9 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [ObservableProperty] private string settingsStatus = "Настройки действуют только на этом Tutor.";
     [ObservableProperty] private string vpnConfigsFolder = string.Empty;
     [ObservableProperty] private string studentSavesFolder = DefaultStudentSavesFolder();
-    [ObservableProperty] private string vpnLocationName = VpnRegionCatalog.Primary.Name;
-    [ObservableProperty] private string? setupVpnLocationName = VpnRegionCatalog.Primary.Name;
-    [ObservableProperty] private string vpnDistributionStatus = "Выберите сервер VPN — конфиги можно скачать с хаба или указать папку.";
+    [ObservableProperty] private string vpnLocationName = VpnRegionCatalog.AutoName;
+    [ObservableProperty] private string? setupVpnLocationName = VpnRegionCatalog.AutoName;
+    [ObservableProperty] private string vpnDistributionStatus = "Конфиги берутся с VPN-сервера по локации класса (15 слотов на путь).";
     [ObservableProperty] private StarterAssetCardViewModel? selectedStarterAsset;
     [ObservableProperty] private string wallpaperName = "Обои ещё не выбраны";
     [ObservableProperty] private string softwareStatus = "Соберите пакет: папки урока и установщики .exe / .msi.";
@@ -312,28 +312,17 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
 
     private void RefreshVpnDistributionStatus(IReadOnlyList<ClassroomClientSnapshot> onlineClients)
     {
-        if (string.IsNullOrWhiteSpace(VpnConfigsFolder) || !Directory.Exists(VpnConfigsFolder))
+        var online = onlineClients.Count;
+        if (string.IsNullOrWhiteSpace(LocationName))
         {
-            var cached = VpnRegionCatalog.CacheFolder(VpnRegionCatalog.Resolve(VpnLocationName).Id);
-            VpnDistributionStatus = string.IsNullOrWhiteSpace(VpnConfigsFolder)
-                ? "Скачайте конфиги с сервера или укажите папку с .conf."
-                : $"Папка не найдена: {VpnConfigsFolder}";
-            if (Directory.Exists(cached) && Directory.GetFiles(cached, "*.conf").Length > 0)
-                VpnDistributionStatus = $"Локальный кэш «{VpnLocationName}»: {Directory.GetFiles(cached, "*.conf").Length} конфигов. Нажмите «Скачать VPN», если нужно обновить.";
+            VpnDistributionStatus = "Выберите локацию класса — по ней VPN API выдаст свободный слот.";
             return;
         }
 
-        int configCount;
-        try
-        {
-            configCount = Directory.GetFiles(VpnConfigsFolder, "*.conf", SearchOption.TopDirectoryOnly).Length;
-            var assignments = VpnConfigDistributor.Assign(onlineClients, VpnConfigsFolder, FallbackVpnFolder());
-            VpnDistributionStatus = $"{VpnLocationName}: {VpnConfigDistributor.DescribeAssignments(assignments, onlineClients.Count, configCount)}";
-        }
-        catch (Exception error)
-        {
-            VpnDistributionStatus = $"Не удалось прочитать папку VPN: {error.Message}";
-        }
+        var path = VpnRegionCatalog.IsAuto(VpnLocationName)
+            ? "Авто (менее загруженный путь)"
+            : VpnRegionCatalog.Resolve(VpnLocationName).Name;
+        VpnDistributionStatus = $"Локация «{LocationName}» · путь {path} · онлайн ПК: {online}. При включении VPN каждый ПК получит свободный слот с сервера.";
     }
 
     private string? FallbackVpnFolder()
@@ -352,9 +341,12 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     partial void OnVpnLocationNameChanged(string value)
     {
         if (loadingSettings) return;
-        var cached = VpnRegionCatalog.CacheFolder(VpnRegionCatalog.Resolve(value).Id);
-        if (Directory.Exists(cached) && Directory.GetFiles(cached, "*.conf").Length > 0)
-            VpnConfigsFolder = cached;
+        if (!VpnRegionCatalog.IsAuto(value))
+        {
+            var cached = VpnRegionCatalog.CacheFolder(VpnRegionCatalog.Resolve(value).Id);
+            if (Directory.Exists(cached) && Directory.GetFiles(cached, "*.conf").Length > 0)
+                VpnConfigsFolder = cached;
+        }
         RefreshVpnDistributionStatus(clients.GetAll().Where(client => client.IsOnline).ToList());
         if (!NeedsLocationSetup)
             SaveSettings();
@@ -1439,7 +1431,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             HubUrl.Trim(),
             !NeedsLocationSetup,
             StudentSavesFolder.Trim(),
-            VpnRegionCatalog.Resolve(VpnLocationName).Id);
+            VpnRegionCatalog.IsAuto(VpnLocationName) ? "auto" : VpnRegionCatalog.Resolve(VpnLocationName).Id);
         var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KIBERone", "Tutor");
         Directory.CreateDirectory(directory);
         File.WriteAllText(Path.Combine(directory, "settings.json"), JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
@@ -1471,8 +1463,10 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             AutoApproveSafeFiles = saved.AutoApproveSafeFiles;
             EnableStudentUpdates = saved.EnableStudentUpdates;
             VpnConfigsFolder = saved.VpnConfigsFolder ?? string.Empty;
-            VpnLocationName = VpnRegionCatalog.Resolve(saved.VpnRegionId).Name;
-            if (string.IsNullOrWhiteSpace(VpnConfigsFolder))
+            VpnLocationName = VpnRegionCatalog.IsAuto(saved.VpnRegionId)
+                ? VpnRegionCatalog.AutoName
+                : VpnRegionCatalog.Resolve(saved.VpnRegionId).Name;
+            if (string.IsNullOrWhiteSpace(VpnConfigsFolder) && !VpnRegionCatalog.IsAuto(VpnLocationName))
             {
                 var cached = VpnRegionCatalog.CacheFolder(VpnRegionCatalog.Resolve(VpnLocationName).Id);
                 if (Directory.Exists(cached) && Directory.GetFiles(cached, "*.conf").Length > 0)
@@ -2029,57 +2023,84 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
                 return;
             }
 
-            if (!string.IsNullOrWhiteSpace(EffectiveVpnFolder()) && Directory.Exists(EffectiveVpnFolder()))
+            if (string.IsNullOrWhiteSpace(LocationName))
             {
-                var region = VpnRegionCatalog.Resolve(VpnLocationName);
-                var fallbackRegion = VpnRegionCatalog.Other(VpnLocationName);
-                var assignments = VpnConfigDistributor.Assign(online, EffectiveVpnFolder(), FallbackVpnFolder());
-                if (assignments.Count == 0)
-                {
-                    HasError = true;
-                    StatusMessage = "В папке нет .conf файлов или не удалось сопоставить конфиги с учениками.";
-                    RefreshVpnDistributionStatus(online);
-                    return;
-                }
-
-                foreach (var assignment in assignments)
-                {
-                    var content = await File.ReadAllBytesAsync(assignment.ConfigFilePath);
-                    byte[]? fallback = null;
-                    if (!string.IsNullOrWhiteSpace(assignment.FallbackConfigFilePath) && File.Exists(assignment.FallbackConfigFilePath))
-                        fallback = await File.ReadAllBytesAsync(assignment.FallbackConfigFilePath);
-                    SendClientCommand(
-                        assignment.ClientId,
-                        ClassroomCommandKinds.VpnInstallConfig,
-                        new
-                        {
-                            config_base64 = Convert.ToBase64String(content),
-                            fallback_config_base64 = fallback is null ? null : Convert.ToBase64String(fallback),
-                            source_name = assignment.ConfigFileName,
-                            auto_connect = true,
-                            check_host = region.CheckHost,
-                            vpn_region = region.Id,
-                            fallback_vpn_region = fallback is null ? null : fallbackRegion.Id,
-                            fallback_check_host = fallback is null ? null : fallbackRegion.CheckHost
-                        });
-                    ApplyCommandedModeToClient(assignment.ClientId, ClassroomCommandKinds.VpnInstallConfig);
-                }
-
-                var configCount = Directory.GetFiles(EffectiveVpnFolder(), "*.conf", SearchOption.TopDirectoryOnly).Length;
-                VpnDistributionStatus = $"{region.Name}: {VpnConfigDistributor.DescribeAssignments(assignments, online.Count, configCount)}";
-                HasError = false;
-                StatusMessage = $"VPN: {VpnDistributionStatus}";
+                HasError = true;
+                StatusMessage = "Сначала выберите локацию класса — по ней выдаются VPN-конфиги.";
                 return;
             }
 
-            SendClassCommand(ClassroomCommandKinds.VpnConnect, new { check_host = VpnRegionCatalog.Resolve(VpnLocationName).CheckHost, vpn_region = VpnRegionCatalog.Resolve(VpnLocationName).Id });
-            HasError = true;
-            StatusMessage = "Нет VPN-конфигов. Скачайте их с сервера или укажите папку с .conf.";
+            var preferred = await ResolveActiveVpnRegionAsync();
+            using var api = new VpnPathStatusClient(timeout: TimeSpan.FromSeconds(8));
+            var issued = 0;
+            var failed = new List<string>();
+            var pathCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var client in online.OrderBy(x => x.PcNumber, StringComparer.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    var (lease, region) = await VpnPathSelector.LeaseConfigAsync(api, LocationName, preferred);
+                    SendClientCommand(
+                        client.ClientId,
+                        ClassroomCommandKinds.VpnInstallConfig,
+                        new
+                        {
+                            config_base64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(lease.Config)),
+                            source_name = $"{lease.Slot}.conf",
+                            auto_connect = true,
+                            check_host = region.CheckHost,
+                            vpn_region = region.Id,
+                            vpn_slot = lease.Slot,
+                            vpn_endpoint = lease.Endpoint
+                        });
+                    ApplyCommandedModeToClient(client.ClientId, ClassroomCommandKinds.VpnInstallConfig);
+                    issued++;
+                    pathCounts[region.Name] = pathCounts.GetValueOrDefault(region.Name) + 1;
+                }
+                catch (Exception error)
+                {
+                    failed.Add($"{client.PcNumber}: {error.Message}");
+                }
+            }
+
+            if (issued == 0)
+            {
+                HasError = true;
+                StatusMessage = failed.Count > 0
+                    ? $"VPN: не удалось выдать конфиги. {failed[0]}"
+                    : "VPN: сервер не выдал ни одного конфига.";
+                VpnDistributionStatus = StatusMessage;
+                return;
+            }
+
+            var summary = string.Join(", ", pathCounts.Select(x => $"{x.Key}: {x.Value}"));
+            VpnDistributionStatus = $"Локация «{LocationName}»: выдано {issued}/{online.Count} · {summary}";
+            if (failed.Count > 0)
+                VpnDistributionStatus += $" · ошибок: {failed.Count}";
+            HasError = failed.Count > 0;
+            StatusMessage = $"VPN: {VpnDistributionStatus}";
         }
         catch (Exception error)
         {
             HasError = true;
             StatusMessage = error.Message;
+        }
+    }
+
+    private async Task<VpnRegionInfo> ResolveActiveVpnRegionAsync()
+    {
+        if (!VpnRegionCatalog.IsAuto(VpnLocationName))
+            return VpnRegionCatalog.Resolve(VpnLocationName);
+
+        try
+        {
+            using var client = new VpnPathStatusClient();
+            return await VpnPathSelector.PickBestAsync(client) ?? VpnRegionCatalog.Primary;
+        }
+        catch
+        {
+            return VpnRegionCatalog.Primary;
         }
     }
 

@@ -1186,6 +1186,7 @@
               <TextBlock Text="Локация" FontWeight="Bold"/>
               <ComboBox ItemsSource="{Binding Locations}" SelectedItem="{Binding LocationName}" HorizontalAlignment="Stretch"/>
               <TextBlock Text="Сервер VPN" FontWeight="Bold"/>
+              <TextBlock Text="Авто — менее загруженный путь. Конфиг для каждого ПК берётся с сервера: GET /config?location=… (15 слотов)." Classes="muted" TextWrapping="Wrap"/>
               <ComboBox ItemsSource="{Binding VpnLocationNames}" SelectedItem="{Binding VpnLocationName}" HorizontalAlignment="Stretch"/>
               <TextBlock Text="Папка сохранений учеников" FontWeight="Bold"/>
               <Grid ColumnDefinitions="*,Auto">
@@ -1201,7 +1202,8 @@
               <TextBlock Text="Пароль локации — для отправки учеников и скачивания VPN" FontWeight="Bold"/>
               <TextBox Text="{Binding LocationUploadPassword}" PasswordChar="•" Watermark="Пароль этой локации"/>
               <Button Content="Отправить на сервер" Command="{Binding UploadLocationRosterCommand}" Classes="primary" HorizontalAlignment="Left"/>
-              <Button Content="Скачать VPN-конфиги обоих серверов" Command="{Binding DownloadVpnPeersCommand}" Classes="ghost" HorizontalAlignment="Left"/>
+              <Button Content="Скачать VPN-конфиги обоих серверов" Command="{Binding DownloadVpnPeersCommand}" Classes="ghost" HorizontalAlignment="Left" IsVisible="False"/>
+              <TextBlock Text="VPN: конфиги выдаёт сервер пути по локации класса (GET /config). Папка .conf больше не нужна." Classes="muted" TextWrapping="Wrap"/>
               <Button Content="Скачать обновление Student с сервера" Command="{Binding DownloadStudentUpdateFromHubCommand}" Classes="ghost" HorizontalAlignment="Left"/>
               <TextBlock Text="Программа 2026–2027" FontWeight="Bold"/>
               <TextBlock Text="{Binding ProgramStatus}" Classes="muted" TextWrapping="Wrap"/>
@@ -1425,6 +1427,7 @@
           <TextBlock Text="Локация" FontWeight="Bold" Margin="0,6,0,0"/>
           <ComboBox ItemsSource="{Binding Locations}" SelectedItem="{Binding SetupLocationName}" PlaceholderText="Выберите локацию" HorizontalAlignment="Stretch" MinHeight="42"/>
           <TextBlock Text="Сервер VPN" FontWeight="Bold" Margin="0,8,0,0"/>
+          <TextBlock Text="Авто подключит менее загруженный путь. Можно сразу выбрать Англию или Нидерланды." Classes="muted" TextWrapping="Wrap"/>
           <ComboBox ItemsSource="{Binding VpnLocationNames}" SelectedItem="{Binding SetupVpnLocationName}" HorizontalAlignment="Stretch" MinHeight="42"/>
           <TextBlock Text="Папка сохранений учеников" FontWeight="Bold" Margin="0,8,0,0"/>
           <TextBlock Text="Сюда складываются файлы групп. Можно выбрать диск, сетевую папку или каталог на этом компьютере." Classes="muted" TextWrapping="Wrap"/>
