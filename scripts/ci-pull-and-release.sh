@@ -24,9 +24,11 @@ cd "$REPO"
 
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] pull ${BRANCH} in ${REPO}"
 BEFORE="$(git rev-parse HEAD)"
+# Discard local build outputs so pull never fails on updates/student_manifest.json etc.
 git fetch origin "$BRANCH"
 git checkout "$BRANCH"
-git pull --ff-only origin "$BRANCH"
+git reset --hard "origin/${BRANCH}"
+git clean -fd
 AFTER="$(git rev-parse HEAD)"
 
 if [[ "${KIBERONE_SKIP_BUILD_IF_UNCHANGED:-0}" == "1" && "$BEFORE" == "$AFTER" ]]; then
