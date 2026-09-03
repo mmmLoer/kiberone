@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Net.Http;
 using System.Net.NetworkInformation;
 using Kiberone.Core;
 
@@ -7,6 +9,8 @@ public sealed record VpnPingResult(bool Ok, string Host, int? RoundtripMs, strin
 
 public static class VpnReachability
 {
+    private static readonly string[] FallbackProbeHosts = ["1.1.1.1", "8.8.8.8"];
+
     public static async Task<VpnPingResult> PingAsync(string host, TimeSpan timeout, int attempts = 3, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(host))
@@ -66,6 +70,74 @@ public static class VpnReachability
         }
 
         return new VpnPingResult(false, trimmed, null, lastError?.Message ?? "Ping не ответил.");
+    }
+
+    /// <summary>
+    /// Verifies the tunnel actually carries traffic. ICMP to exit check-hosts is often blocked,
+    /// so we fall back to other hosts and a tiny HTTP probe through the tunnel.
+    /// </summary>
+    public static VpnPingResult Probe(string preferredHost, TimeSpan timeout, int attempts = 3)
+    {
+        var hosts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(preferredHost))
+            hosts.Add(preferredHost.Trim());
+        foreach (var host in FallbackProbeHosts)
+        {
+            if (!hosts.Contains(host, StringComparer.OrdinalIgnoreCase))
+                hosts.Add(host);
+        }
+
+        VpnPingResult? last = null;
+        foreach (var host in hosts)
+        {
+            var ping = Ping(host, timeout, attempts);
+            if (ping.Ok)
+                return ping;
+            last = ping;
+
+            var http = HttpProbe(host, timeout);
+            if (http.Ok)
+                return http;
+            last = http;
+        }
+
+        return last ?? new VpnPingResult(false, preferredHost, null, "Нет ответа через туннель.");
+    }
+
+    public static VpnPingResult HttpProbe(string host, TimeSpan timeout)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+            return new VpnPingResult(false, host, null, "Не указан адрес для HTTP-проверки.");
+
+        var trimmed = host.Trim();
+        var budget = timeout <= TimeSpan.Zero ? 2000 : (int)Math.Clamp(timeout.TotalMilliseconds, 500, 5000);
+        var urls = new[]
+        {
+            $"http://{trimmed}/cdn-cgi/trace",
+            $"http://{trimmed}/"
+        };
+
+        Exception? lastError = null;
+        foreach (var url in urls)
+        {
+            try
+            {
+                using var client = new HttpClient { Timeout = TimeSpan.FromMilliseconds(budget) };
+                var clock = Stopwatch.StartNew();
+                using var response = client.GetAsync(url).GetAwaiter().GetResult();
+                clock.Stop();
+                if ((int)response.StatusCode is >= 200 and < 500)
+                    return new VpnPingResult(true, trimmed, (int)clock.ElapsedMilliseconds, null);
+
+                lastError = new InvalidOperationException($"HTTP {(int)response.StatusCode}");
+            }
+            catch (Exception error)
+            {
+                lastError = error;
+            }
+        }
+
+        return new VpnPingResult(false, trimmed, null, lastError?.Message ?? "HTTP не ответил.");
     }
 }
 

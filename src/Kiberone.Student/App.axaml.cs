@@ -182,7 +182,8 @@ public partial class App : Avalonia.Application
                 return ReportVpnFailure(status.LastError ?? "Не удалось подключить VPN.");
 
             connected = true;
-            Thread.Sleep(800);
+            // Handshake + routes usually finish within 1–3 s (see WireGuard log.bin).
+            Thread.Sleep(2500);
             lastVpnRuntime = vpn.VerifyReachability(checkHost, region);
             if (!lastVpnRuntime.Healthy)
             {

@@ -167,10 +167,11 @@ public sealed class VpnController
         }
 
         var host = VpnHealthCheck.ResolveCheckHost(configText, checkHost, VpnRegionCatalog.Resolve(region).CheckHost);
-        var ping = VpnReachability.Ping(host, TimeSpan.FromMilliseconds(800), attempts: 3);
-        lastRuntime = VpnHealthCheck.FromPing(status with { PingMs = ping.RoundtripMs, CheckHost = host }, ping, region);
-        if (!ping.Ok)
-            lastError = $"VPN подключён, но ping {host} не прошёл: {ping.Error}";
+        // Exit nodes often block ICMP to the "check host"; Probe also tries 1.1.1.1 and HTTP.
+        var probe = VpnReachability.Probe(host, TimeSpan.FromMilliseconds(1200), attempts: 3);
+        lastRuntime = VpnHealthCheck.FromPing(status with { PingMs = probe.RoundtripMs, CheckHost = probe.Host }, probe, region);
+        if (!probe.Ok)
+            lastError = $"VPN подключён, но трафик через туннель не прошёл ({probe.Host}): {probe.Error}";
         else
             lastError = null;
         return lastRuntime;
