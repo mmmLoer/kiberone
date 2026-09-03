@@ -153,6 +153,11 @@ cat > "$ROOT/updates/student_manifest.json" <<EOF
 }
 EOF
 
+# Tutor serves updates from BaseDirectory/updates
+mkdir -p "$ROOT/dist/Tutor-win-x64/updates"
+cp "$STUDENT_EXE_DST" "$ROOT/dist/Tutor-win-x64/updates/KIBERoneStudent.exe"
+cp "$ROOT/updates/student_manifest.json" "$ROOT/dist/Tutor-win-x64/updates/student_manifest.json"
+
 echo ""
 echo "Installers:"
 ls -lh "$STUDENT_ZIP" "$TUTOR_ZIP"

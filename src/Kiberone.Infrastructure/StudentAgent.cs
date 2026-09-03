@@ -70,6 +70,8 @@ public sealed class StudentAgent : IAsyncDisposable
     public event Action<StudentSyncState>? SyncStateChanged;
     public event Action<StudentUpdateInfo>? UpdateAvailable;
     public event Action<string>? UpdateStateChanged;
+    /// <summary>Raised after a verified update is staged; UI should exit so Apply can replace the exe.</summary>
+    public event Action? UpdateRestartRequested;
     public event Action<IReadOnlyList<StudentSummary>>? StudentsAvailable;
     public event Action<IReadOnlyList<TypingLessonOffer>>? LessonsAvailable;
     public event Action<string?>? PreferredGroupChanged;
@@ -529,7 +531,8 @@ public sealed class StudentAgent : IAsyncDisposable
             if (!hash.Equals(update.Sha256, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("SHA-256 обновления не совпадает с манифестом.");
             stagedUpdatePath = Path.ChangeExtension(temporary, ".exe");
             File.Move(temporary, stagedUpdatePath, true);
-            UpdateStateChanged?.Invoke("Обновление проверено. Закройте Student для установки.");
+            UpdateStateChanged?.Invoke("Обновление проверено. Перезапуск для установки…");
+            UpdateRestartRequested?.Invoke();
         }
         catch (Exception error)
         {
@@ -542,16 +545,23 @@ public sealed class StudentAgent : IAsyncDisposable
     {
         if (stagedUpdatePath is null || !File.Exists(stagedUpdatePath)) return;
         var current = Environment.ProcessPath;
-        if (string.IsNullOrWhiteSpace(current) || !Path.GetFileName(current).Contains("KIBERoneStudent", StringComparison.OrdinalIgnoreCase)) return;
+        if (string.IsNullOrWhiteSpace(current) || !IsStudentExecutablePath(current)) return;
         var script = Path.Combine(Path.GetDirectoryName(stagedUpdatePath)!, $"apply-update-{Guid.NewGuid():N}.cmd");
         var pid = Environment.ProcessId;
+        // Prefer copy+delete: move across volumes fails; VPN service may briefly lock the target.
         File.WriteAllLines(script,
         [
             "@echo off",
+            "setlocal",
             ":wait",
             $"tasklist /FI \"PID eq {pid}\" 2>NUL | find \"{pid}\" >NUL",
             "if not errorlevel 1 (ping 127.0.0.1 -n 2 >NUL & goto wait)",
-            $"move /Y \"{stagedUpdatePath}\" \"{current}\" >NUL",
+            "net stop KIBERoneStudentVpn >NUL 2>&1",
+            "ping 127.0.0.1 -n 2 >NUL",
+            $"copy /Y \"{stagedUpdatePath}\" \"{current}\" >NUL",
+            $"if errorlevel 1 copy /Y \"{stagedUpdatePath}\" \"{current}\" >NUL",
+            $"del /F /Q \"{stagedUpdatePath}\" >NUL 2>&1",
+            "net start KIBERoneStudentVpn >NUL 2>&1",
             $"start \"\" \"{current}\"",
             "del \"%~f0\""
         ]);
@@ -560,6 +570,13 @@ public sealed class StudentAgent : IAsyncDisposable
         start.ArgumentList.Add("/c");
         start.ArgumentList.Add(script);
         Process.Start(start);
+    }
+
+    public static bool IsStudentExecutablePath(string path)
+    {
+        var name = Path.GetFileNameWithoutExtension(path);
+        return name.Equals("Kiberone.Student", StringComparison.OrdinalIgnoreCase)
+               || name.Equals("KIBERoneStudent", StringComparison.OrdinalIgnoreCase);
     }
 
     private void Raise(bool connected, string message, string? address) =>

@@ -72,6 +72,11 @@ public partial class App : Avalonia.Application
             agent.SyncStateChanged += state => Dispatcher.UIThread.Post(() => viewModel.SetSyncState(state));
             agent.UpdateAvailable += update => Dispatcher.UIThread.Post(() => viewModel.SetUpdate(update));
             agent.UpdateStateChanged += state => Dispatcher.UIThread.Post(() => viewModel.SetUpdateState(state));
+            agent.UpdateRestartRequested += () => Dispatcher.UIThread.Post(() =>
+            {
+                viewModel.SetUpdateState("Перезапуск для установки обновления…");
+                desktop.Shutdown();
+            });
             agent.StudentsAvailable += students => Dispatcher.UIThread.Post(() => viewModel.SetStudents(students, agent.PreferredGroupName));
             agent.LessonsAvailable += lessons => Dispatcher.UIThread.Post(() => viewModel.SetTutorLessons(lessons));
             agent.PreferredGroupChanged += group => Dispatcher.UIThread.Post(() => viewModel.ApplyPreferredGroup(group));

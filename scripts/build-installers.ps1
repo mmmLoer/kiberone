@@ -81,6 +81,23 @@ Start-Sleep -Seconds 2
 
 & (Join-Path $projectRoot "scripts\publish-student.ps1")
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+# Single-file artifact for Tutor→Student update channel (must replace one exe; folder publish apphost is ~150KB and useless).
+$studentUpdateOut = Join-Path $projectRoot "dist\Student-update-win-x64"
+Write-Host "Publishing single-file Student update package to $studentUpdateOut ..."
+$dotnet = if (Test-Path (Join-Path $projectRoot ".dotnet\dotnet.exe")) { Join-Path $projectRoot ".dotnet\dotnet.exe" } else { "dotnet" }
+& $dotnet publish (Join-Path $projectRoot "src\Kiberone.Student\Kiberone.Student.csproj") `
+    -c Release -r win-x64 --self-contained true `
+    -o $studentUpdateOut `
+    -p:PublishSingleFile=true `
+    -p:IncludeNativeLibrariesForSelfExtract=true
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+$nativeSrc = Join-Path $projectRoot "src\Kiberone.VpnAgent\native"
+foreach ($dll in @("tunnel.dll", "wireguard.dll")) {
+    $src = Join-Path $nativeSrc $dll
+    if (Test-Path $src) { Copy-Item $src (Join-Path $studentUpdateOut $dll) -Force }
+}
+
 & (Join-Path $projectRoot "scripts\publish-tutor.ps1")
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -93,9 +110,16 @@ $tutorZip = Join-Path $installersDir "KIBERoneTutor-Setup-$version-win-x64.zip"
 New-StudentInstaller -PublishDir $studentPublish -ZipPath $studentZip
 New-TutorInstaller -PublishDir $tutorPublish -ZipPath $tutorZip
 
-Copy-Item (Join-Path $studentPublish "Kiberone.Student.exe") (Join-Path $projectRoot "KIBERoneStudent.exe") -Force
+$studentUpdateExe = Join-Path $studentUpdateOut "Kiberone.Student.exe"
+Copy-Item $studentUpdateExe (Join-Path $projectRoot "KIBERoneStudent.exe") -Force
 Copy-Item (Join-Path $tutorPublish "Kiberone.Tutor.exe") (Join-Path $projectRoot "KIBERoneTutor.exe") -Force
-Update-StudentManifest -StudentExe (Join-Path $studentPublish "Kiberone.Student.exe")
+Update-StudentManifest -StudentExe $studentUpdateExe
+
+# Tutor serves updates from BaseDirectory\updates — keep a copy next to the Tutor publish.
+$tutorUpdates = Join-Path $tutorPublish "updates"
+New-Item -ItemType Directory -Force -Path $tutorUpdates | Out-Null
+Copy-Item (Join-Path $projectRoot "updates\KIBERoneStudent.exe") (Join-Path $tutorUpdates "KIBERoneStudent.exe") -Force
+Copy-Item (Join-Path $projectRoot "updates\student_manifest.json") (Join-Path $tutorUpdates "student_manifest.json") -Force
 
 if (Test-Path $stagingRoot) { Remove-Item $stagingRoot -Recurse -Force }
 
