@@ -29,14 +29,14 @@ public sealed record AppUpdateManifest(string Version, string Filename, long Siz
 public static class VpnRegionCatalog
 {
     public const string AutoName = "Авто";
-    public const string FranceId = "path-fr";
+    public const string FranceId = "path-fr"; // historical id; UI name is Germany
     public const string NetherlandsId = "path-nl";
     public const string PrimaryId = FranceId;
     public const string SecondaryId = NetherlandsId;
 
     public static IReadOnlyList<VpnRegionInfo> All { get; } =
     [
-        new(FranceId, "Англия", "51.89.174.71", true, PublicHost: "193.233.220.158", WgPort: 51822, StatusPort: 9108),
+        new(FranceId, "Германия", "51.89.174.71", true, PublicHost: "193.233.220.158", WgPort: 51822, StatusPort: 9108),
         new(NetherlandsId, "Нидерланды", "193.235.147.228", false, PublicHost: "80.90.188.85", WgPort: 51823, StatusPort: 9108)
     ];
 
@@ -55,7 +55,7 @@ public static class VpnRegionCatalog
             return Primary;
 
         var key = idOrName!.Trim();
-        if (key is "vpn-1" or "Сервер 1")
+        if (key is "vpn-1" or "Сервер 1" or "Англия" or "England" or "France" or "path-de" or "Germany")
             return All[0];
         if (key is "vpn-2" or "Сервер 2")
             return All[1];

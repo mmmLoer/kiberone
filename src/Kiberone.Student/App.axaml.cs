@@ -12,6 +12,8 @@ namespace Kiberone.Student;
 
 public partial class App : Avalonia.Application
 {
+    private static readonly object VpnCommandGate = new();
+
     private StudentAgent? agent;
     private FocusModeManager? focusMode;
     private WatchdogManager? watchdog;
@@ -93,21 +95,27 @@ public partial class App : Avalonia.Application
         if (vpn is null)
             return ReportVpnFailure("VPN не инициализирован.");
 
-        try
+        // Serialize VPN ops: rapid region switch otherwise races Connect/Disconnect on one pipe.
+        lock (VpnCommandGate)
         {
-            var result = command.Kind switch
+            try
             {
-                ClassroomCommandKinds.VpnInstallConfig => HandleVpnInstallConfig(command),
-                ClassroomCommandKinds.VpnConnect => ConnectWithHealth(command),
-                ClassroomCommandKinds.VpnDisconnect => ReportVpnDisconnected(),
-                ClassroomCommandKinds.VpnStatus => ReportVpnStatus(),
-                _ => ReportVpnFailure($"Неизвестная VPN-команда: {command.Kind}")
-            };
-            return result;
-        }
-        catch (Exception error)
-        {
-            return ReportVpnFailure(error.Message);
+                VpnLog.Info("student", $"VPN command begin: {command.Kind}");
+                var result = command.Kind switch
+                {
+                    ClassroomCommandKinds.VpnInstallConfig => HandleVpnInstallConfig(command),
+                    ClassroomCommandKinds.VpnConnect => ConnectWithHealth(command),
+                    ClassroomCommandKinds.VpnDisconnect => ReportVpnDisconnected(),
+                    ClassroomCommandKinds.VpnStatus => ReportVpnStatus(),
+                    _ => ReportVpnFailure($"Неизвестная VPN-команда: {command.Kind}")
+                };
+                VpnLog.Info("student", $"VPN command end: {command.Kind} ok={result.Succeeded} err={result.Error ?? "-"}");
+                return result;
+            }
+            catch (Exception error)
+            {
+                return ReportVpnFailure(error.Message);
+            }
         }
     }
 
