@@ -133,7 +133,7 @@ public partial class App : Avalonia.Application
             return ReportVpnFailure("Пустой VPN-конфиг.");
 
         vpn.InstallConfig(content);
-        viewModel?.SetVpnState(vpn.GetStatus(), "Конфиг получен от тьютора");
+        UpdateVpnUi(vpn.GetStatus(), "Конфиг получен от тьютора");
 
         var autoConnect = !command.Payload.TryGetProperty("auto_connect", out var connectFlag) || connectFlag.GetBoolean();
         if (!autoConnect)
@@ -174,27 +174,53 @@ public partial class App : Avalonia.Application
         if (vpn is null)
             return ReportVpnFailure("VPN не инициализирован.");
 
-        var status = vpn.Connect();
-        if (!status.Connected)
-            return ReportVpnFailure(status.LastError ?? "Не удалось подключить VPN.");
-
-        lastVpnRuntime = vpn.VerifyReachability(checkHost, region);
-        if (!lastVpnRuntime.Healthy)
+        var connected = false;
+        try
         {
-            VpnLog.Warn("student", $"VPN health failed after connect: {lastVpnRuntime.Error}. Rolling back tunnel.");
-            try { vpn.Disconnect(); } catch (Exception error) { VpnLog.Warn("student", $"Rollback disconnect failed: {error.Message}"); }
-            lastVpnRuntime = new VpnRuntimeInfo(false, false, null, region, lastVpnRuntime.CheckHost, lastVpnRuntime.Error);
-            return ReportVpnFailure(lastVpnRuntime.Error ?? "VPN поднялся, но интернет через него не заработал. Туннель отключён.");
+            var status = vpn.Connect();
+            if (!status.Connected)
+                return ReportVpnFailure(status.LastError ?? "Не удалось подключить VPN.");
+
+            connected = true;
+            Thread.Sleep(800);
+            lastVpnRuntime = vpn.VerifyReachability(checkHost, region);
+            if (!lastVpnRuntime.Healthy)
+            {
+                VpnLog.Warn("student", $"VPN health failed after connect: {lastVpnRuntime.Error}. Rolling back tunnel.");
+                SafeDisconnect();
+                connected = false;
+                lastVpnRuntime = new VpnRuntimeInfo(false, false, null, region, lastVpnRuntime.CheckHost, lastVpnRuntime.Error);
+                return ReportVpnFailure(lastVpnRuntime.Error ?? "VPN поднялся, но интернет через него не заработал. Туннель отключён.");
+            }
+
+            UpdateVpnUi(vpn.GetStatus() with
+            {
+                PingMs = lastVpnRuntime.PingMs,
+                CheckHost = lastVpnRuntime.CheckHost,
+                LastError = null
+            }, null);
+
+            return CommandExecutionResult.Success;
         }
-
-        viewModel?.SetVpnState(vpn.GetStatus() with
+        catch (Exception error)
         {
-            PingMs = lastVpnRuntime.PingMs,
-            CheckHost = lastVpnRuntime.CheckHost,
-            LastError = null
-        }, null);
+            if (connected)
+                SafeDisconnect();
+            return ReportVpnFailure(error.Message);
+        }
+    }
 
-        return CommandExecutionResult.Success;
+    private void SafeDisconnect()
+    {
+        try { vpn?.Disconnect(); }
+        catch (Exception error) { VpnLog.Warn("student", $"Rollback disconnect failed: {error.Message}"); }
+    }
+
+    private void UpdateVpnUi(VpnStatus? status, string? detail)
+    {
+        var vm = viewModel;
+        if (vm is null) return;
+        Dispatcher.UIThread.Post(() => vm.SetVpnState(status, detail));
     }
 
     private static string? ReadString(ClassroomCommand command, string name) =>
@@ -202,13 +228,13 @@ public partial class App : Avalonia.Application
 
     private CommandExecutionResult ReportVpnSuccess()
     {
-        viewModel?.SetVpnState(vpn?.GetStatus(), null);
+        UpdateVpnUi(vpn?.GetStatus(), null);
         return CommandExecutionResult.Success;
     }
 
     private CommandExecutionResult ReportVpnStatus()
     {
-        viewModel?.SetVpnState(vpn?.GetStatus(), null);
+        UpdateVpnUi(vpn?.GetStatus(), null);
         return CommandExecutionResult.Success;
     }
 
@@ -216,7 +242,7 @@ public partial class App : Avalonia.Application
     {
         vpn?.Disconnect();
         lastVpnRuntime = new VpnRuntimeInfo(false, false);
-        viewModel?.SetVpnState(vpn?.GetStatus(), "Отключён тьютором");
+        UpdateVpnUi(vpn?.GetStatus(), "Отключён тьютором");
         return CommandExecutionResult.Success;
     }
 
@@ -227,7 +253,7 @@ public partial class App : Avalonia.Application
         VpnLog.Error("student", $"VPN command failed: {message}");
         if (!message.Contains("vpn.log", StringComparison.OrdinalIgnoreCase))
             message += $" Лог: {VpnLog.PrimaryLogPath}";
-        viewModel?.SetVpnState(vpn?.GetStatus(), message);
+        UpdateVpnUi(vpn?.GetStatus(), message);
         return new CommandExecutionResult(false, message);
     }
 }

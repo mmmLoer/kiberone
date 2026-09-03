@@ -5,12 +5,13 @@ namespace Kiberone.Tests;
 public sealed class VpnConfigNormalizerTests
 {
     [Fact]
-    public void Normalize_replaces_full_tunnel_allowed_ips()
+    public void Normalize_replaces_full_tunnel_allowed_ips_and_strips_dns()
     {
         const string input = """
             [Interface]
             PrivateKey = abc
             Address = 10.1.0.2/32
+            DNS = 1.1.1.1
 
             [Peer]
             PublicKey = abc
@@ -21,8 +22,8 @@ public sealed class VpnConfigNormalizerTests
 
         Assert.DoesNotContain("0.0.0.0/0", output, StringComparison.Ordinal);
         Assert.DoesNotContain("::/0", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("DNS =", output, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(VpnConfigNormalizer.ClassroomAllowedIpv4, output, StringComparison.Ordinal);
-        Assert.Contains("DNS = 1.1.1.1", output, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -32,6 +33,7 @@ public sealed class VpnConfigNormalizerTests
             [Interface]
             PrivateKey = abc
             Address = 10.79.0.2/32, fd00::2/128
+            DNS = 1.1.1.1, 2606:4700:4700::1111
 
             [Peer]
             PublicKey = abc
@@ -45,8 +47,8 @@ public sealed class VpnConfigNormalizerTests
         Assert.Contains(VpnConfigNormalizer.ClassroomAllowedIpv4, output, StringComparison.Ordinal);
         Assert.DoesNotContain("2000::/3", output, StringComparison.Ordinal);
         Assert.DoesNotContain("fd00::2", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("DNS =", output, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Address = 10.79.0.2/32", output, StringComparison.Ordinal);
-        Assert.Contains("DNS = 1.1.1.1", output, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -56,7 +58,6 @@ public sealed class VpnConfigNormalizerTests
             [Interface]
             PrivateKey = abc
             Address = 10.200.0.2/32
-            DNS = 1.1.1.1
 
             [Peer]
             AllowedIPs = 10.200.0.0/24

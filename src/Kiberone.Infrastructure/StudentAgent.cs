@@ -322,7 +322,7 @@ public sealed class StudentAgent : IAsyncDisposable
                 && command.Payload.TryGetProperty("sync_seconds", out var seconds) && seconds.TryGetInt32(out var configured))
                 syncSeconds = Math.Clamp(configured, 15, 3600);
             result = await TryHandleSoftwareCommandAsync(http, command, cancellationToken)
-                ?? TryHandleVpnCommand(command)
+                ?? await TryHandleVpnCommandAsync(command, cancellationToken)
                 ?? (CommandHandler is null
                     ? new CommandExecutionResult(false, "Обработчик команд не настроен.")
                     : await CommandHandler(command, cancellationToken));
@@ -546,7 +546,7 @@ public sealed class StudentAgent : IAsyncDisposable
         return null;
     }
 
-    private CommandExecutionResult? TryHandleVpnCommand(ClassroomCommand command)
+    private async Task<CommandExecutionResult?> TryHandleVpnCommandAsync(ClassroomCommand command, CancellationToken cancellationToken)
     {
         if (command.Kind is not (
             ClassroomCommandKinds.VpnConnect
@@ -560,7 +560,13 @@ public sealed class StudentAgent : IAsyncDisposable
 
         try
         {
-            return VpnCommandHandler(command);
+            // Keep the agent loop responsive: VPN setup can block on SCM/ping.
+            var work = Task.Run(() => VpnCommandHandler(command), cancellationToken);
+            var finished = await Task.WhenAny(work, Task.Delay(TimeSpan.FromSeconds(45), cancellationToken));
+            if (finished != work)
+                return new CommandExecutionResult(false, "VPN-команда не завершилась за 45 с.");
+
+            return await work;
         }
         catch (Exception error)
         {

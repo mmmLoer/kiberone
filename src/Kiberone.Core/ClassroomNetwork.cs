@@ -4,7 +4,7 @@ namespace Kiberone.Core;
 
 public static class BuildInfo
 {
-    public const string Version = "0.10.2";
+    public const string Version = "0.10.3";
 }
 
 public sealed record HeartbeatRequest(

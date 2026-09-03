@@ -167,7 +167,7 @@ public sealed class VpnController
         }
 
         var host = VpnHealthCheck.ResolveCheckHost(configText, checkHost, VpnRegionCatalog.Resolve(region).CheckHost);
-        var ping = VpnReachability.Ping(host, TimeSpan.FromMilliseconds(1200), attempts: 3);
+        var ping = VpnReachability.Ping(host, TimeSpan.FromMilliseconds(800), attempts: 3);
         lastRuntime = VpnHealthCheck.FromPing(status with { PingMs = ping.RoundtripMs, CheckHost = host }, ping, region);
         if (!ping.Ok)
             lastError = $"VPN подключён, но ping {host} не прошёл: {ping.Error}";

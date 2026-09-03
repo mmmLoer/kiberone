@@ -40,9 +40,15 @@ public static partial class VpnConfigNormalizer
                 return $"AllowedIPs = {ClassroomAllowedIpv4}";
             });
 
-        normalized = EnsureDns(normalized);
+        // Keep LAN DNS (router). Pushing 1.1.1.1 via WG blackholes name resolution when handshake fails.
+        if (DnsLine().IsMatch(normalized))
+        {
+            VpnLog.Info("config", "Removing WireGuard DNS so LAN resolver stays available.");
+            normalized = DnsLine().Replace(normalized, string.Empty);
+        }
+
         normalized = StripIpv6Addresses(normalized);
-        return normalized;
+        return CollapseBlankLines(normalized);
     }
 
     private static bool ShouldRewriteAllowedIps(string allowedIps)
@@ -66,15 +72,6 @@ public static partial class VpnConfigNormalizer
         return parts.Length >= 8;
     }
 
-    private static string EnsureDns(string content)
-    {
-        if (DnsLine().IsMatch(content))
-            return content;
-
-        VpnLog.Info("config", "Adding DNS = 1.1.1.1 for classroom VPN.");
-        return InterfaceHeader().Replace(content, "$0\nDNS = 1.1.1.1", 1);
-    }
-
     private static string StripIpv6Addresses(string content)
     {
         return AddressLine().Replace(content, match =>
@@ -88,6 +85,9 @@ public static partial class VpnConfigNormalizer
             return $"Address = {string.Join(", ", kept)}";
         });
     }
+
+    private static string CollapseBlankLines(string content) =>
+        Regex.Replace(content, @"(\r?\n){3,}", "\n\n");
 
     public static string? TryGetEndpointHost(string content)
     {
@@ -115,11 +115,8 @@ public static partial class VpnConfigNormalizer
     [GeneratedRegex(@"^AllowedIPs\s*=\s*(?<value>.+)$", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
     private static partial Regex AllowedIpsLine();
 
-    [GeneratedRegex(@"^DNS\s*=\s*.+$", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
+    [GeneratedRegex(@"^DNS\s*=\s*.+\r?$", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
     private static partial Regex DnsLine();
-
-    [GeneratedRegex(@"^\[Interface\]\s*$", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
-    private static partial Regex InterfaceHeader();
 
     [GeneratedRegex(@"^Address\s*=\s*(?<value>.+)$", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
     private static partial Regex AddressLine();

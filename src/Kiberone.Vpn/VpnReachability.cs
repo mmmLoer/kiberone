@@ -15,13 +15,43 @@ public static class VpnReachability
         var trimmed = host.Trim();
         Exception? lastError = null;
         using var ping = new Ping();
-        var budget = timeout <= TimeSpan.Zero ? 2000 : (int)Math.Clamp(timeout.TotalMilliseconds, 400, 8000);
+        var budget = timeout <= TimeSpan.Zero ? 1000 : (int)Math.Clamp(timeout.TotalMilliseconds, 300, 3000);
         for (var attempt = 0; attempt < Math.Max(1, attempts); attempt++)
         {
             ct.ThrowIfCancellationRequested();
             try
             {
-                var reply = await ping.SendPingAsync(trimmed, budget);
+                var reply = await ping.SendPingAsync(trimmed, budget).WaitAsync(ct);
+                if (reply.Status == IPStatus.Success)
+                    return new VpnPingResult(true, trimmed, (int)reply.RoundtripTime, null);
+
+                lastError = new InvalidOperationException(reply.Status.ToString());
+            }
+            catch (Exception error) when (error is not OperationCanceledException)
+            {
+                lastError = error;
+            }
+
+            await Task.Delay(150, ct);
+        }
+
+        return new VpnPingResult(false, trimmed, null, lastError?.Message ?? "Ping не ответил.");
+    }
+
+    public static VpnPingResult Ping(string host, TimeSpan timeout, int attempts = 3)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+            return new VpnPingResult(false, host, null, "Не указан адрес для ping.");
+
+        var trimmed = host.Trim();
+        Exception? lastError = null;
+        using var ping = new Ping();
+        var budget = timeout <= TimeSpan.Zero ? 1000 : (int)Math.Clamp(timeout.TotalMilliseconds, 300, 3000);
+        for (var attempt = 0; attempt < Math.Max(1, attempts); attempt++)
+        {
+            try
+            {
+                var reply = ping.Send(trimmed, budget);
                 if (reply.Status == IPStatus.Success)
                     return new VpnPingResult(true, trimmed, (int)reply.RoundtripTime, null);
 
@@ -32,14 +62,11 @@ public static class VpnReachability
                 lastError = error;
             }
 
-            await Task.Delay(250, ct);
+            Thread.Sleep(150);
         }
 
         return new VpnPingResult(false, trimmed, null, lastError?.Message ?? "Ping не ответил.");
     }
-
-    public static VpnPingResult Ping(string host, TimeSpan timeout, int attempts = 3) =>
-        PingAsync(host, timeout, attempts).GetAwaiter().GetResult();
 }
 
 public static class VpnHealthCheck
