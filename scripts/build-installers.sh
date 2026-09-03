@@ -86,6 +86,19 @@ cp "$NATIVE_DIR/wireguard.dll" "$ROOT/dist/Student-win-x64/native/"
 cp "$NATIVE_DIR/wireguard.dll" "$ROOT/dist/Student-win-x64/"
 cp "$ROOT/scripts/install-student-vpn-service.ps1" "$ROOT/dist/Student-win-x64/service/"
 
+# Single-file artifact for Tutor→Student update channel (replaces one KIBERoneStudent.exe).
+echo "Publishing single-file Student update package…"
+dotnet publish "$ROOT/src/Kiberone.Student/Kiberone.Student.csproj" \
+  -c Release -r win-x64 --self-contained true \
+  -o "$ROOT/dist/Student-update-win-x64" \
+  -p:PublishSingleFile=true \
+  -p:IncludeNativeLibrariesForSelfExtract=true \
+  -p:EnableWindowsTargeting=true
+if [[ -f "$NATIVE_DIR/tunnel.dll" ]]; then
+  cp "$NATIVE_DIR/tunnel.dll" "$ROOT/dist/Student-update-win-x64/"
+fi
+cp "$NATIVE_DIR/wireguard.dll" "$ROOT/dist/Student-update-win-x64/"
+
 dotnet publish "$ROOT/src/Kiberone.Tutor/Kiberone.Tutor.csproj" \
   -c Release -r win-x64 --self-contained true \
   -o "$ROOT/dist/Tutor-win-x64" \
@@ -113,7 +126,10 @@ rm -f "$STUDENT_ZIP" "$TUTOR_ZIP"
 rm -rf "$STAGE"
 
 mkdir -p "$ROOT/updates"
-STUDENT_EXE_SRC="$ROOT/dist/Student-win-x64/Kiberone.Student.exe"
+STUDENT_EXE_SRC="$ROOT/dist/Student-update-win-x64/Kiberone.Student.exe"
+if [[ ! -f "$STUDENT_EXE_SRC" ]]; then
+  STUDENT_EXE_SRC="$ROOT/dist/Student-win-x64/Kiberone.Student.exe"
+fi
 STUDENT_EXE_DST="$ROOT/updates/KIBERoneStudent.exe"
 cp "$STUDENT_EXE_SRC" "$STUDENT_EXE_DST"
 cp "$STUDENT_EXE_SRC" "$ROOT/KIBERoneStudent.exe"
