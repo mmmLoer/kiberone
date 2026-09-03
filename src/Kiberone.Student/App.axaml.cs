@@ -182,8 +182,8 @@ public partial class App : Avalonia.Application
                 return ReportVpnFailure(status.LastError ?? "Не удалось подключить VPN.");
 
             connected = true;
-            // Handshake + routes usually finish within 1–3 s (see WireGuard log.bin).
-            Thread.Sleep(2500);
+            VpnLog.Info("student", "VPN service reported running; waiting for handshake/routes…");
+            Thread.Sleep(1500);
             lastVpnRuntime = vpn.VerifyReachability(checkHost, region);
             if (!lastVpnRuntime.Healthy)
             {
@@ -191,15 +191,21 @@ public partial class App : Avalonia.Application
                 SafeDisconnect();
                 connected = false;
                 lastVpnRuntime = new VpnRuntimeInfo(false, false, null, region, lastVpnRuntime.CheckHost, lastVpnRuntime.Error);
-                return ReportVpnFailure(lastVpnRuntime.Error ?? "VPN поднялся, но интернет через него не заработал. Туннель отключён.");
+                return ReportVpnFailure(lastVpnRuntime.Error ?? "VPN поднялся, но handshake не прошёл. Туннель отключён.");
             }
+
+            var detail = string.IsNullOrWhiteSpace(lastVpnRuntime.Error) ? null : lastVpnRuntime.Error;
+            if (detail is not null)
+                VpnLog.Warn("student", $"VPN kept after handshake with warning: {detail}");
+            else
+                VpnLog.Info("student", $"VPN healthy. check={lastVpnRuntime.CheckHost} pingMs={lastVpnRuntime.PingMs}");
 
             UpdateVpnUi(vpn.GetStatus() with
             {
                 PingMs = lastVpnRuntime.PingMs,
                 CheckHost = lastVpnRuntime.CheckHost,
-                LastError = null
-            }, null);
+                LastError = detail
+            }, detail);
 
             return CommandExecutionResult.Success;
         }

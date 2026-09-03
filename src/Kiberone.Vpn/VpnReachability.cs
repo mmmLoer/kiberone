@@ -5,7 +5,7 @@ using Kiberone.Core;
 
 namespace Kiberone.Vpn;
 
-public sealed record VpnPingResult(bool Ok, string Host, int? RoundtripMs, string? Error);
+public sealed record VpnPingResult(bool Ok, string Host, int? RoundtripMs, string? Error, string Method = "ping");
 
 public static class VpnReachability
 {
@@ -50,20 +50,27 @@ public static class VpnReachability
         var trimmed = host.Trim();
         Exception? lastError = null;
         using var ping = new Ping();
-        var budget = timeout <= TimeSpan.Zero ? 1000 : (int)Math.Clamp(timeout.TotalMilliseconds, 300, 3000);
+        var budget = timeout <= TimeSpan.Zero ? 1000 : (int)Math.Clamp(timeout.TotalMilliseconds, 300, 4000);
         for (var attempt = 0; attempt < Math.Max(1, attempts); attempt++)
         {
             try
             {
+                var clock = Stopwatch.StartNew();
                 var reply = ping.Send(trimmed, budget);
+                clock.Stop();
                 if (reply.Status == IPStatus.Success)
-                    return new VpnPingResult(true, trimmed, (int)reply.RoundtripTime, null);
+                {
+                    VpnLog.Info("probe", $"ping {trimmed} OK {clock.ElapsedMilliseconds} ms");
+                    return new VpnPingResult(true, trimmed, (int)clock.ElapsedMilliseconds, null);
+                }
 
                 lastError = new InvalidOperationException(reply.Status.ToString());
+                VpnLog.Info("probe", $"ping {trimmed} attempt {attempt + 1}: {reply.Status}");
             }
             catch (Exception error)
             {
                 lastError = error;
+                VpnLog.Info("probe", $"ping {trimmed} attempt {attempt + 1}: {error.Message}");
             }
 
             Thread.Sleep(150);
@@ -73,10 +80,10 @@ public static class VpnReachability
     }
 
     /// <summary>
-    /// Verifies the tunnel actually carries traffic. ICMP to exit check-hosts is often blocked,
-    /// so we fall back to other hosts and a tiny HTTP probe through the tunnel.
+    /// Verifies the tunnel carries traffic. ICMP to exit check-hosts is often blocked,
+    /// so we also try well-known hosts and a short HTTP probe.
     /// </summary>
-    public static VpnPingResult Probe(string preferredHost, TimeSpan timeout, int attempts = 3)
+    public static VpnPingResult Probe(string preferredHost, TimeSpan timeout, int attempts = 2)
     {
         var hosts = new List<string>();
         if (!string.IsNullOrWhiteSpace(preferredHost))
@@ -87,6 +94,7 @@ public static class VpnReachability
                 hosts.Add(host);
         }
 
+        VpnLog.Info("probe", $"Start traffic probe hosts=[{string.Join(", ", hosts)}] timeoutMs={(int)timeout.TotalMilliseconds}");
         VpnPingResult? last = null;
         foreach (var host in hosts)
         {
@@ -101,16 +109,17 @@ public static class VpnReachability
             last = http;
         }
 
+        VpnLog.Warn("probe", $"All traffic probes failed. Last: {last?.Host} {last?.Method} {last?.Error}");
         return last ?? new VpnPingResult(false, preferredHost, null, "Нет ответа через туннель.");
     }
 
     public static VpnPingResult HttpProbe(string host, TimeSpan timeout)
     {
         if (string.IsNullOrWhiteSpace(host))
-            return new VpnPingResult(false, host, null, "Не указан адрес для HTTP-проверки.");
+            return new VpnPingResult(false, host, null, "Не указан адрес для HTTP-проверки.", "http");
 
         var trimmed = host.Trim();
-        var budget = timeout <= TimeSpan.Zero ? 2000 : (int)Math.Clamp(timeout.TotalMilliseconds, 500, 5000);
+        var budget = timeout <= TimeSpan.Zero ? 3000 : (int)Math.Clamp(timeout.TotalMilliseconds, 800, 8000);
         var urls = new[]
         {
             $"http://{trimmed}/cdn-cgi/trace",
@@ -127,17 +136,22 @@ public static class VpnReachability
                 using var response = client.GetAsync(url).GetAwaiter().GetResult();
                 clock.Stop();
                 if ((int)response.StatusCode is >= 200 and < 500)
-                    return new VpnPingResult(true, trimmed, (int)clock.ElapsedMilliseconds, null);
+                {
+                    VpnLog.Info("probe", $"http {url} OK {(int)response.StatusCode} {clock.ElapsedMilliseconds} ms");
+                    return new VpnPingResult(true, trimmed, (int)clock.ElapsedMilliseconds, null, "http");
+                }
 
                 lastError = new InvalidOperationException($"HTTP {(int)response.StatusCode}");
+                VpnLog.Info("probe", $"http {url} => {(int)response.StatusCode}");
             }
             catch (Exception error)
             {
                 lastError = error;
+                VpnLog.Info("probe", $"http {url} => {error.Message}");
             }
         }
 
-        return new VpnPingResult(false, trimmed, null, lastError?.Message ?? "HTTP не ответил.");
+        return new VpnPingResult(false, trimmed, null, lastError?.Message ?? "HTTP не ответил.", "http");
     }
 }
 

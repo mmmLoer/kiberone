@@ -163,17 +163,35 @@ public sealed class VpnController
         }
         catch
         {
-            // ping still uses the requested host
+            // probe still uses the requested host
         }
 
         var host = VpnHealthCheck.ResolveCheckHost(configText, checkHost, VpnRegionCatalog.Resolve(region).CheckHost);
-        // Exit nodes often block ICMP to the "check host"; Probe also tries 1.1.1.1 and HTTP.
-        var probe = VpnReachability.Probe(host, TimeSpan.FromMilliseconds(1200), attempts: 3);
-        lastRuntime = VpnHealthCheck.FromPing(status with { PingMs = probe.RoundtripMs, CheckHost = probe.Host }, probe, region);
-        if (!probe.Ok)
-            lastError = $"VPN подключён, но трафик через туннель не прошёл ({probe.Host}): {probe.Error}";
-        else
+        var handshake = VpnTunnelDiagnostics.WaitForHandshake(ConfigPath, TimeSpan.FromSeconds(5));
+        VpnLog.Info("health", $"handshake completed={handshake.Completed} keepalive={handshake.KeepaliveSeen} last={handshake.LastLine ?? "-"}");
+
+        var probe = VpnReachability.Probe(host, TimeSpan.FromMilliseconds(2500), attempts: 2);
+        if (probe.Ok)
+        {
             lastError = null;
+            lastRuntime = VpnHealthCheck.FromPing(status with { PingMs = probe.RoundtripMs, CheckHost = probe.Host }, probe, region);
+            VpnLog.Info("health", $"traffic OK via {probe.Method} {probe.Host} {probe.RoundtripMs} ms");
+            return lastRuntime;
+        }
+
+        if (handshake.Completed)
+        {
+            // Classroom policy: keep the tunnel when WireGuard handshake succeeded even if ICMP/HTTP
+            // probes fail (exit nodes often block them).
+            lastError = $"Handshake OK, но проверка интернета не ответила ({probe.Host}): {probe.Error}";
+            lastRuntime = new VpnRuntimeInfo(true, true, probe.RoundtripMs, region, probe.Host, lastError);
+            VpnLog.Warn("health", lastError);
+            return lastRuntime;
+        }
+
+        lastError = $"Нет handshake WireGuard и трафик не проходит ({probe.Host}): {probe.Error}";
+        lastRuntime = new VpnRuntimeInfo(true, false, null, region, probe.Host, lastError);
+        VpnLog.Warn("health", lastError);
         return lastRuntime;
     }
 
