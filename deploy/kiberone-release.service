@@ -6,6 +6,8 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=/opt/kiberone
+Environment=DOTNET_ROOT=/usr/share/dotnet
+Environment=PATH=/usr/share/dotnet:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
 Environment=KIBERONE_HUB_DATA=/var/lib/kiberone-hub
 Environment=KIBERONE_GIT_BRANCH=main
 Environment=KIBERONE_SKIP_BUILD_IF_UNCHANGED=1
