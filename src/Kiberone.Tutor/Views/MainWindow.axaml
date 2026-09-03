@@ -1427,7 +1427,7 @@
           <TextBlock Text="Локация" FontWeight="Bold" Margin="0,6,0,0"/>
           <ComboBox ItemsSource="{Binding Locations}" SelectedItem="{Binding SetupLocationName}" PlaceholderText="Выберите локацию" HorizontalAlignment="Stretch" MinHeight="42"/>
           <TextBlock Text="Сервер VPN" FontWeight="Bold" Margin="0,8,0,0"/>
-          <TextBlock Text="Авто подключит менее загруженный путь. Можно сразу выбрать Англию или Нидерланды." Classes="muted" TextWrapping="Wrap"/>
+          <TextBlock Text="Авто подключит менее загруженный путь. Можно сразу выбрать Германию или Нидерланды." Classes="muted" TextWrapping="Wrap"/>
           <ComboBox ItemsSource="{Binding VpnLocationNames}" SelectedItem="{Binding SetupVpnLocationName}" HorizontalAlignment="Stretch" MinHeight="42"/>
           <TextBlock Text="Папка сохранений учеников" FontWeight="Bold" Margin="0,8,0,0"/>
           <TextBlock Text="Сюда складываются файлы групп. Можно выбрать диск, сетевую папку или каталог на этом компьютере." Classes="muted" TextWrapping="Wrap"/>
