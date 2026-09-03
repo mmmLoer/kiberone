@@ -167,30 +167,38 @@ public sealed class VpnController
         }
 
         var host = VpnHealthCheck.ResolveCheckHost(configText, checkHost, VpnRegionCatalog.Resolve(region).CheckHost);
-        var handshake = VpnTunnelDiagnostics.WaitForHandshake(ConfigPath, TimeSpan.FromSeconds(5));
-        VpnLog.Info("health", $"handshake completed={handshake.Completed} keepalive={handshake.KeepaliveSeen} last={handshake.LastLine ?? "-"}");
+        var handshake = VpnTunnelDiagnostics.WaitForHandshake(ConfigPath, TimeSpan.FromSeconds(6));
+        VpnLog.Info("health", $"handshake completed={handshake.Completed} keepalive={handshake.KeepaliveSeen} adapterUp={handshake.AdapterUp} addr={handshake.AdapterAddress ?? "-"} last={handshake.LastLine ?? "-"}");
 
-        var probe = VpnReachability.Probe(host, TimeSpan.FromMilliseconds(2500), attempts: 2);
-        if (probe.Ok)
+        if (handshake.Completed || handshake.AdapterUp)
         {
-            lastError = null;
-            lastRuntime = VpnHealthCheck.FromPing(status with { PingMs = probe.RoundtripMs, CheckHost = probe.Host }, probe, region);
-            VpnLog.Info("health", $"traffic OK via {probe.Method} {probe.Host} {probe.RoundtripMs} ms");
-            return lastRuntime;
-        }
+            // Classroom policy: keep the tunnel once WireGuard is up. Exit-node ICMP/HTTP is unreliable.
+            var probe = VpnReachability.Probe(host, TimeSpan.FromMilliseconds(1200), attempts: 1);
+            if (probe.Ok)
+            {
+                lastError = null;
+                lastRuntime = VpnHealthCheck.FromPing(status with { PingMs = probe.RoundtripMs, CheckHost = probe.Host }, probe, region);
+                VpnLog.Info("health", $"traffic OK via {probe.Method} {probe.Host} {probe.RoundtripMs} ms");
+                return lastRuntime;
+            }
 
-        if (handshake.Completed)
-        {
-            // Classroom policy: keep the tunnel when WireGuard handshake succeeded even if ICMP/HTTP
-            // probes fail (exit nodes often block them).
-            lastError = $"Handshake OK, но проверка интернета не ответила ({probe.Host}): {probe.Error}";
+            lastError = $"Handshake/adapter OK, internet probe soft-fail ({probe.Host}): {probe.Error}";
             lastRuntime = new VpnRuntimeInfo(true, true, probe.RoundtripMs, region, probe.Host, lastError);
             VpnLog.Warn("health", lastError);
             return lastRuntime;
         }
 
-        lastError = $"Нет handshake WireGuard и трафик не проходит ({probe.Host}): {probe.Error}";
-        lastRuntime = new VpnRuntimeInfo(true, false, null, region, probe.Host, lastError);
+        var deepProbe = VpnReachability.Probe(host, TimeSpan.FromMilliseconds(2000), attempts: 2);
+        if (deepProbe.Ok)
+        {
+            lastError = null;
+            lastRuntime = VpnHealthCheck.FromPing(status with { PingMs = deepProbe.RoundtripMs, CheckHost = deepProbe.Host }, deepProbe, region);
+            VpnLog.Info("health", $"traffic OK without handshake log via {deepProbe.Method} {deepProbe.Host}");
+            return lastRuntime;
+        }
+
+        lastError = $"Нет handshake WireGuard и трафик не проходит ({deepProbe.Host}): {deepProbe.Error}";
+        lastRuntime = new VpnRuntimeInfo(true, false, null, region, deepProbe.Host, lastError);
         VpnLog.Warn("health", lastError);
         return lastRuntime;
     }
