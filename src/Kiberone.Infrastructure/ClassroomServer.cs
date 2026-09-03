@@ -223,8 +223,10 @@ public sealed class ClassroomServer(
         });
         application.MapPost("/upload", async (HttpContext context, CancellationToken ct) =>
         {
-            var clientId = context.Request.Headers["X-Client-Id"].ToString();
+            var clientId = NormalizeClientIdHeader(context.Request.Headers["X-Client-Id"].ToString());
             var path = context.Request.Headers["X-Relative-Path"].ToString();
+            if (string.IsNullOrWhiteSpace(path))
+                return Results.BadRequest(new { error = "Нужен заголовок X-Relative-Path." });
             return Results.Ok(await fileSync.UploadAsync(clientId, path, context.Request.Body, ct));
         });
         application.MapPost("/delete", async ([FromBody] DeleteFileRequest request, CancellationToken ct) =>

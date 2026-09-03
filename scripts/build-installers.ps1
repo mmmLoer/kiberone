@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$version = "0.10.9"
+$version = "0.10.10"
 $installersDir = Join-Path $projectRoot "dist\installers"
 $stagingRoot = Join-Path $installersDir "_staging"
 
