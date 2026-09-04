@@ -9,8 +9,6 @@ namespace Kiberone.Infrastructure;
 public sealed class FileSyncService
 {
     private const long MaxUploadBytes = 50L * 1024 * 1024;
-    private static readonly HashSet<string> DangerousExtensions = new(StringComparer.OrdinalIgnoreCase)
-        { ".exe", ".bat", ".cmd", ".ps1", ".vbs", ".js", ".scr", ".dll", ".com", ".zip", ".msi" };
     private static readonly HashSet<string> ExcludedDirectories = new(StringComparer.OrdinalIgnoreCase)
         { ".venv", "__pycache__", ".git", "node_modules", "$RECYCLE.BIN", ".history" };
     private static readonly HashSet<string> ExcludedFiles = new(StringComparer.OrdinalIgnoreCase)
@@ -97,30 +95,42 @@ public sealed class FileSyncService
         if (request.LocalFiles is not null)
             foreach (var file in request.LocalFiles) ValidateRelativePath(file.Path);
 
-        var threshold = Math.Clamp(request.Threshold ?? 5, 1, 1000);
         StoredPlan plan;
         var reasons = new List<string>();
+        // Create/edit sync without tutor approval. Only deletions need confirmation.
         if (request.LocalFiles is { Count: >= 0 } local)
         {
             plan = await BuildPlanAsync(request.ClientId, local, ct);
-            if (plan.Conflicts.Count > 0)
-                reasons.Add($"версии различаются: {string.Join(", ", plan.Conflicts.Take(5))}");
-            var dangerous = plan.Upload.Concat(plan.Conflicts)
-                .Where(path => DangerousExtensions.Contains(Path.GetExtension(path)));
-            if (dangerous.Any()) reasons.Add("опасный тип файла");
+            var deleted = request.Changes
+                .Where(x => x.Kind == SyncChangeKind.Deleted)
+                .Select(x => Normalize(x.Path))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            // Missing local files that the student intentionally deleted are not downloads.
+            plan = new StoredPlan(
+                plan.Upload,
+                plan.Download.Where(path => !deleted.Contains(path, StringComparer.OrdinalIgnoreCase)).ToList(),
+                plan.Conflicts,
+                deleted.Select(path => new SyncChange(path, SyncChangeKind.Deleted, 0)).ToList());
+            if (deleted.Count > 0)
+                reasons.Add(deleted.Count == 1
+                    ? $"удаление файла: {deleted[0]}"
+                    : $"удаление {deleted.Count} файлов");
+            if (request.AcceptedWasNonempty && request.ResultingIsEmpty)
+                reasons.Add("рабочая папка стала пустой");
         }
         else
         {
             foreach (var change in request.Changes) ValidateRelativePath(change.Path);
             var uploads = request.Changes.Where(x => x.Kind != SyncChangeKind.Deleted).Select(x => Normalize(x.Path)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             var deletes = request.Changes.Where(x => x.Kind == SyncChangeKind.Deleted).Select(x => Normalize(x.Path)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            plan = new StoredPlan(uploads, [], [], request.Changes.ToList());
-            if (request.Changes.Any(x => x.Kind != SyncChangeKind.Deleted && DangerousExtensions.Contains(Path.GetExtension(x.Path))))
-                reasons.Add("опасный тип файла");
-            if (request.Changes.Count(x => x.Kind is SyncChangeKind.Modified or SyncChangeKind.Deleted) > threshold)
-                reasons.Add($"изменено или удалено больше {threshold} файлов");
-            if (request.AcceptedWasNonempty && request.ResultingIsEmpty) reasons.Add("рабочая папка стала пустой");
-            _ = deletes;
+            plan = new StoredPlan(uploads, [], [], deletes.Select(path => new SyncChange(path, SyncChangeKind.Deleted, 0)).ToList());
+            if (deletes.Count > 0)
+                reasons.Add(deletes.Count == 1
+                    ? $"удаление файла: {deletes[0]}"
+                    : $"удаление {deletes.Count} файлов");
+            if (request.AcceptedWasNonempty && request.ResultingIsEmpty)
+                reasons.Add("рабочая папка стала пустой");
         }
 
         var required = reasons.Count > 0;
@@ -166,10 +176,29 @@ public sealed class FileSyncService
         if (approval.Status != SyncApprovalStatus.Pending) throw new InvalidOperationException("Решение по этому запросу уже принято.");
         var takeStudent = !string.Equals(action, "restore", StringComparison.OrdinalIgnoreCase);
         var plan = ResolveDecision(ReadPlan(approval.ChangesJson), takeStudent);
+        var deletes = (plan.Changes ?? [])
+            .Where(x => x.Kind == SyncChangeKind.Deleted)
+            .Select(x => Normalize(x.Path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (!takeStudent && deletes.Count > 0)
+        {
+            // Keep tutor copies: push deleted files back to the student.
+            plan = plan with
+            {
+                Download = plan.Download.Concat(deletes).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+                Changes = []
+            };
+        }
         approval.ChangesJson = JsonSerializer.Serialize(plan, PlanJson);
         approval.Status = takeStudent ? SyncApprovalStatus.Approved : SyncApprovalStatus.Restore;
         approval.DecidedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
+        if (takeStudent)
+        {
+            foreach (var path in deletes)
+                await DeleteAsync(approval.ClientId, path, ct);
+        }
         return ToResult(approval, true, plan);
     }
 

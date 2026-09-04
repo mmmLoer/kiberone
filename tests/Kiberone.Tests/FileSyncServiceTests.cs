@@ -20,19 +20,27 @@ public sealed class FileSyncServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task DangerousFile_RequiresTutorApproval()
+    public async Task CreateAndEdit_DoNotRequireTutorApproval()
     {
-        var prepared = await service.PrepareAsync(new SyncPrepareRequest("pc-01", [new SyncChange("build/game.exe", SyncChangeKind.Created, 4)], false, false, 5));
-        Assert.True(prepared.Required);
-        Assert.Equal(SyncApprovalStatus.Pending, prepared.Status);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => Upload("pc-01", "build/game.exe", "MZ00"));
-
-        await service.DecideAsync(prepared.Id, true);
+        var created = await service.PrepareAsync(new SyncPrepareRequest(
+            "pc-01", [new SyncChange("build/game.exe", SyncChangeKind.Created, 4)], false, false, 5));
+        Assert.False(created.Required);
+        Assert.Equal(SyncApprovalStatus.NotRequired, created.Status);
         var uploaded = await Upload("pc-01", "build/game.exe", "MZ00");
         await service.CompleteAsync("pc-01");
-
         Assert.Equal("build/game.exe", uploaded.Path);
-        Assert.Equal(SyncApprovalStatus.Completed, (await service.GetApprovalAsync("pc-01"))?.Status);
+
+        var studentHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData("MZ01"u8));
+        var edited = await service.PrepareAsync(new SyncPrepareRequest(
+            "pc-01",
+            [new SyncChange("build/game.exe", SyncChangeKind.Modified, 4)],
+            true, false, 5, null,
+            [new SyncFileFingerprint("build/game.exe", 4, studentHash)]));
+        Assert.False(edited.Required);
+        Assert.Equal(SyncApprovalStatus.NotRequired, edited.Status);
+        Assert.Contains("build/game.exe", edited.UploadPaths ?? []);
+        await Upload("pc-01", "build/game.exe", "MZ01");
+        await service.CompleteAsync("pc-01");
     }
 
     [Fact]
@@ -108,14 +116,25 @@ public sealed class FileSyncServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task MassChangesAndEmptyFolder_RequireApproval()
+    public async Task Delete_RequiresTutorApproval_UpdateRemovesServerCopy()
     {
-        var changes = Enumerable.Range(0, 6).Select(i => new SyncChange($"file-{i}.txt", SyncChangeKind.Deleted, 0)).ToList();
-        var prepared = await service.PrepareAsync(new SyncPrepareRequest("pc-04", changes, true, true, 5));
+        await PrepareSafe("pc-04", "keep.txt", SyncChangeKind.Created);
+        await Upload("pc-04", "keep.txt", "data");
+        await service.CompleteAsync("pc-04");
+
+        var prepared = await service.PrepareAsync(new SyncPrepareRequest(
+            "pc-04",
+            [new SyncChange("keep.txt", SyncChangeKind.Deleted, 0)],
+            true, true, 5,
+            LocalFiles: []));
 
         Assert.True(prepared.Required);
-        Assert.Contains("больше 5", prepared.Reason);
-        Assert.Contains("стала пустой", prepared.Reason);
+        Assert.Equal(SyncApprovalStatus.Pending, prepared.Status);
+        Assert.Contains("удаление", prepared.Reason);
+
+        await service.DecideAsync(prepared.Id, "update");
+        await service.CompleteAsync("pc-04");
+        Assert.Empty(await service.ListFilesAsync("pc-04"));
     }
 
     [Fact]
@@ -196,7 +215,7 @@ public sealed class FileSyncServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task ConflictingSave_WaitsForTutor_UpdateKeepsStudent_RestoreKeepsTutor()
+    public async Task ConflictingSave_AutoTakesStudentVersion()
     {
         var classroom = new ClassroomService(options);
         var group = await classroom.CreateGroupAsync(new GroupDraft("Unity 01", "Unity", ""));
@@ -214,19 +233,15 @@ public sealed class FileSyncServiceTests : IAsyncLifetime
             true, false, 5, student.Id,
             [new SyncFileFingerprint("progress.json", 12, studentHash)]));
 
-        Assert.True(conflict.Required);
-        Assert.Equal(SyncApprovalStatus.Pending, conflict.Status);
-        Assert.Contains("версии различаются", conflict.Reason);
+        Assert.False(conflict.Required);
+        Assert.Equal(SyncApprovalStatus.NotRequired, conflict.Status);
+        Assert.Contains("progress.json", conflict.UploadPaths ?? []);
 
-        var restored = await service.DecideAsync(conflict.Id, "restore");
-        Assert.Equal(SyncApprovalStatus.Restore, restored?.Status);
-        Assert.Contains("progress.json", restored?.DownloadPaths ?? []);
-        Assert.DoesNotContain("progress.json", restored?.UploadPaths ?? []);
-
+        await Upload("pc-conflict", "progress.json", "student-copy");
         await service.CompleteAsync("pc-conflict");
-        await using var tutorCopy = await service.OpenDownloadAsync("pc-conflict", "progress.json");
-        using var reader = new StreamReader(tutorCopy!);
-        Assert.Equal("tutor-copy", await reader.ReadToEndAsync());
+        await using var studentCopy = await service.OpenDownloadAsync("pc-conflict", "progress.json");
+        using var reader = new StreamReader(studentCopy!);
+        Assert.Equal("student-copy", await reader.ReadToEndAsync());
     }
 
     private async Task PrepareSafe(string clientId, string path, SyncChangeKind kind) =>

@@ -69,7 +69,7 @@ public sealed class StudentFileSyncClient
             var pendingCount = (prepared.UploadPaths?.Count ?? 0) + (prepared.DownloadPaths?.Count ?? 0);
             if (prepared.Status == SyncApprovalStatus.Pending)
             {
-                Raise("Версии различаются — ждём решение тьютора", pendingCount);
+                Raise("Удаление файлов — ждём решение тьютора", pendingCount);
                 return;
             }
         }
