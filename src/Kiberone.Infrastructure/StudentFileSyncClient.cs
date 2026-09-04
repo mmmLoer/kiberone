@@ -95,11 +95,12 @@ public sealed class StudentFileSyncClient
             if (!File.Exists(localPath)) continue;
             await using var stream = new FileStream(localPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 81920, true);
             using var content = new StreamContent(stream);
-            using var request = new HttpRequestMessage(HttpMethod.Post, "/upload") { Content = content };
-            // Custom headers belong on the request — putting them on HttpContent throws
-            // "Misused header name. Make sure request headers are used with HttpRequestMessage…".
-            // X-Client-Id is already on DefaultRequestHeaders from StudentAgent.
-            request.Headers.TryAddWithoutValidation("X-Relative-Path", path);
+            // Paths often contain Cyrillic; raw values in HTTP headers throw
+            // "Request headers must contain only ASCII characters". Prefer query (like /download)
+            // and keep a percent-encoded header for older tutors.
+            var escaped = Uri.EscapeDataString(path);
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"/upload?path={escaped}") { Content = content };
+            request.Headers.TryAddWithoutValidation("X-Relative-Path", escaped);
             using var uploadResponse = await http.SendAsync(request, ct);
             uploadResponse.EnsureSuccessStatusCode();
         }

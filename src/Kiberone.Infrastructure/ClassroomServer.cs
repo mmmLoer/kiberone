@@ -224,9 +224,9 @@ public sealed class ClassroomServer(
         application.MapPost("/upload", async (HttpContext context, CancellationToken ct) =>
         {
             var clientId = NormalizeClientIdHeader(context.Request.Headers["X-Client-Id"].ToString());
-            var path = context.Request.Headers["X-Relative-Path"].ToString();
+            var path = ResolveUploadRelativePath(context);
             if (string.IsNullOrWhiteSpace(path))
-                return Results.BadRequest(new { error = "Нужен заголовок X-Relative-Path." });
+                return Results.BadRequest(new { error = "Нужен путь файла (query path или X-Relative-Path)." });
             return Results.Ok(await fileSync.UploadAsync(clientId, path, context.Request.Body, ct));
         });
         application.MapPost("/delete", async ([FromBody] DeleteFileRequest request, CancellationToken ct) =>
@@ -334,6 +334,24 @@ public sealed class ClassroomServer(
         if (string.IsNullOrWhiteSpace(value)) return value;
         // HttpClient used to send X-Client-Id twice; ASP.NET joins values as "id,id".
         return value.Split(',', 2, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)[0];
+    }
+
+    internal static string ResolveUploadRelativePath(HttpContext context)
+    {
+        var fromQuery = context.Request.Query["path"].ToString();
+        if (!string.IsNullOrWhiteSpace(fromQuery))
+            return DecodeUploadPath(fromQuery);
+
+        var fromHeader = context.Request.Headers["X-Relative-Path"].ToString();
+        return string.IsNullOrWhiteSpace(fromHeader) ? fromHeader : DecodeUploadPath(fromHeader);
+    }
+
+    internal static string DecodeUploadPath(string value)
+    {
+        // Query values are usually already decoded by Kestrel; headers stay percent-encoded.
+        if (value.IndexOf('%') < 0) return value;
+        try { return Uri.UnescapeDataString(value.Replace('+', ' ')); }
+        catch (UriFormatException) { return value; }
     }
 
     private static bool TokensMatch(string supplied, string expected)
