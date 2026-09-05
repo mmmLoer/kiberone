@@ -137,7 +137,7 @@ function Compile-InnoInstallers {
     param([string] $Version)
     $iscc = Find-Iscc
     if (-not $iscc) {
-        Write-Warning "Inno Setup (ISCC) not found — falling back to 7-Zip SFX exe."
+        Write-Warning "Inno Setup (ISCC) not found - falling back to 7-Zip SFX exe."
         return $false
     }
 
