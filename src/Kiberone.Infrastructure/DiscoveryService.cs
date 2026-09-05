@@ -203,9 +203,18 @@ public static class DiscoveryClient
             while (!timeoutSource.Token.IsCancellationRequested)
             {
                 var packet = await client.ReceiveAsync(timeoutSource.Token);
-                if (DiscoveryProtocol.Parse(packet.Buffer) is { } beacon
-                    && LocalAddressResolver.IsReachableClassroomHost(beacon.Host))
-                    return beacon;
+                if (DiscoveryProtocol.Parse(packet.Buffer) is not { } beacon)
+                    continue;
+
+                // Prefer the UDP source IP (actual path) over advertised host — WISP/multi-NIC
+                // tutors often broadcast a LAN IP that is not the one delivering the packet.
+                var resolved = await ClassroomEndpointResolver.ResolveAsync(
+                    beacon,
+                    packet.RemoteEndPoint.Address,
+                    hintAddress,
+                    timeoutSource.Token);
+                if (resolved is not null)
+                    return resolved;
             }
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -213,6 +222,79 @@ public static class DiscoveryClient
             return null;
         }
         return null;
+    }
+}
+
+/// <summary>
+/// Picks an HTTP-reachable classroom host. UDP discovery can succeed while TCP to the
+/// advertised beacon.Host is blocked (AP/client isolation on WISP routers).
+/// </summary>
+public static class ClassroomEndpointResolver
+{
+    public static async Task<DiscoveryBeacon?> ResolveAsync(
+        DiscoveryBeacon beacon,
+        IPAddress? udpSource,
+        string? hintAddress,
+        CancellationToken cancellationToken)
+    {
+        DiscoveryBeacon? fallback = null;
+        foreach (var host in CandidateHosts(beacon.Host, udpSource, hintAddress))
+        {
+            if (!LocalAddressResolver.IsReachableClassroomHost(host))
+                continue;
+
+            var candidate = beacon with { Host = host };
+            fallback ??= candidate;
+            if (await CanConnectAsync(host, beacon.Port, TimeSpan.FromMilliseconds(1200), cancellationToken))
+                return candidate;
+        }
+
+        // UDP worked but TCP did not — still return a candidate so the Student UI can explain
+        // AP/client isolation (common on WISP) instead of silently saying "class not found".
+        return fallback;
+    }
+
+    public static IEnumerable<string> CandidateHosts(string advertisedHost, IPAddress? udpSource, string? hintAddress)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        IEnumerable<string> Yield(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value) || !seen.Add(value.Trim()))
+                yield break;
+            yield return value.Trim();
+        }
+
+        // Source of the UDP packet is the path that already worked on this LAN.
+        if (udpSource is { AddressFamily: AddressFamily.InterNetwork })
+        {
+            foreach (var host in Yield(udpSource.ToString()))
+                yield return host;
+        }
+
+        foreach (var host in Yield(advertisedHost))
+            yield return host;
+
+        if (IPAddress.TryParse(hintAddress, out var hint) && hint.AddressFamily == AddressFamily.InterNetwork)
+        {
+            foreach (var host in Yield(hint.ToString()))
+                yield return host;
+        }
+    }
+
+    public static async Task<bool> CanConnectAsync(string host, int port, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            linked.CancelAfter(timeout);
+            await socket.ConnectAsync(host, port, linked.Token);
+            return socket.Connected;
+        }
+        catch
+        {
+            return false;
+        }
     }
 }
 

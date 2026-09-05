@@ -118,19 +118,44 @@ public sealed class StudentAgent : IAsyncDisposable
             };
             http.DefaultRequestHeaders.Add("X-Sync-Token", beacon.Token);
             http.DefaultRequestHeaders.Add("X-Client-Id", clientId);
+
+            // Confirm HTTP before claiming "connected" — WISP/AP isolation often lets UDP through only.
+            try
+            {
+                using var probeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                probeCts.CancelAfter(TimeSpan.FromSeconds(4));
+                using var health = await http.GetAsync("/health", probeCts.Token);
+                health.EnsureSuccessStatusCode();
+            }
+            catch (Exception error) when (error is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            {
+                Raise(false,
+                    "Тьютор виден по Wi‑Fi, но HTTP к нему закрыт (часто изоляция клиентов / WISP). Отключите AP isolation на роутере.",
+                    address);
+                await Task.Delay(TimeSpan.FromSeconds(4), cancellationToken);
+                continue;
+            }
+
             Raise(true, "Подключено к классу", address);
             sessionOnline = true;
             var consecutiveFailures = 0;
             var rosterLoaded = false;
+            var nextRosterAt = DateTimeOffset.MinValue;
             Task? socketTask = null;
             while (!cancellationToken.IsCancellationRequested && consecutiveFailures < 5)
             {
                 try
                 {
-                    if (!rosterLoaded)
+                    if (!rosterLoaded || DateTimeOffset.UtcNow >= nextRosterAt)
                     {
-                        await LoadRosterAsync(http, cancellationToken);
+                        using (var rosterCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+                        {
+                            rosterCts.CancelAfter(TimeSpan.FromSeconds(10));
+                            await LoadRosterAsync(http, rosterCts.Token);
+                        }
                         rosterLoaded = true;
+                        // Refresh empty roster — location filter / late hub sync can fill in later.
+                        nextRosterAt = DateTimeOffset.UtcNow.AddSeconds(20);
                     }
                     if (DateTimeOffset.UtcNow >= nextLessonsAt)
                     {

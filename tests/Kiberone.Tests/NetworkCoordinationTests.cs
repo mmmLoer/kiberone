@@ -255,6 +255,28 @@ public sealed class NetworkCoordinationTests
         Assert.Null(DiscoveryProtocol.Parse([]));
     }
 
+    [Fact]
+    public void ClassroomEndpointResolver_PrefersUdpSourceOverAdvertisedHost()
+    {
+        var hosts = ClassroomEndpointResolver.CandidateHosts(
+            advertisedHost: "192.168.1.50",
+            udpSource: IPAddress.Parse("192.168.1.10"),
+            hintAddress: "192.168.1.99").ToList();
+
+        Assert.Equal(["192.168.1.10", "192.168.1.50", "192.168.1.99"], hosts);
+    }
+
+    [Fact]
+    public void ClassroomEndpointResolver_DedupesHosts()
+    {
+        var hosts = ClassroomEndpointResolver.CandidateHosts(
+            advertisedHost: "10.0.0.5",
+            udpSource: IPAddress.Parse("10.0.0.5"),
+            hintAddress: "10.0.0.5").ToList();
+
+        Assert.Equal(["10.0.0.5"], hosts);
+    }
+
     private static HeartbeatRequest CreateHeartbeat(string clientId) => new(
         clientId, "3", "PC-3", "C:\\Work", "0.1.0", null, null,
         new ClientRuntimeInfo(false, false, "", 90));
