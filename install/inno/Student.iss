@@ -1,6 +1,6 @@
 ; KIBERone Student — requires Administrator (VPN Windows service).
 #ifndef MyAppVersion
-  #define MyAppVersion "0.10.19"
+  #define MyAppVersion "0.10.20"
 #endif
 #ifndef DistRoot
   #define DistRoot "..\..\dist"
@@ -47,48 +47,18 @@ Source: "..\Repair-Student-Vpn.cmd"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\KIBERone Student"; Filename: "{app}\Kiberone.Student.exe"; WorkingDir: "{app}"
-Name: "{group}\Repair Student VPN"; Filename: "{app}\Repair-Student-Vpn.cmd"; WorkingDir: "{app}"
 Name: "{autodesktop}\KIBERone Student"; Filename: "{app}\Kiberone.Student.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
+; Setup is already elevated (PrivilegesRequired=admin) — install VPN service here, no extra .cmd / UAC.
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; \
+  Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\service\install-student-vpn-service.ps1"" -SourceDir ""{app}"" -InPlace"; \
+  WorkingDir: "{app}"; \
+  Flags: runhidden waituntilterminated; \
+  StatusMsg: "Установка VPN-службы KIBERoneStudentVpn…"
 Filename: "{app}\Kiberone.Student.exe"; Description: "Запустить Student"; Flags: nowait postinstall skipifsilent; WorkingDir: "{app}"
 
 [UninstallRun]
 Filename: "{cmd}"; \
   Parameters: "/c net stop KIBERoneStudentVpn >nul 2>&1 & sc delete KIBERoneStudentVpn >nul 2>&1"; \
   Flags: runhidden waituntilterminated; RunOnceId: "RemoveVpnService"
-
-[Code]
-procedure CurStepChanged(CurStep: TSetupStep);
-var
-  ResultCode: Integer;
-  Script: String;
-begin
-  if CurStep = ssPostInstall then
-  begin
-    Script := ExpandConstant('{app}\service\install-student-vpn-service.ps1');
-    if not FileExists(Script) then
-    begin
-      MsgBox('Student установлен, но не найден скрипт VPN:'#13#10 + Script + #13#10#13#10 +
-        'Запустите Repair-Student-Vpn.cmd от администратора.', mbError, MB_OK);
-      exit;
-    end;
-    if not Exec(
-        'powershell.exe',
-        '-NoProfile -ExecutionPolicy Bypass -File "' + Script + '" -SourceDir "' + ExpandConstant('{app}') + '" -InPlace',
-        ExpandConstant('{app}'),
-        SW_HIDE,
-        ewWaitUntilTerminated,
-        ResultCode) then
-    begin
-      MsgBox('Student установлен, но не удалось запустить установку VPN-службы.'#13#10 +
-        'Для связи с Tutor VPN не обязателен. Позже: Repair-Student-Vpn.cmd', mbInformation, MB_OK);
-      exit;
-    end;
-    if ResultCode <> 0 then
-      MsgBox('Student установлен. VPN-служба не поднялась (код ' + IntToStr(ResultCode) + ').'#13#10#13#10 +
-        'Для теста Tutor↔Student VPN не обязателен.'#13#10 +
-        'Нужен VPN: запустите Repair-Student-Vpn.cmd от администратора.',
-        mbInformation, MB_OK);
-  end;
-end;

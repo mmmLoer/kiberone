@@ -63,15 +63,34 @@ function Set-ServiceBinaryPath([string] $Name, [string] $BinaryPath) {
 # VPN uses WireGuard embeddable-dll-service (tunnel.dll + wireguard.dll next to the EXE).
 # No separate WireGuard GUI / winget install is required — the NT driver is loaded by wireguard.dll on first tunnel start.
 
+$logDir = Join-Path $env:ProgramData "KIBERone\Student\vpn"
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+$installLog = Join-Path $logDir "service-install.log"
+function Write-InstallLog([string] $Message) {
+    $line = "[{0:yyyy-MM-dd HH:mm:ss}] {1}" -f (Get-Date), $Message
+    Add-Content -LiteralPath $installLog -Value $line -Encoding UTF8
+    Write-Host $Message
+}
+
 $sourceExe = Join-Path $SourceDir "Kiberone.Student.exe"
 Assert-File $sourceExe "Publish Student first."
-Assert-File (Join-Path $SourceDir "native\tunnel.dll") "Copy tunnel.dll into native\."
-Assert-File (Join-Path $SourceDir "native\wireguard.dll") "Copy wireguard.dll into native\."
 
+$nativeDir = Join-Path $SourceDir "native"
+New-Item -ItemType Directory -Force -Path $nativeDir | Out-Null
+foreach ($dll in @("tunnel.dll", "wireguard.dll")) {
+    $inNative = Join-Path $nativeDir $dll
+    $inRoot = Join-Path $SourceDir $dll
+    if (-not (Test-Path -LiteralPath $inNative) -and (Test-Path -LiteralPath $inRoot)) {
+        Copy-Item -LiteralPath $inRoot -Destination $inNative -Force
+    }
+    Assert-File $inNative "Copy $dll into native\ (or next to the EXE)."
+}
+
+Write-InstallLog "Starting VPN service install. SourceDir=$SourceDir InPlace=$InPlace"
 $resolvedSource = (Resolve-Path $SourceDir).Path
 if ($InPlace) {
     $InstallDir = $resolvedSource
-    Write-Host "In-place mode: service will use $InstallDir"
+    Write-InstallLog "In-place mode: service will use $InstallDir"
 } elseif ([string]::IsNullOrWhiteSpace($InstallDir)) {
     $InstallDir = "C:\Program Files\KIBERone\Student"
 }
@@ -119,14 +138,23 @@ if ($LASTEXITCODE -ne 0) {
 
 $startResult = & sc.exe start $ServiceName 2>&1
 if ($LASTEXITCODE -ne 0) {
-    throw "sc.exe start failed: $startResult"
+    Write-InstallLog "First start failed: $startResult — retrying…"
+    Start-Sleep -Seconds 2
+    $startResult = & sc.exe start $ServiceName 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-InstallLog "sc.exe start failed: $startResult"
+        throw "sc.exe start failed: $startResult (log: $installLog)"
+    }
 }
 Start-Sleep -Seconds 3
 
 $status = (& sc.exe query $ServiceName | Out-String)
 if ($status -notmatch "RUNNING") {
-    throw "Service $ServiceName did not start. Check Event Viewer and $installedExe /vpn-bridge"
+    Write-InstallLog "Service not RUNNING after start. Status:`n$status"
+    throw "Service $ServiceName did not start. Check Event Viewer, $installLog, and $installedExe /vpn-bridge"
 }
+
+Write-InstallLog "Service $ServiceName is RUNNING."
 
 Write-Host ""
 Write-Host "Installed successfully."
