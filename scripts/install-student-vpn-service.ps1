@@ -1,4 +1,4 @@
-#Requires -RunAsAdministrator
+﻿#Requires -RunAsAdministrator
 <#
 .SYNOPSIS
   One-time install of KIBERone Student VPN service (no UAC prompts during lessons).
@@ -29,7 +29,7 @@ function New-SidAccessRule(
     [System.Security.AccessControl.FileSystemRights] $Rights
 ) {
     $identity = New-Object System.Security.Principal.SecurityIdentifier($Sid)
-    # ContainerInherit (1) + ObjectInherit (2) — avoid -bor inside New-Object args (PS 5.x quirk)
+    # ContainerInherit (1) + ObjectInherit (2) - avoid -bor inside New-Object args (PS 5.x quirk)
     $inherit = [System.Security.AccessControl.InheritanceFlags]3
     return New-Object System.Security.AccessControl.FileSystemAccessRule(
         $identity,
@@ -61,7 +61,7 @@ function Set-ServiceBinaryPath([string] $Name, [string] $BinaryPath) {
 }
 
 # VPN uses WireGuard embeddable-dll-service (tunnel.dll + wireguard.dll next to the EXE).
-# No separate WireGuard GUI / winget install is required — the NT driver is loaded by wireguard.dll on first tunnel start.
+# No separate WireGuard GUI / winget install is required - the NT driver is loaded by wireguard.dll on first tunnel start.
 
 $logDir = Join-Path $env:ProgramData "KIBERone\Student\vpn"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
@@ -121,9 +121,12 @@ Start-Sleep -Seconds 1
 & sc.exe delete $ServiceName 2>$null | Out-Null
 Start-Sleep -Seconds 1
 
-$createResult = & sc.exe create $ServiceName binPath= $binPath start= auto DisplayName= "KIBERone Student VPN" 2>&1
-if ($LASTEXITCODE -ne 0) {
-    throw "sc.exe create failed: $createResult"
+# sc.exe quoting breaks under PowerShell for paths with spaces; New-Service passes PathName correctly.
+try {
+    New-Service -Name $ServiceName -BinaryPathName $binPath -DisplayName "KIBERone Student VPN" -StartupType Automatic -ErrorAction Stop | Out-Null
+    Write-InstallLog "Created service $ServiceName via New-Service."
+} catch {
+    throw "New-Service failed: $($_.Exception.Message) (binPath=$binPath)"
 }
 
 & sc.exe description $ServiceName "WireGuard tunnel bridge for KIBERone Student. Installed once; no UAC during lessons." | Out-Null
@@ -131,7 +134,8 @@ if ($LASTEXITCODE -ne 0) {
 
 # Let standard users start/query the already-installed bridge without a second UAC prompt.
 # SY/BA keep full control; BU gets start/stop/query.
-$sdResult = & sc.exe sdset $ServiceName "D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWRPWPDTLOCRRC;;;IU)(A;;RPWPDTRC;;;BU)" 2>&1
+$sddl = 'D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWRPWPDTLOCRRC;;;IU)(A;;RPWPDTRC;;;BU)'
+$sdResult = & sc.exe sdset $ServiceName $sddl 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Warning "Could not loosen service ACL (non-fatal): $sdResult"
 } else {
@@ -145,7 +149,7 @@ if ($LASTEXITCODE -ne 0) {
 
 $startResult = & sc.exe start $ServiceName 2>&1
 if ($LASTEXITCODE -ne 0) {
-    Write-InstallLog "First start failed: $startResult — retrying…"
+    Write-InstallLog "First start failed: $startResult - retrying..."
     Start-Sleep -Seconds 2
     $startResult = & sc.exe start $ServiceName 2>&1
     if ($LASTEXITCODE -ne 0) {
@@ -167,17 +171,17 @@ Write-Host ""
 Write-Host "Installed successfully."
 Write-Host "  Student:  $installedExe"
 Write-Host "  VPN dir:  $VpnDir"
-Write-Host "  Service:  $ServiceName (running)"
+Write-Host ("  Service:  {0} - running" -f $ServiceName)
 Write-Host ""
-Write-Host "You can keep launching Student from dist\Student-win-x64."
-Write-Host "Tutor can push .conf files and enable VPN without UAC prompts."
+Write-Host 'You can keep launching Student from dist\Student-win-x64.'
+Write-Host 'Tutor can push .conf files and enable VPN without UAC prompts.'
 
 Write-Host ""
-Write-Host "Verifying VPN probes (optional; failure must not undo service install) ..."
+Write-Host 'Verifying VPN probes - optional; failure must not undo service install ...'
 & $installedExe /verify-vpn
 if ($LASTEXITCODE -ne 0) {
-    Write-Warning "VPN probe check failed. Service $ServiceName is still installed and running."
-    Write-Warning "Real classroom configs from Tutor should still connect. Re-check WireGuard if needed."
+    Write-Warning ("VPN probe check failed. Service {0} is still installed and running." -f $ServiceName)
+    Write-Warning 'Real classroom configs from Tutor should still connect. Re-check WireGuard if needed.'
     # Exit 0: callers (Inno / Repair / old in-app UAC path) must treat service install as success.
     exit 0
 }

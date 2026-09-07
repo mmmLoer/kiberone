@@ -1,6 +1,6 @@
 ; KIBERone Tutor — per-user install, no admin required by default.
 #ifndef MyAppVersion
-  #define MyAppVersion "0.10.21"
+  #define MyAppVersion "0.10.22"
 #endif
 #ifndef DistRoot
   #define DistRoot "..\..\dist"

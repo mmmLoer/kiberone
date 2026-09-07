@@ -23,16 +23,14 @@ Start-Sleep -Seconds 2
 & sc.exe delete $ServiceName 2>$null | Out-Null
 Start-Sleep -Seconds 2
 
-$createResult = & sc.exe create $ServiceName binPath= $binPath start= auto DisplayName= "KIBERone Student VPN" 2>&1
-if ($LASTEXITCODE -ne 0) {
-    throw "sc.exe create failed: $createResult"
-}
+New-Service -Name $ServiceName -BinaryPathName $binPath -DisplayName "KIBERone Student VPN" -StartupType Automatic -ErrorAction Stop | Out-Null
 
 & sc.exe description $ServiceName "WireGuard tunnel bridge for KIBERone Student." | Out-Null
 & sc.exe failure $ServiceName reset= 86400 actions= restart/5000/restart/5000/restart/5000 | Out-Null
 
-# Same DACL as install-student-vpn-service.ps1 — Users can start/stop without UAC.
-$sdResult = & sc.exe sdset $ServiceName "D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWRPWPDTLOCRRC;;;IU)(A;;RPWPDTRC;;;BU)" 2>&1
+# Same DACL as install-student-vpn-service.ps1 - Users can start/stop without UAC.
+$sddl = 'D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWRPWPDTLOCRRC;;;IU)(A;;RPWPDTRC;;;BU)'
+$sdResult = & sc.exe sdset $ServiceName $sddl 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Warning "Could not loosen service ACL (non-fatal): $sdResult"
 }
