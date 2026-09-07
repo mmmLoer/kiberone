@@ -1,6 +1,6 @@
 ; KIBERone Student — requires Administrator (VPN Windows service).
 #ifndef MyAppVersion
-  #define MyAppVersion "0.10.17"
+  #define MyAppVersion "0.10.18"
 #endif
 #ifndef DistRoot
   #define DistRoot "..\..\dist"
@@ -68,7 +68,11 @@ begin
   begin
     Script := ExpandConstant('{app}\service\install-student-vpn-service.ps1');
     if not FileExists(Script) then
-      RaiseException('Не найден скрипт установки VPN: ' + Script);
+    begin
+      MsgBox('Student установлен, но не найден скрипт VPN:'#13#10 + Script + #13#10#13#10 +
+        'Запустите Repair-Student-Vpn.cmd от администратора.', mbError, MB_OK);
+      exit;
+    end;
     if not Exec(
         'powershell.exe',
         '-NoProfile -ExecutionPolicy Bypass -File "' + Script + '" -SourceDir "' + ExpandConstant('{app}') + '" -InPlace',
@@ -76,8 +80,15 @@ begin
         SW_HIDE,
         ewWaitUntilTerminated,
         ResultCode) then
-      RaiseException('Не удалось запустить установку VPN-службы.');
+    begin
+      MsgBox('Student установлен, но не удалось запустить установку VPN-службы.'#13#10 +
+        'Для связи с Tutor VPN не обязателен. Позже: Repair-Student-Vpn.cmd', mbInformation, MB_OK);
+      exit;
+    end;
     if ResultCode <> 0 then
-      RaiseException('Установка VPN-службы завершилась с кодом ' + IntToStr(ResultCode) + '. Проверьте WireGuard и повторите установку.');
+      MsgBox('Student установлен. VPN-служба не поднялась (код ' + IntToStr(ResultCode) + ').'#13#10#13#10 +
+        'На виртуалках часто нет WireGuard — для теста Tutor↔Student это нормально.'#13#10 +
+        'Нужен VPN: поставьте WireGuard с https://www.wireguard.com/install/ и запустите Repair-Student-Vpn.cmd.',
+        mbInformation, MB_OK);
   end;
 end;

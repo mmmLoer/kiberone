@@ -12,7 +12,6 @@ param(
 
     [string] $InstallDir = "",
     [switch] $InPlace,
-    [switch] $AllowMissingWireGuard,
     [string] $VpnDir = "$env:ProgramData\KIBERone\Student\vpn",
     [string] $ServiceName = "KIBERoneStudentVpn"
 )
@@ -71,24 +70,13 @@ function Ensure-WireGuardPrerequisite {
     Write-Host "WireGuard NT not detected. Installing WireGuard 1.1 (one-time kernel driver) ..."
     $winget = Get-Command winget -ErrorAction SilentlyContinue
     if ($null -eq $winget) {
-        if ($AllowMissingWireGuard) {
-            Write-Warning "winget missing; WireGuard not installed (-AllowMissingWireGuard)."
-            return
-        }
-        throw "WireGuard not found and winget is missing. Install from https://www.wireguard.com/install/ then rerun."
+        Write-Warning "winget missing; WireGuard not installed. Classroom discovery still works; VPN tunnels need WireGuard from https://www.wireguard.com/install/"
+        return
     }
 
     & winget install WireGuard.WireGuard --accept-package-agreements --accept-source-agreements
-    if ($LASTEXITCODE -ne 0 -and -not (Test-Path -LiteralPath $wireguardExe)) {
-        if ($AllowMissingWireGuard) {
-            Write-Warning "winget install WireGuard failed (-AllowMissingWireGuard)."
-            return
-        }
-        throw "winget install WireGuard failed. Install manually from https://www.wireguard.com/install/"
-    }
-
-    if (-not (Test-Path -LiteralPath $wireguardExe) -and -not $AllowMissingWireGuard) {
-        throw "WireGuard still missing after install attempt: $wireguardExe"
+    if (-not (Test-Path -LiteralPath $wireguardExe)) {
+        Write-Warning "WireGuard still missing after winget. Install manually if you need VPN tunnels: https://www.wireguard.com/install/"
     }
 }
 
