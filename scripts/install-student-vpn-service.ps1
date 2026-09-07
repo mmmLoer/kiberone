@@ -134,6 +134,13 @@ if ($LASTEXITCODE -ne 0) {
 $sdResult = & sc.exe sdset $ServiceName "D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWRPWPDTLOCRRC;;;IU)(A;;RPWPDTRC;;;BU)" 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Warning "Could not loosen service ACL (non-fatal): $sdResult"
+} else {
+    $acl = (& sc.exe sdshow $ServiceName | Out-String)
+    if ($acl -notmatch "BU\)" -and $acl -notmatch "BU;") {
+        Write-Warning "Service ACL may still block non-admin Start. sdshow:`n$acl"
+    } else {
+        Write-InstallLog "Service ACL grants Users start/stop (BU)."
+    }
 }
 
 $startResult = & sc.exe start $ServiceName 2>&1

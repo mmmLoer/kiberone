@@ -9,10 +9,13 @@ public sealed class VpnController
         "VPN-служба не установлена. Запустите Repair-Student-Vpn.cmd или переустановите Student от администратора (один раз).";
 
     private const string ServiceStoppedMessage =
-        "VPN-служба установлена, но не отвечает. Запустите Repair-Student-Vpn.cmd от администратора или: sc start KIBERoneStudentVpn";
+        "VPN-служба установлена, но не запущена. Запустите Repair-Student-Vpn.cmd от администратора (нужны права Users на Start), затем снова включите VPN.";
 
     private const string ServicePipeMessage =
         "VPN-служба запущена, но pipe ещё не готов. Подождите пару секунд и включите VPN снова.";
+
+    private const string ServiceAccessMessage =
+        "Нет прав запустить VPN-службу от имени ученика. Один раз выполните Repair-Student-Vpn.cmd от администратора.";
 
     private readonly VpnOptions options;
     private readonly VpnBridgeClient bridgeClient = new();
@@ -20,6 +23,7 @@ public sealed class VpnController
     private VpnBridgeClient? bridge;
     private bool bridgeResolved;
     private string? lastError;
+    private string? lastBridgeStartError;
     private VpnRuntimeInfo lastRuntime = new(false, false);
 
     public VpnRuntimeInfo LastRuntime => lastRuntime;
@@ -306,20 +310,25 @@ public sealed class VpnController
         bridge = null;
     }
 
-    private static void TryStartBridgeService()
+    private void TryStartBridgeService()
     {
         try
         {
             using var controller = new System.ServiceProcess.ServiceController(VpnBridgeConstants.ServiceName);
             if (controller.Status == System.ServiceProcess.ServiceControllerStatus.Running)
+            {
+                lastBridgeStartError = null;
                 return;
+            }
 
             controller.Start();
             controller.WaitForStatus(System.ServiceProcess.ServiceControllerStatus.Running, TimeSpan.FromSeconds(20));
+            lastBridgeStartError = null;
             VpnLog.Info("controller", "VPN bridge service started.");
         }
         catch (Exception error)
         {
+            lastBridgeStartError = error.Message;
             VpnLog.Warn("controller", $"Could not start VPN bridge service: {error.Message}");
         }
     }
@@ -380,6 +389,12 @@ public sealed class VpnController
 
         if (!bridgeClient.IsServiceInstalled)
             return ServiceMissingMessage;
+
+        if (!string.IsNullOrWhiteSpace(lastBridgeStartError)
+            && (lastBridgeStartError.Contains("denied", StringComparison.OrdinalIgnoreCase)
+                || lastBridgeStartError.Contains("отказано", StringComparison.OrdinalIgnoreCase)
+                || lastBridgeStartError.Contains("доступ", StringComparison.OrdinalIgnoreCase)))
+            return ServiceAccessMessage;
 
         if (!bridgeClient.IsServiceRunning)
             return ServiceStoppedMessage;

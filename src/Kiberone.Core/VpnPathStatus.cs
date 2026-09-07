@@ -114,6 +114,33 @@ public sealed class VpnPathStatusClient : IDisposable
         }
     }
 
+    public async Task<IReadOnlyList<VpnApiLocation>> ListLocationsAsync(VpnRegionInfo region, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(region.StatusBaseUrl))
+            return [];
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"{region.StatusBaseUrl}/locations");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", SharedToken);
+            using var response = await http.SendAsync(request, ct);
+            if (!response.IsSuccessStatusCode)
+                return [];
+
+            var body = await response.Content.ReadAsStringAsync(ct);
+            var parsed = JsonSerializer.Deserialize<LocationsDto>(body, Json);
+            return parsed?.Locations?
+                       .Where(x => !string.IsNullOrWhiteSpace(x.Id) || !string.IsNullOrWhiteSpace(x.Name))
+                       .Select(x => new VpnApiLocation(x.Id ?? string.Empty, x.Name ?? x.Id ?? string.Empty))
+                       .ToList()
+                   ?? [];
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
     public async Task<VpnIssuedConfig> IssueConfigAsync(
         VpnRegionInfo region,
         string location,
@@ -125,7 +152,9 @@ public sealed class VpnPathStatusClient : IDisposable
         if (string.IsNullOrWhiteSpace(location))
             throw new InvalidOperationException("Не указана локация класса.");
 
-        var query = $"location={Uri.EscapeDataString(location.Trim())}";
+        var resolved = await ResolveLocationKeyAsync(region, location, ct);
+
+        var query = $"location={Uri.EscapeDataString(resolved)}";
         if (!string.IsNullOrWhiteSpace(slot))
             query += $"&slot={Uri.EscapeDataString(slot.Trim())}";
 
@@ -137,6 +166,8 @@ public sealed class VpnPathStatusClient : IDisposable
             throw new UnauthorizedAccessException("VPN API: неверный токен.");
         if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
             throw new VpnLocationFullException(region.Id, ExtractError(body) ?? "location_full");
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            throw new InvalidOperationException(await DescribeUnknownLocationAsync(region, location, ct));
         if (!response.IsSuccessStatusCode)
             throw new InvalidOperationException(ExtractError(body) ?? $"VPN API: HTTP {(int)response.StatusCode}.");
 
@@ -153,6 +184,36 @@ public sealed class VpnPathStatusClient : IDisposable
             parsed.Address ?? string.Empty,
             parsed.Endpoint ?? $"{region.PublicHost}:{region.WgPort}",
             parsed.Config);
+    }
+
+    private async Task<string> ResolveLocationKeyAsync(VpnRegionInfo region, string location, CancellationToken ct)
+    {
+        var key = location.Trim();
+        var locations = await ListLocationsAsync(region, ct);
+        if (locations.Count == 0)
+            return key;
+
+        var match = locations.FirstOrDefault(x =>
+            x.Id.Equals(key, StringComparison.OrdinalIgnoreCase)
+            || x.Name.Equals(key, StringComparison.OrdinalIgnoreCase));
+        if (match is not null)
+            return string.IsNullOrWhiteSpace(match.Id) ? match.Name : match.Id;
+
+        throw new InvalidOperationException(DescribeUnknownLocation(key, locations));
+    }
+
+    private async Task<string> DescribeUnknownLocationAsync(VpnRegionInfo region, string location, CancellationToken ct) =>
+        DescribeUnknownLocation(location, await ListLocationsAsync(region, ct));
+
+    private static string DescribeUnknownLocation(string location, IReadOnlyList<VpnApiLocation> locations)
+    {
+        if (locations.Count == 0)
+            return $"Локация «{location}» не найдена на VPN-сервере (HTTP 404).";
+
+        var sample = string.Join(", ", locations.Take(8).Select(x => string.IsNullOrWhiteSpace(x.Name) ? x.Id : x.Name));
+        return $"Локация «{location}» не зарегистрирована на VPN-сервере. Доступны: {sample}"
+               + (locations.Count > 8 ? "…" : "")
+               + ". Выберите локацию из списка классов (например ШБ, АРТЕША).";
     }
 
     public void Dispose() => http.Dispose();
@@ -194,6 +255,13 @@ public sealed class VpnPathStatusClient : IDisposable
         [property: JsonPropertyName("rtt_exit_ms")] double? RttExitMs,
         [property: JsonPropertyName("uplink_ok")] bool UplinkOk);
 
+    private sealed record LocationsDto(
+        bool Ok,
+        [property: JsonPropertyName("path_id")] string? PathId,
+        List<LocationDto>? Locations);
+
+    private sealed record LocationDto(string? Id, string? Name);
+
     private sealed record ConfigDto(
         bool Ok,
         string? Location,
@@ -204,6 +272,8 @@ public sealed class VpnPathStatusClient : IDisposable
         string? Endpoint,
         string? Config);
 }
+
+public sealed record VpnApiLocation(string Id, string Name);
 
 public sealed class VpnLocationFullException(string pathId, string message) : Exception(message)
 {

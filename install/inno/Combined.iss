@@ -1,7 +1,7 @@
 ; KIBERone combined setup — always elevates (Student VPN needs admin).
 ; Wizard: choose Student / Tutor / both.
 #ifndef MyAppVersion
-  #define MyAppVersion "0.10.20"
+  #define MyAppVersion "0.10.21"
 #endif
 #ifndef DistRoot
   #define DistRoot "..\..\dist"
