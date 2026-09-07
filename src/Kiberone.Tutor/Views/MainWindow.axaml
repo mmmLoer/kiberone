@@ -100,7 +100,7 @@
 
     <TabControl Grid.Row="1" Grid.Column="1" SelectedIndex="{Binding SelectedSectionIndex}" Classes="contentOnly">
       <TabItem Header="Класс">
-        <Grid Margin="32,32" RowDefinitions="Auto,*">
+        <Grid Margin="24" RowDefinitions="Auto,*">
           <Grid ColumnDefinitions="Auto,*,Auto">
             <Border Width="58" Height="58" CornerRadius="14" Background="{DynamicResource MintBrush}">
               <TextBlock Text="{Binding ConnectedClientCount}" HorizontalAlignment="Center" VerticalAlignment="Center" Classes="teal" FontSize="26" FontWeight="ExtraBold" />
@@ -395,7 +395,7 @@
         </Grid>
       </TabItem>
       <TabItem Header="Уроки печати">
-    <Grid RowDefinitions="Auto,*" Margin="32,32" ClipToBounds="True">
+    <Grid RowDefinitions="Auto,*" Margin="24" ClipToBounds="True">
       <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,16">
         <StackPanel>
           <TextBlock Text="Уроки печати" FontSize="22" FontWeight="Bold" />
@@ -668,7 +668,13 @@
     </Grid>
       </TabItem>
       <TabItem Header="Ученики и группы">
-        <Grid Margin="24,24" ColumnDefinitions="*,Auto">
+        <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Disabled">
+        <Grid Margin="24">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" MinWidth="280" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
           <Border Classes="card">
             <Grid RowDefinitions="Auto,*,Auto">
               <StackPanel>
@@ -859,6 +865,7 @@
             </StackPanel>
           </Border>
         </Grid>
+        </ScrollViewer>
       </TabItem>
       <TabItem Header="Достижения">
         <ScrollViewer HorizontalScrollBarVisibility="Disabled">
@@ -911,7 +918,7 @@
         </ScrollViewer>
       </TabItem>
       <TabItem Header="Сохранения и версии">
-        <Grid ColumnDefinitions="0.8*,1.7*" Margin="32,32">
+        <Grid ColumnDefinitions="0.8*,1.7*" Margin="24">
           <Border Classes="card">
             <Grid RowDefinitions="Auto,*,Auto">
               <StackPanel>
@@ -955,7 +962,7 @@
         </Grid>
       </TabItem>
       <TabItem Header="Экраны">
-        <Grid RowDefinitions="Auto,*" Margin="32,32">
+        <Grid RowDefinitions="Auto,*" Margin="24">
           <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,24">
             <StackPanel>
               <TextBlock Text="{Binding ScreenPreviews.Count, StringFormat={}{0} экранов}" Classes="h2" />
@@ -1020,7 +1027,7 @@
         </Grid>
       </TabItem>
       <TabItem Header="Пульт класса">
-        <ScrollViewer Margin="28,28">
+        <ScrollViewer Margin="24">
           <StackPanel Spacing="18" MaxWidth="1100" HorizontalAlignment="Left">
             <StackPanel Spacing="4">
               <TextBlock Text="Карточки управления" Classes="h2" />
@@ -1253,7 +1260,7 @@
         <Border Classes="card" Margin="36,40"><Grid RowDefinitions="Auto,300,Auto"><StackPanel><TextBlock Text="Динамика класса" FontSize="22" FontWeight="Bold"/><TextBlock Text="Средний CPM и точность по завершённым сессиям" Classes="muted" Margin="0,8,0,0"/></StackPanel><Border Grid.Row="1" Background="{DynamicResource SurfaceSoftBrush}" CornerRadius="8" Margin="32,58"><Grid ColumnDefinitions="*,*,*,*,*,*,*" VerticalAlignment="Bottom"><Border Background="{DynamicResource TealBrush}" CornerRadius="6" Width="48" Height="55" VerticalAlignment="Bottom"/><Border Grid.Column="1" Background="{DynamicResource TealBrush}" CornerRadius="6" Width="48" Height="75" VerticalAlignment="Bottom"/><Border Grid.Column="2" Background="{DynamicResource TealBrush}" CornerRadius="6" Width="48" Height="88" VerticalAlignment="Bottom"/><Border Grid.Column="3" Background="{DynamicResource TealBrush}" CornerRadius="6" Width="48" Height="114" VerticalAlignment="Bottom"/><Border Grid.Column="4" Background="{DynamicResource TealBrush}" CornerRadius="6" Width="48" Height="139" VerticalAlignment="Bottom"/><Border Grid.Column="5" Background="{DynamicResource TealBrush}" CornerRadius="6" Width="48" Height="158" VerticalAlignment="Bottom"/><Border Grid.Column="6" Background="{DynamicResource TealBrush}" CornerRadius="6" Width="48" Height="183" VerticalAlignment="Bottom"/></Grid></Border><Grid Grid.Row="2" ColumnDefinitions="220,220,*" Margin="52,0"><StackPanel><TextBlock Text="Средний CPM" Classes="muted"/><TextBlock Text="44" Foreground="{DynamicResource TealBrush}" FontSize="28" FontWeight="Bold"/></StackPanel><StackPanel Grid.Column="1"><TextBlock Text="Точность" Classes="muted"/><TextBlock Text="91%" Foreground="{DynamicResource SuccessBrush}" FontSize="28" FontWeight="Bold"/></StackPanel></Grid></Grid></Border>
       </TabItem>
       <TabItem Header="Сервер и настройки">
-        <ScrollViewer><Grid ColumnDefinitions="*,*" Margin="36,40">
+        <ScrollViewer><Grid ColumnDefinitions="*,*" Margin="24">
           <StackPanel Spacing="18">
             <Border Classes="card"><StackPanel Spacing="12"><TextBlock Text="Этот класс" Classes="h2"/><TextBlock Text="Ученики находят занятие в этой сети автоматически." Classes="muted" TextWrapping="Wrap"/><TextBlock Text="{Binding ConnectedClientLabel}" Foreground="{DynamicResource TealBrush}" FontWeight="Bold"/></StackPanel></Border>
             <Border Classes="card"><StackPanel Spacing="12"><TextBlock Text="Безопасность" Classes="h2"/><TextBlock Text="Подключение учеников работает только в этой сети. Необычные файлы ждут вашего подтверждения во вкладке «Сохранения»." Classes="muted" TextWrapping="Wrap"/></StackPanel></Border>
@@ -1427,7 +1434,7 @@
         <Border Classes="card" Margin="24,24"><Grid RowDefinitions="Auto,*,Auto"><StackPanel><TextBlock Text="Награды урока печати" FontSize="22" FontWeight="Bold"/><TextBlock Text="Один ученик получает не более одной награды за сессию" Classes="muted" Margin="0,8,0,0" TextWrapping="Wrap"/></StackPanel><StackPanel Grid.Row="1" Spacing="16" Margin="0,24,0,0"><Border Background="{DynamicResource SurfaceSoftBrush}" CornerRadius="8" MinHeight="72" Padding="16"><Grid ColumnDefinitions="*,Auto,Auto"><StackPanel Margin="0,0,12,0"><TextBlock Text="Лучшая точность" FontWeight="Bold" TextTrimming="CharacterEllipsis"/><TextBlock Text="Повторное получение разрешено" Classes="muted" FontSize="12" TextWrapping="Wrap"/></StackPanel><TextBlock Grid.Column="1" Text="20 XP" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,16,0"/><TextBlock Grid.Column="2" Text="Активно" Foreground="{DynamicResource TealBrush}" VerticalAlignment="Center"/></Grid></Border><Border Background="{DynamicResource SurfaceSoftBrush}" CornerRadius="8" MinHeight="72" Padding="16"><Grid ColumnDefinitions="*,Auto,Auto"><StackPanel Margin="0,0,12,0"><TextBlock Text="Самая высокая скорость" FontWeight="Bold" TextTrimming="CharacterEllipsis"/><TextBlock Text="Повторное получение разрешено" Classes="muted" FontSize="12" TextWrapping="Wrap"/></StackPanel><TextBlock Grid.Column="1" Text="20 XP" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,16,0"/><TextBlock Grid.Column="2" Text="Активно" Foreground="{DynamicResource TealBrush}" VerticalAlignment="Center"/></Grid></Border><Border Background="{DynamicResource SurfaceSoftBrush}" CornerRadius="8" MinHeight="72" Padding="16"><Grid ColumnDefinitions="*,Auto,Auto"><StackPanel Margin="0,0,12,0"><TextBlock Text="Больше всего знаков" FontWeight="Bold" TextTrimming="CharacterEllipsis"/><TextBlock Text="Повторное получение разрешено" Classes="muted" FontSize="12" TextWrapping="Wrap"/></StackPanel><TextBlock Grid.Column="1" Text="20 XP" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,16,0"/><TextBlock Grid.Column="2" Text="Активно" Foreground="{DynamicResource TealBrush}" VerticalAlignment="Center"/></Grid></Border><Border Background="{DynamicResource SurfaceSoftBrush}" CornerRadius="8" Height="44" MaxWidth="300" HorizontalAlignment="Left" Padding="16,0"><TextBlock Text="Награда за обычный урок · 10 ₭" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/></Border></StackPanel><Button Grid.Row="2" Content="Сохранить правила" Command="{Binding SaveSettingsCommand}" Classes="primary" MaxWidth="300" HorizontalAlignment="Right"/></Grid></Border>
       </TabItem>
       <TabItem Header="Аудит">
-        <Grid RowDefinitions="Auto,*" Margin="20,16">
+        <Grid RowDefinitions="Auto,*" Margin="24">
           <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,8">
             <ComboBox ItemsSource="{Binding AuditCategories}" SelectedItem="{Binding SelectedAuditCategory}" MinWidth="120" MaxWidth="180" VerticalAlignment="Center" />
             <TextBox Grid.Column="1" Text="{Binding AuditSearch}" Watermark="Поиск по действию, ученику или пути" Margin="8,0" MinWidth="0" VerticalAlignment="Center" />
@@ -1454,7 +1461,7 @@
         </Grid>
       </TabItem>
       <TabItem Header="Статистика">
-        <Grid ColumnDefinitions="*,*" Margin="36,40">
+        <Grid ColumnDefinitions="*,*" Margin="24">
           <Border Classes="card">
             <StackPanel Spacing="14">
               <TextBlock Text="Статистика группы" Classes="h2" />
