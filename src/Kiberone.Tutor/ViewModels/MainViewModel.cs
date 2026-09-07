@@ -43,6 +43,10 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [ObservableProperty] private int minimumCharacters = 120;
     [ObservableProperty] private int durationMinutes = 10;
     [ObservableProperty] private bool isBusy;
+    [ObservableProperty] private bool isLessonEditorOpen;
+    [ObservableProperty] private Guid? editingLessonId;
+    [ObservableProperty] private string lessonEditorTitle = "Новый урок";
+    [ObservableProperty] private string lessonEditorActionLabel = "Сохранить";
     [ObservableProperty] private string statusMessage = "Подключаем локальную базу и сервер…";
     [ObservableProperty] private bool hasError;
     [ObservableProperty] private int connectedClientCount;
@@ -82,6 +86,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [ObservableProperty] private string storeItemName = string.Empty;
     [ObservableProperty] private int storePrice = 10;
     [ObservableProperty] private int storeStock = 1;
+    [ObservableProperty] private bool isClassAwardPickerOpen;
     [ObservableProperty] private SyncApprovalCardViewModel? selectedSyncApproval;
     [ObservableProperty] private SyncClientCardViewModel? selectedSyncClient;
     [ObservableProperty] private SyncedFileCardViewModel? selectedSyncedFile;
@@ -176,6 +181,8 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     public IReadOnlyList<string> RosterPresenceFilters { get; } = ["Все", "Онлайн", "Оффлайн"];
     public bool HasClassRosterStudents => ClassRosterStudents.Count > 0;
     public bool HasNoClassRosterStudents => !HasClassRosterStudents;
+    public bool HasAchievements => Achievements.Count > 0;
+    public bool HasNoAchievements => !HasAchievements;
     public bool HasClassNotices => ClassNotices.Count > 0;
     public bool HasSelectedClassStudent => SelectedClassStudents.Count > 0;
     public string SelectedStudentsActionsTitle => SelectedClassStudents.Count <= 1 ? "Этому ученику" : $"Выбранным ({SelectedClassStudents.Count})";
@@ -204,7 +211,10 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     public bool IsGroupWorkspaceOpen => GroupsWorkspaceMode is "modules" or "students";
     public bool ShowGroupModulesWorkspace => GroupsWorkspaceMode == "modules";
     public bool ShowGroupStudentsWorkspace => GroupsWorkspaceMode == "students";
-    public double GroupsWorkspaceWidth => IsGroupWorkspaceOpen ? 920 : 340;
+    /// <summary>0 closed · 340 choice · 920 choice+detail (340 + 16 gap + 564).</summary>
+    public double GroupsWorkspaceWidth =>
+        !ShowGroupsWorkspace ? 0 :
+        IsGroupWorkspaceOpen ? 920 : 340;
     public bool HasScreenPreviews => ScreenPreviews.Count > 0;
     public bool HasNoScreenPreviews => !HasScreenPreviews;
     public bool ShowClassRoster => !ShowClassScreens;
@@ -224,7 +234,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     public string ScreensLockLabel => IsScreensLocked ? "Экраны заблокированы. Нажмите, чтобы разблокировать." : "Заблокировать экраны учеников.";
     public string FocusModeLabel => IsFocusModeOn ? "Только нужные окна. Нажмите, чтобы выключить." : "Оставить только нужные окна.";
     public string WatchdogLabel => IsWatchdogOn ? "Приложение нельзя закрыть. Нажмите, чтобы выключить." : "Не давать закрыть приложение ученика.";
-    public string VpnToggleLabel => IsVpnOn ? "Безопасная сеть включена. Нажмите, чтобы отключить." : "Включить безопасную сеть на всех ПК.";
+    public string VpnToggleLabel => IsVpnOn ? "VPN включён. Нажмите, чтобы отключить." : "Включить VPN на всех ПК.";
     public string ThemeToggleLabel => IsDarkTheme ? "Светлая тема" : "Тёмная тема";
     public string StudentFormTitle => IsEditingStudent ? "Редактировать ученика" : "Новый ученик";
     public string StudentFormActionLabel => IsEditingStudent ? "Сохранить изменения" : "Добавить ученика";
@@ -237,7 +247,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     public string ServerAddress => "http://0.0.0.0:8765";
     public string DiscoveryAddress => "UDP 8766 · локальная сеть";
     public string VersionLabel => $"Tutor {BuildInfo.Version}";
-    public IReadOnlyList<string> AuditCategories { get; } = ["Все", "Синхронизация", "Магазин", "Печать", "Викторина", "Команды", "Ученики", "Система"];
+    public IReadOnlyList<string> AuditCategories { get; } = ["Все", "Синхронизация", "Система", "Магазин", "Печать", "Викторина", "Команды", "Ученики"];
     public IReadOnlyList<string> Locations { get; } = ProgramCatalog.LocationNames();
     public IReadOnlyList<string> VpnLocationNames { get; } = VpnRegionCatalog.Names();
     public bool IsSetupWelcome => NeedsLocationSetup && SetupStep == 0;
@@ -364,24 +374,42 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
 
             nextScreenUiRefreshAt = DateTimeOffset.UtcNow.AddSeconds(Math.Clamp(ScreenRefreshSeconds, 5, 300));
 
-            var next = new List<ScreenPreviewCardViewModel>();
-            foreach (var client in clients.GetAll().OrderBy(x => x.PcNumber))
-                next.Add(new ScreenPreviewCardViewModel(client, TryLoadScreenBitmap(client.ClientId)));
+            var nextClients = clients.GetAll().OrderBy(x => x.PcNumber).ToList();
+            var sameHosts = ScreenPreviews.Count == nextClients.Count
+                && ScreenPreviews.Zip(nextClients, (card, client) =>
+                    string.Equals(card.ClientId, client.ClientId, StringComparison.OrdinalIgnoreCase)).All(equal => equal);
 
-            var previous = ScreenPreviews.ToList();
-            ScreenPreviews.Clear();
-            foreach (var card in next)
-                ScreenPreviews.Add(card);
-            NotifyCollectionStates();
-
-            // Dispose after the UI has unbound the old bitmaps — disposing every 2s caused blank previews.
-            Dispatcher.UIThread.Post(() =>
+            if (sameHosts)
             {
-                foreach (var card in previous)
+                // Update existing cards in place so an open ⋯ MenuFlyout is not torn down.
+                for (var i = 0; i < nextClients.Count; i++)
                 {
-                    try { card.Dispose(); } catch { }
+                    var client = nextClients[i];
+                    ScreenPreviews[i].Update(client, TryLoadScreenBitmap(client.ClientId), ResolveScreenTitle(client));
                 }
-            }, DispatcherPriority.Background);
+            }
+            else
+            {
+                var next = new List<ScreenPreviewCardViewModel>(nextClients.Count);
+                foreach (var client in nextClients)
+                    next.Add(new ScreenPreviewCardViewModel(client, TryLoadScreenBitmap(client.ClientId), ResolveScreenTitle(client)));
+
+                var previous = ScreenPreviews.ToList();
+                ScreenPreviews.Clear();
+                foreach (var card in next)
+                    ScreenPreviews.Add(card);
+
+                // Dispose after the UI has unbound the old bitmaps — disposing every 2s caused blank previews.
+                Dispatcher.UIThread.Post(() =>
+                {
+                    foreach (var card in previous)
+                    {
+                        try { card.Dispose(); } catch { }
+                    }
+                }, DispatcherPriority.Background);
+            }
+
+            NotifyCollectionStates();
         }
         catch (Exception error)
         {
@@ -414,7 +442,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     public string SectionTitle => SelectedSectionIndex switch
     {
         0 => "Класс сейчас", 1 => "Уроки печати", 2 => "Ученики и группы",
-        3 => "Награды и магазин", 4 => "Сохранения", 5 => "Экраны",
+        3 => "Достижения", 4 => "Сохранения", 5 => "Экраны",
         6 => "Пульт класса", 7 => "Урок печати", 8 => "Итоги урока",
         9 => "Викторины", 10 => "Статистика", 11 => "Настройки",
         12 => "Софт класса", 13 => "Восстановление файлов", 14 => "Цели",
@@ -422,8 +450,8 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     };
     public string SectionSubtitle => SelectedSectionIndex switch
     {
-        0 => ConnectedClientLabel, 1 => "Текст урока и запуск для группы",
-        2 => "Сначала группа, затем модули или ученики", 3 => "Достижения, кибероны и товары",
+        0 => ConnectedClientLabel, 1 => "Каталог как у учеников · отправка и редактирование",
+        2 => "Сначала группа, затем модули или ученики", 3 => "Каталог достижений класса",
         4 => "Работы учеников и восстановление", 5 => "Экраны компьютеров класса",
         6 => "Блокировка, окна и сохранения", 7 => "Урок печати для класса",
         8 => "Итоги появятся в уведомлениях", 9 => "Вопросы и запуск для класса",
@@ -1131,9 +1159,42 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     private void StartLiveLesson() => DeliverLessonToClass(LiveLessonName, LiveLessonText, MinimumCharacters);
 
     [RelayCommand]
+    private void OpenNewLessonEditor()
+    {
+        EditingLessonId = null;
+        LessonEditorTitle = "Новый урок";
+        LessonEditorActionLabel = "Сохранить";
+        LessonName = string.Empty;
+        Description = string.Empty;
+        SelectedLessonKind = nameof(LessonContentKind.Custom);
+        SelectedKeyboardLayout = "ru-RU";
+        MinimumCharacters = 120;
+        DurationMinutes = 10;
+        LessonText = TypingLessonCatalog.DefaultLiveLessonText;
+        ShowTypingStatistics = false;
+        IsLessonEditorOpen = true;
+        NotifyViewModes();
+        HasError = false;
+        StatusMessage = "Заполните настройки и текст — после сохранения урок появится у учеников.";
+    }
+
+    [RelayCommand]
+    private void CloseLessonEditor()
+    {
+        IsLessonEditorOpen = false;
+        EditingLessonId = null;
+    }
+
+    [RelayCommand]
     private async Task LoadLessonAsync(LessonCardViewModel? card)
     {
         if (card is null) return;
+        if (card.IsDefault)
+        {
+            ShowSelectionError("Встроенный урок нельзя изменить. Создайте новый на его основе.");
+            return;
+        }
+
         try
         {
             var lesson = await lessons.GetLessonAsync(card.Id);
@@ -1143,6 +1204,9 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
                 return;
             }
 
+            EditingLessonId = lesson.Id;
+            LessonEditorTitle = $"Редактирование · {lesson.Name}";
+            LessonEditorActionLabel = "Сохранить изменения";
             LessonName = lesson.Name;
             Description = lesson.Description;
             SelectedLessonKind = lesson.ContentKind.ToString();
@@ -1151,10 +1215,11 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             DurationMinutes = lesson.DurationMinutes;
             LessonText = TypingLessonCatalog.GetLessonText(lesson);
             ShowTypingStatistics = false;
+            IsLessonEditorOpen = true;
             NotifyViewModes();
             SelectedSectionIndex = 1;
             HasError = false;
-            StatusMessage = $"Открыт урок «{lesson.Name}». Мин. для зачёта: {lesson.MinimumCharacters} знаков.";
+            StatusMessage = $"Редактирование «{lesson.Name}». Мин. для зачёта: {lesson.MinimumCharacters} знаков.";
         }
         catch (Exception error)
         {
@@ -1295,6 +1360,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [RelayCommand]
     private void CloseClassPanel()
     {
+        IsClassAwardPickerOpen = false;
         IsClassPanelOpen = false;
     }
 
@@ -1474,6 +1540,53 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             .ThenByDescending(client => client.LastSeenAt)
             .Select(client => client.ClientId)
             .FirstOrDefault();
+    }
+
+    private StudentCardViewModel? FindStudentForClient(string clientId, Guid? studentId = null)
+    {
+        if (!string.IsNullOrWhiteSpace(clientId))
+        {
+            var byClientId = Students.FirstOrDefault(student =>
+                !string.IsNullOrWhiteSpace(student.ClientId)
+                && string.Equals(student.ClientId, clientId, StringComparison.OrdinalIgnoreCase));
+            if (byClientId is not null) return byClientId;
+        }
+
+        if (studentId is Guid id)
+            return Students.FirstOrDefault(student => student.Id == id);
+
+        var linked = clients.GetAll()
+            .FirstOrDefault(client =>
+                string.Equals(client.ClientId, clientId, StringComparison.OrdinalIgnoreCase)
+                && client.StudentId is not null);
+        return linked?.StudentId is Guid linkedId
+            ? Students.FirstOrDefault(student => student.Id == linkedId)
+            : null;
+    }
+
+    private string FormatStudentIdentity(StudentCardViewModel student)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(student.Name)) parts.Add(student.Name.Trim());
+        if (!string.IsNullOrWhiteSpace(student.Group)) parts.Add(student.Group.Trim());
+        if (!string.IsNullOrWhiteSpace(LocationName)) parts.Add(LocationName.Trim());
+        return parts.Count > 0 ? string.Join(" · ", parts) : student.Name;
+    }
+
+    private string ResolveClientDisplayTitle(string clientId, Guid? studentId = null, string? pcNumber = null)
+    {
+        var student = FindStudentForClient(clientId, studentId);
+        if (student is not null) return FormatStudentIdentity(student);
+        if (!string.IsNullOrWhiteSpace(pcNumber)) return $"ПК {pcNumber.Trim()}";
+        return clientId;
+    }
+
+    private string ResolveScreenTitle(ClassroomClientSnapshot client)
+    {
+        var student = FindStudentForClient(client.ClientId, client.StudentId);
+        if (student is not null && !string.IsNullOrWhiteSpace(student.Name))
+            return student.Name.Trim();
+        return string.IsNullOrWhiteSpace(client.PcNumber) ? client.ClientId : $"ПК {client.PcNumber}";
     }
 
     private void OpenSyncFolder(string clientId, string? label)
@@ -1944,8 +2057,29 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     {
         var category = SelectedAuditCategory is null or "Все" ? null : SelectedAuditCategory;
         AuditEvents.Clear();
-        foreach (var entry in await audit.ListAsync(new AuditQuery(category, AuditSearch, 500))) AuditEvents.Add(new AuditEventCardViewModel(entry));
+        foreach (var entry in await audit.ListAsync(new AuditQuery(category, AuditSearch, 500)))
+            AuditEvents.Add(new AuditEventCardViewModel(entry, ResolveAuditActorLabel(entry.Actor)));
         NotifyCollectionStates();
+    }
+
+    private string ResolveAuditActorLabel(string actor)
+    {
+        if (string.IsNullOrWhiteSpace(actor)) return "система";
+        if (actor.Equals("tutor", StringComparison.OrdinalIgnoreCase)) return "тьютор";
+        if (actor.Equals("система", StringComparison.OrdinalIgnoreCase)) return "система";
+
+        var client = clients.GetAll().FirstOrDefault(item =>
+            string.Equals(item.ClientId, actor, StringComparison.OrdinalIgnoreCase));
+        var student = FindStudentForClient(actor, client?.StudentId);
+        if (student is not null)
+        {
+            var fullName = $"{student.LastName} {student.FirstName}".Trim();
+            if (!string.IsNullOrWhiteSpace(fullName)) return fullName;
+            if (!string.IsNullOrWhiteSpace(student.Name)) return student.Name.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(client?.PcNumber)) return $"ПК {client.PcNumber.Trim()}";
+        return actor;
     }
 
     [RelayCommand]
@@ -2073,8 +2207,8 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         ClassroomCommandKinds.SyncNow => "сохранения обновляются",
         ClassroomCommandKinds.Message => "сообщение отправлено",
         ClassroomCommandKinds.SetWorkspace => "модуль на этот урок обновлён",
-        ClassroomCommandKinds.VpnConnect => "безопасная сеть включена",
-        ClassroomCommandKinds.VpnDisconnect => "безопасная сеть выключена",
+        ClassroomCommandKinds.VpnConnect => "VPN включён",
+        ClassroomCommandKinds.VpnDisconnect => "VPN выключен",
         ClassroomCommandKinds.InstallStarterPack => "стартовый пакет отправлен на компьютеры",
         ClassroomCommandKinds.SetWallpaper => "обои отправлены на компьютеры",
         _ => "готово"
@@ -2177,7 +2311,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             if (online.Count == 0)
             {
                 HasError = true;
-                StatusMessage = "Нет учеников в сети, чтобы включить безопасную связь.";
+                StatusMessage = "Нет учеников в сети, чтобы включить VPN.";
                 return;
             }
 
@@ -2270,15 +2404,11 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         HasError = false;
         try
         {
-            var kind = Enum.TryParse<LessonContentKind>(SelectedLessonKind, out var parsed) ? parsed : LessonContentKind.Custom;
-            var request = new CreateLessonRequest(
-                LessonName, Description, kind, SelectedKeyboardLayout, MinimumCharacters, DurationMinutes,
-                [new LessonStepDraft("Текст", LessonText)]);
-            var lesson = await lessons.CreateLessonAsync(request);
+            var lesson = await PersistLessonEditorAsync();
+            IsLessonEditorOpen = false;
+            EditingLessonId = null;
             StatusMessage = $"Урок «{lesson.Name}» сохранён и уже доступен ученикам.";
-            LessonName = string.Empty;
-            Description = string.Empty;
-            LessonText = TypingLessonCatalog.DefaultLiveLessonText;
+            ResetLessonEditorFields();
             await RefreshCoreAsync();
         }
         catch (LessonValidationException validation)
@@ -2311,13 +2441,12 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         HasError = false;
         try
         {
-            var kind = Enum.TryParse<LessonContentKind>(SelectedLessonKind, out var parsed) ? parsed : LessonContentKind.Custom;
-            var request = new CreateLessonRequest(
-                LessonName, Description, kind, SelectedKeyboardLayout, MinimumCharacters, DurationMinutes,
-                [new LessonStepDraft("Текст", LessonText)]);
-            var lesson = await lessons.CreateLessonAsync(request);
+            var lesson = await PersistLessonEditorAsync();
+            IsLessonEditorOpen = false;
+            EditingLessonId = null;
             await RefreshCoreAsync();
             DeliverLessonToClass(lesson.Name, TypingLessonCatalog.GetLessonText(lesson), lesson.MinimumCharacters);
+            ResetLessonEditorFields();
             StatusMessage = $"Урок «{lesson.Name}» сохранён, доступен в каталоге и принудительно запущен классу.";
         }
         catch (LessonValidationException validation)
@@ -2334,6 +2463,35 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         {
             IsBusy = false;
         }
+    }
+
+    private async Task<TypingLessonTemplate> PersistLessonEditorAsync()
+    {
+        var kind = Enum.TryParse<LessonContentKind>(SelectedLessonKind, out var parsed) ? parsed : LessonContentKind.Custom;
+        var steps = new[] { new LessonStepDraft("Текст", LessonText) };
+        if (EditingLessonId is Guid id)
+        {
+            var updated = await lessons.UpdateLessonAsync(id, new UpdateLessonRequest(
+                LessonName, Description, kind, SelectedKeyboardLayout, MinimumCharacters, DurationMinutes,
+                LessonLifecycle.Published, steps));
+            return updated ?? throw new KeyNotFoundException("Урок не найден.");
+        }
+
+        return await lessons.CreateLessonAsync(new CreateLessonRequest(
+            LessonName, Description, kind, SelectedKeyboardLayout, MinimumCharacters, DurationMinutes, steps));
+    }
+
+    private void ResetLessonEditorFields()
+    {
+        LessonName = string.Empty;
+        Description = string.Empty;
+        LessonText = TypingLessonCatalog.DefaultLiveLessonText;
+        SelectedLessonKind = nameof(LessonContentKind.Custom);
+        SelectedKeyboardLayout = "ru-RU";
+        MinimumCharacters = 120;
+        DurationMinutes = 10;
+        LessonEditorTitle = "Новый урок";
+        LessonEditorActionLabel = "Сохранить";
     }
 
     [RelayCommand]
@@ -2609,25 +2767,81 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     });
 
     [RelayCommand]
-    private async Task AwardAchievementAsync()
+    private void ShowClassAwardPicker()
     {
-        if (SelectedStudent is null || SelectedAchievement is null) { ShowSelectionError("Выберите ученика и достижение."); return; }
-        await RunActionAsync(async () =>
+        if (SelectedClassStudents.Count == 0)
         {
-            await classroom.AwardAchievementAsync(new AwardAchievementRequest(SelectedStudent.Id, SelectedAchievement.Id, "Выдано тьютором"));
-            StatusMessage = $"Награда выдана ученику {SelectedStudent.Name}.";
-        });
+            ShowSelectionError("Выберите ученика на «Класс сейчас».");
+            return;
+        }
+
+        IsClassPanelOpen = true;
+        IsClassAwardPickerOpen = true;
     }
 
     [RelayCommand]
-    private async Task AddKiberonsAsync()
+    private void CloseClassAwardPicker() => IsClassAwardPickerOpen = false;
+
+    [RelayCommand]
+    private async Task AwardClassAchievementAsync(AchievementCardViewModel? achievement)
     {
-        if (SelectedStudent is null) { ShowSelectionError("Выберите ученика."); return; }
+        achievement ??= SelectedAchievement;
+        var targets = SelectedClassStudents;
+        if (targets.Count == 0)
+        {
+            ShowSelectionError("Выберите ученика на «Класс сейчас».");
+            return;
+        }
+
+        if (achievement is null)
+        {
+            ShowSelectionError("Выберите достижение.");
+            return;
+        }
+
+        var selectedIds = targets.Select(x => x.Id).ToHashSet();
         await RunActionAsync(async () =>
         {
-            await classroom.AdjustKiberonsAsync(new AdjustKiberonsRequest(SelectedStudent.Id, 10, "Награда тьютора"));
-            StatusMessage = $"Ученику {SelectedStudent.Name} начислено 10 киберонов.";
+            foreach (var student in targets)
+                await classroom.AwardAchievementAsync(new AwardAchievementRequest(student.Id, achievement.Id, "Выдано тьютором"));
+            StatusMessage = targets.Count == 1
+                ? $"Награда «{achievement.Name}» выдана ученику {targets[0].Name}."
+                : $"Награда «{achievement.Name}» выдана {targets.Count} ученикам.";
+            IsClassAwardPickerOpen = false;
         });
+        RestoreClassSelection(selectedIds);
+    }
+
+    [RelayCommand]
+    private async Task AddClassKiberonsAsync()
+    {
+        var targets = SelectedClassStudents;
+        if (targets.Count == 0)
+        {
+            ShowSelectionError("Выберите ученика на «Класс сейчас».");
+            return;
+        }
+
+        var selectedIds = targets.Select(x => x.Id).ToHashSet();
+        await RunActionAsync(async () =>
+        {
+            foreach (var student in targets)
+                await classroom.AdjustKiberonsAsync(new AdjustKiberonsRequest(student.Id, 10, "Награда тьютора"));
+            StatusMessage = targets.Count == 1
+                ? $"Ученику {targets[0].Name} начислено 10 киберонов."
+                : $"{targets.Count} ученикам начислено по 10 киберонов.";
+        });
+        RestoreClassSelection(selectedIds);
+    }
+
+    private void RestoreClassSelection(HashSet<Guid> selectedIds)
+    {
+        if (selectedIds.Count == 0) return;
+        foreach (var card in Students)
+            card.IsClassSelected = selectedIds.Contains(card.Id);
+        SelectedClassStudent = Students.FirstOrDefault(x => x.IsClassSelected);
+        IsClassPanelOpen = true;
+        NotifyClassSelection();
     }
 
     [RelayCommand]
@@ -2656,7 +2870,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         await RunActionAsync(async () =>
         {
             await fileSync.DecideAsync(SelectedSyncApproval.Id, true);
-            StatusMessage = $"Принята версия ученика для {SelectedSyncApproval.ClientId}.";
+            StatusMessage = $"Принята версия ученика для {SelectedSyncApproval.DisplayTitle}.";
         });
     }
 
@@ -2667,7 +2881,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         await RunActionAsync(async () =>
         {
             await fileSync.DecideAsync(SelectedSyncApproval.Id, false);
-            StatusMessage = $"Восстановлена версия тьютора для {SelectedSyncApproval.ClientId}.";
+            StatusMessage = $"Восстановлена версия тьютора для {SelectedSyncApproval.DisplayTitle}.";
         });
     }
 
@@ -2808,11 +3022,18 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         SelectedStoreItem = StoreItems.FirstOrDefault(x => x.Id == selectedItemId) ?? StoreItems.FirstOrDefault();
         var selectedApprovalId = SelectedSyncApproval?.Id;
         SyncApprovals.Clear();
-        foreach (var approval in await fileSync.ListPendingApprovalsAsync()) SyncApprovals.Add(new SyncApprovalCardViewModel(approval));
+        var clientSnapshots = clients.GetAll().ToDictionary(x => x.ClientId, StringComparer.OrdinalIgnoreCase);
+        foreach (var approval in await fileSync.ListPendingApprovalsAsync())
+        {
+            clientSnapshots.TryGetValue(approval.ClientId, out var client);
+            var title = ResolveClientDisplayTitle(approval.ClientId, client?.StudentId, client?.PcNumber);
+            SyncApprovals.Add(new SyncApprovalCardViewModel(approval, title));
+        }
         SelectedSyncApproval = SyncApprovals.FirstOrDefault(x => x.Id == selectedApprovalId) ?? SyncApprovals.FirstOrDefault();
         var selectedClientId = SelectedSyncClient?.ClientId;
         SyncClients.Clear();
-        foreach (var client in clients.GetAll()) SyncClients.Add(new SyncClientCardViewModel(client));
+        foreach (var client in clients.GetAll())
+            SyncClients.Add(new SyncClientCardViewModel(client, ResolveClientDisplayTitle(client.ClientId, client.StudentId, client.PcNumber)));
         SelectedSyncClient = SyncClients.FirstOrDefault(x => x.ClientId == selectedClientId) ?? SyncClients.FirstOrDefault();
         if (SelectedAuditCategory is null) SelectedAuditCategory = "Все";
         await RefreshAuditAsync();
@@ -2970,7 +3191,6 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
 
     private void RebuildClassRoster()
     {
-        ClassRosterStudents.Clear();
         IEnumerable<StudentCardViewModel> source = Students;
         if (SelectedRosterGroupFilter?.GroupId is Guid groupId)
             source = source.Where(x => x.GroupId == groupId);
@@ -2980,9 +3200,22 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             "Оффлайн" => source.Where(x => x.IsOffline),
             _ => source
         };
-        foreach (var student in source.OrderByDescending(x => x.IsOnline).ThenBy(x => x.Name))
-            ClassRosterStudents.Add(student);
-        var visible = ClassRosterStudents.Select(x => x.Id).ToHashSet();
+        var next = source
+            .OrderByDescending(x => x.IsOnline)
+            .ThenBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+
+        // Avoid Clear()+Add when membership/order is unchanged — that rebuild destroys open MenuFlyouts.
+        var unchanged = ClassRosterStudents.Count == next.Count
+            && ClassRosterStudents.Zip(next, (current, desired) => current.Id == desired.Id).All(equal => equal);
+        if (!unchanged)
+        {
+            ClassRosterStudents.Clear();
+            foreach (var student in next)
+                ClassRosterStudents.Add(student);
+        }
+
+        var visible = next.Select(x => x.Id).ToHashSet();
         foreach (var student in Students)
         {
             if (!visible.Contains(student.Id))
@@ -3018,6 +3251,8 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         OnPropertyChanged(nameof(HasNoFilteredStudents));
         OnPropertyChanged(nameof(HasClassRosterStudents));
         OnPropertyChanged(nameof(HasNoClassRosterStudents));
+        OnPropertyChanged(nameof(HasAchievements));
+        OnPropertyChanged(nameof(HasNoAchievements));
         OnPropertyChanged(nameof(HasClassNotices));
         OnPropertyChanged(nameof(HasSelectedClassStudent));
         OnPropertyChanged(nameof(HasGroups));
@@ -3061,9 +3296,15 @@ public sealed class LessonCardViewModel(TypingLessonTemplate lesson)
 {
     public Guid Id { get; } = lesson.Id;
     public string Name { get; } = lesson.Name;
-    public string Details { get; } = $"{lesson.DurationMinutes} мин · зачёт с {lesson.MinimumCharacters} знаков";
+    public string Description { get; } = string.IsNullOrWhiteSpace(lesson.Description)
+        ? $"зачёт с {lesson.MinimumCharacters} знаков"
+        : lesson.Description;
+    public string Details { get; } = $"{lesson.KeyboardLayout} · {lesson.ContentKind} · зачёт {lesson.MinimumCharacters}";
     public string Kind { get; } = lesson.ContentKind.ToString();
     public string Version { get; } = $"v{lesson.Version}";
+    public bool IsDefault { get; } = TypingLessonCatalog.IsDefaultName(lesson.Name);
+    public bool CanEdit => !IsDefault;
+    public string Badge { get; } = TypingLessonCatalog.IsDefaultName(lesson.Name) ? "базовый" : $"v{lesson.Version}";
 }
 
 public partial class GroupCardViewModel : ObservableObject
@@ -3471,8 +3712,10 @@ public sealed class WinnerCardViewModel(int place, string name, string group, in
 public sealed class AchievementCardViewModel(Achievement achievement)
 {
     public Guid Id { get; } = achievement.Id;
+    public string Code { get; } = achievement.Code;
     public string Name { get; } = achievement.Name;
     public string Reward { get; } = $"+{achievement.XpReward} XP · +{achievement.KiberonReward} K";
+    public string Details { get; } = $"{achievement.Code} · +{achievement.XpReward} XP · +{achievement.KiberonReward} K";
     public override string ToString() => Name;
 }
 
@@ -3484,19 +3727,20 @@ public sealed class StoreItemCardViewModel(StoreItem item)
     public override string ToString() => Name;
 }
 
-public sealed class SyncApprovalCardViewModel(SyncApproval approval)
+public sealed class SyncApprovalCardViewModel(SyncApproval approval, string displayTitle)
 {
     public Guid Id { get; } = approval.Id;
     public string ClientId { get; } = approval.ClientId;
+    public string DisplayTitle { get; } = displayTitle;
     public string Reason { get; } = approval.Reason;
     public string Created { get; } = approval.CreatedAt.ToLocalTime().ToString("g");
-    public override string ToString() => $"{ClientId}: {Reason}";
+    public override string ToString() => $"{DisplayTitle}: {Reason}";
 }
 
-public sealed class SyncClientCardViewModel(ClassroomClientSnapshot client)
+public sealed class SyncClientCardViewModel(ClassroomClientSnapshot client, string displayName)
 {
     public string ClientId { get; } = client.ClientId;
-    public string Name { get; } = $"ПК {client.PcNumber} · {client.Hostname}";
+    public string Name { get; } = displayName;
     public override string ToString() => Name;
 }
 
@@ -3515,12 +3759,28 @@ public sealed class FileVersionCardViewModel(FileVersionInfo version)
     public override string ToString() => $"{Label} · {Details}";
 }
 
-public sealed class ScreenPreviewCardViewModel : IDisposable
+public partial class ScreenPreviewCardViewModel : ObservableObject, IDisposable
 {
-    public ScreenPreviewCardViewModel(ClassroomClientSnapshot client, Bitmap? preview)
+    public ScreenPreviewCardViewModel(ClassroomClientSnapshot client, Bitmap? preview, string title)
     {
         ClientId = client.ClientId;
-        Title = $"ПК {client.PcNumber} · {client.Hostname}";
+        ApplySnapshot(client, preview, title);
+    }
+
+    public string ClientId { get; }
+    [ObservableProperty] private string title = string.Empty;
+    [ObservableProperty] private string status = string.Empty;
+    [ObservableProperty] private string watchFolder = string.Empty;
+    [ObservableProperty] private Guid? studentId;
+    [ObservableProperty] private Bitmap? preview;
+    [ObservableProperty] private bool hasPreview;
+
+    public void Update(ClassroomClientSnapshot client, Bitmap? preview, string title)
+        => ApplySnapshot(client, preview, title);
+
+    private void ApplySnapshot(ClassroomClientSnapshot client, Bitmap? preview, string title)
+    {
+        Title = title;
         var vpn = client.Extra.VpnConnected
             ? client.Extra.VpnPingMs is int ms
                 ? $"VPN · {VpnRegionCatalog.Resolve(client.Extra.VpnRegion).Name} · {ms} мс"
@@ -3531,29 +3791,57 @@ public sealed class ScreenPreviewCardViewModel : IDisposable
             : $"не в сети · {client.LastSeenAt.ToLocalTime():t}";
         WatchFolder = client.WatchFolder;
         StudentId = client.StudentId;
+
+        var previous = Preview;
+        if (ReferenceEquals(previous, preview))
+            return;
+
         Preview = preview;
         HasPreview = preview is not null;
+        if (previous is null)
+            return;
+
+        // Dispose after the UI has unbound the old bitmap.
+        Dispatcher.UIThread.Post(() =>
+        {
+            try { previous.Dispose(); } catch { }
+        }, DispatcherPriority.Background);
     }
-    public string ClientId { get; }
-    public string Title { get; }
-    public string Status { get; }
-    public string WatchFolder { get; }
-    public Guid? StudentId { get; }
-    public Bitmap? Preview { get; }
-    public bool HasPreview { get; }
+
     public void Dispose()
     {
         try { Preview?.Dispose(); } catch { }
+        Preview = null;
+        HasPreview = false;
     }
 }
 
-public sealed class AuditEventCardViewModel(AuditEvent entry)
+public sealed class AuditEventCardViewModel(AuditEvent entry, string actorLabel)
 {
-    public string Time { get; } = entry.CreatedAt.ToLocalTime().ToString("g");
+    public string Time { get; } = entry.CreatedAt.ToLocalTime().ToString("HH:mm:ss");
     public string Category { get; } = entry.Category;
     public string Action { get; } = entry.Action;
-    public string Actor { get; } = string.IsNullOrWhiteSpace(entry.Actor) ? "система" : entry.Actor;
+    public string Actor { get; } = actorLabel;
     public string Target { get; } = entry.Target;
-    public string Result { get; } = $"HTTP {entry.StatusCode} · {entry.DurationMs} мс";
-    public string Details { get; } = entry.Details;
+    public string Summary { get; } = BuildSummary(entry);
+    public string Line { get; } = string.Join(" · ", new[]
+    {
+        entry.CreatedAt.ToLocalTime().ToString("HH:mm:ss"),
+        entry.Category,
+        actorLabel,
+        BuildSummary(entry)
+    }.Where(part => !string.IsNullOrWhiteSpace(part)));
+
+    private static string BuildSummary(AuditEvent entry)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(entry.Action)) parts.Add(entry.Action.Trim());
+        if (!string.IsNullOrWhiteSpace(entry.Target)
+            && !string.Equals(entry.Target, entry.Action, StringComparison.OrdinalIgnoreCase))
+            parts.Add(entry.Target.Trim());
+        if (entry.StatusCode is >= 400 or 101) parts.Add($"HTTP {entry.StatusCode}");
+        else if (entry.StatusCode is > 0 and not 200) parts.Add($"HTTP {entry.StatusCode}");
+        if (!string.IsNullOrWhiteSpace(entry.Details)) parts.Add(entry.Details.Trim());
+        return string.Join(" · ", parts);
+    }
 }

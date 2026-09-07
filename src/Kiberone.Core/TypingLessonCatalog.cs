@@ -37,6 +37,10 @@ public static class TypingLessonCatalog
 
     public static string DefaultLiveLessonText => StaminaSentencesPassage;
 
+    public static bool IsDefaultName(string? name) =>
+        !string.IsNullOrWhiteSpace(name)
+        && Defaults.Any(seed => string.Equals(seed.Name, name.Trim(), StringComparison.OrdinalIgnoreCase));
+
     public static string GetLessonText(TypingLessonTemplate lesson) =>
         string.Join("\n\n", lesson.Steps.OrderBy(step => step.Order).Select(step => step.Text)
             .Where(text => !string.IsNullOrWhiteSpace(text)));

@@ -202,6 +202,32 @@ public sealed class NetworkCoordinationTests
     }
 
     [Fact]
+    public void Heartbeat_EmitsJoinAndLeavePresenceEvents()
+    {
+        var clock = new ManualTimeProvider(DateTimeOffset.Parse("2026-08-27T12:00:00Z"));
+        var registry = new ClientRegistry(clock);
+
+        registry.Heartbeat(CreateHeartbeat("pc-a"));
+        var joined = registry.DrainPresenceEvents();
+        Assert.Single(joined);
+        Assert.True(joined[0].Online);
+        Assert.Equal("pc-a", joined[0].ClientId);
+
+        registry.Heartbeat(CreateHeartbeat("pc-a"));
+        Assert.Empty(registry.DrainPresenceEvents());
+
+        clock.Advance(TimeSpan.FromSeconds(16));
+        var left = registry.DrainPresenceEvents();
+        Assert.Single(left);
+        Assert.False(left[0].Online);
+
+        registry.Heartbeat(CreateHeartbeat("pc-a"));
+        var rejoined = registry.DrainPresenceEvents();
+        Assert.Single(rejoined);
+        Assert.True(rejoined[0].Online);
+    }
+
+    [Fact]
     public void Enqueue_RejectsEmptyTargetsAndBroadcastWithoutClients()
     {
         var registry = new ClientRegistry();

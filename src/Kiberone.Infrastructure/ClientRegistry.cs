@@ -3,9 +3,18 @@ using Kiberone.Core;
 
 namespace Kiberone.Infrastructure;
 
+public sealed record ClientPresenceEvent(
+    string ClientId,
+    string PcNumber,
+    string Hostname,
+    Guid? StudentId,
+    bool Online);
+
 public sealed class ClientRegistry(TimeProvider? timeProvider = null)
 {
     private readonly ConcurrentDictionary<string, ClientState> clients = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, bool> lastKnownOnline = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentQueue<ClientPresenceEvent> presenceEvents = new();
     private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
     private static readonly TimeSpan OnlineWindow = TimeSpan.FromSeconds(15);
 
@@ -13,24 +22,73 @@ public sealed class ClientRegistry(TimeProvider? timeProvider = null)
     {
         Validate(request);
         var now = clock.GetUtcNow();
+        var becameOnline = false;
         var state = clients.AddOrUpdate(
             request.ClientId,
-            _ => new ClientState(request, now, now),
-            (_, previous) => new ClientState(request, previous.FirstSeenAt, now));
+            _ =>
+            {
+                becameOnline = true;
+                return new ClientState(request, now, now);
+            },
+            (_, previous) =>
+            {
+                if (now - previous.LastSeenAt >= OnlineWindow)
+                    becameOnline = true;
+                return new ClientState(request, previous.FirstSeenAt, now);
+            });
+
+        lastKnownOnline[request.ClientId] = true;
+        if (becameOnline)
+        {
+            presenceEvents.Enqueue(new ClientPresenceEvent(
+                request.ClientId, request.PcNumber, request.Hostname, request.StudentId, Online: true));
+        }
+
+        SweepOffline(now);
         return ToSnapshot(state, now);
     }
 
-    public IReadOnlyList<ClassroomClientSnapshot> GetAll() =>
-        clients.Values
+    public IReadOnlyList<ClassroomClientSnapshot> GetAll()
+    {
+        SweepOffline(clock.GetUtcNow());
+        return clients.Values
             .Select(state => ToSnapshot(state, clock.GetUtcNow()))
             .OrderByDescending(client => client.IsOnline)
             .ThenBy(client => NaturalPcNumber(client.PcNumber))
             .ThenBy(client => client.Hostname, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
+    }
 
     public IReadOnlyList<string> GetKnownClientIds() => clients.Keys.Order(StringComparer.OrdinalIgnoreCase).ToList();
 
     public bool Contains(string clientId) => clients.ContainsKey(clientId);
+
+    public IReadOnlyList<ClientPresenceEvent> DrainPresenceEvents()
+    {
+        SweepOffline(clock.GetUtcNow());
+        var drained = new List<ClientPresenceEvent>();
+        while (presenceEvents.TryDequeue(out var item))
+            drained.Add(item);
+        return drained;
+    }
+
+    private void SweepOffline(DateTimeOffset now)
+    {
+        foreach (var pair in clients)
+        {
+            var online = now - pair.Value.LastSeenAt < OnlineWindow;
+            if (lastKnownOnline.TryGetValue(pair.Key, out var wasOnline) && wasOnline && !online)
+            {
+                presenceEvents.Enqueue(new ClientPresenceEvent(
+                    pair.Key,
+                    pair.Value.Request.PcNumber,
+                    pair.Value.Request.Hostname,
+                    pair.Value.Request.StudentId,
+                    Online: false));
+            }
+            lastKnownOnline[pair.Key] = online;
+        }
+    }
 
     private static void Validate(HeartbeatRequest request)
     {

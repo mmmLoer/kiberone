@@ -20,8 +20,14 @@
       <Grid ColumnDefinitions="208,*,Auto" Margin="24,0">
         <StackPanel VerticalAlignment="Center" Spacing="2">
           <StackPanel Orientation="Horizontal" Spacing="4">
-            <TextBlock Text="KIBER" Classes="brand"/>
-            <TextBlock Text="ONE" FontSize="20" FontWeight="Bold"/>
+            <StackPanel Orientation="Horizontal" Spacing="0">
+              <TextBlock Text="K" FontSize="20" FontWeight="Bold" Foreground="{StaticResource BrandKBrush}" />
+              <TextBlock Text="1" FontSize="20" FontWeight="Bold" Foreground="{StaticResource Brand1Brush}" />
+              <TextBlock Text="B" FontSize="20" FontWeight="Bold" Foreground="{StaticResource BrandBBrush}" />
+              <TextBlock Text="E" FontSize="20" FontWeight="Bold" Foreground="{StaticResource BrandEBrush}" />
+              <TextBlock Text="R" FontSize="20" FontWeight="Bold" Foreground="{StaticResource BrandRBrush}" />
+            </StackPanel>
+            <TextBlock Text="ONE" FontSize="20" FontWeight="Bold" Foreground="{StaticResource BrandInkBrush}" />
           </StackPanel>
           <TextBlock Text="УЧЕНИК" Classes="eyebrow" Foreground="#6B7880"/>
         </StackPanel>
@@ -865,7 +871,13 @@
           <Border Background="#068F8A" Padding="28">
             <StackPanel Spacing="20">
               <StackPanel Orientation="Horizontal" Spacing="4">
-                <TextBlock Text="KIBER" Foreground="White" FontSize="21" FontWeight="Bold"/>
+                <StackPanel Orientation="Horizontal" Spacing="0">
+                  <TextBlock Text="K" FontSize="21" FontWeight="Bold" Foreground="{StaticResource BrandKBrush}" />
+                  <TextBlock Text="1" FontSize="21" FontWeight="Bold" Foreground="{StaticResource Brand1Brush}" />
+                  <TextBlock Text="B" FontSize="21" FontWeight="Bold" Foreground="{StaticResource BrandBBrush}" />
+                  <TextBlock Text="E" FontSize="21" FontWeight="Bold" Foreground="{StaticResource BrandEBrush}" />
+                  <TextBlock Text="R" FontSize="21" FontWeight="Bold" Foreground="{StaticResource BrandRBrush}" />
+                </StackPanel>
                 <TextBlock Text="ONE" Foreground="#FFCF47" FontSize="21" FontWeight="Bold"/>
               </StackPanel>
               <TextBlock Text="Твоё место в классе" Foreground="White" FontSize="26" FontWeight="Bold" TextWrapping="Wrap"/>

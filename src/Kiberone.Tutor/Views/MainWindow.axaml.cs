@@ -1,7 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
 using Kiberone.Tutor;
@@ -34,14 +33,6 @@ public partial class MainWindow : Window
         var toggle = e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Meta);
         viewModel.SelectClassStudentCore(student, toggle);
         e.Handled = true;
-    }
-
-    private void OnClassStudentMenuClick(object? sender, RoutedEventArgs e)
-    {
-        if (sender is not Control control || control.DataContext is not StudentCardViewModel student)
-            return;
-        if (DataContext is MainViewModel viewModel)
-            viewModel.SelectClassStudentCore(student, toggle: false);
     }
 
     public async Task<string?> PickStudentSavesFolderAsync()

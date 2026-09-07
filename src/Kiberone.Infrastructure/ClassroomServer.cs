@@ -45,6 +45,8 @@ public sealed class ClassroomServer(
     private WebApplication? app;
     private readonly StudentCommandSockets commandSockets = new();
     private Action<ClassroomCommand, IReadOnlyList<string>>? queuedHandler;
+    private CancellationTokenSource? presenceCts;
+    private Task? presenceTask;
     public ClassroomLiveState LiveState { get; set; } = new();
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
@@ -67,13 +69,19 @@ public sealed class ClassroomServer(
             finally
             {
                 timer.Stop();
-                var actor = IsTutor(context) ? "tutor" : context.Request.Headers["X-Client-Id"].ToString();
+                var actor = IsTutor(context) ? "tutor" : NormalizeClientIdHeader(context.Request.Headers["X-Client-Id"].ToString());
                 if (string.IsNullOrWhiteSpace(actor)) actor = context.Request.Query["client_id"].ToString();
                 try
                 {
-                    await audit.WriteAsync(AuditCategory(context.Request.Path), context.Request.Method,
-                        actor, context.Request.Path + context.Request.QueryString, failure?.Message ?? string.Empty,
-                        failure is null ? context.Response.StatusCode : 500, timer.ElapsedMilliseconds, CancellationToken.None);
+                    await audit.WriteAsync(
+                        "Синхронизация",
+                        AuditAction(context.Request),
+                        actor,
+                        AuditTarget(context.Request),
+                        failure?.Message ?? string.Empty,
+                        failure is null ? context.Response.StatusCode : 500,
+                        timer.ElapsedMilliseconds,
+                        CancellationToken.None);
                 }
                 catch { }
             }
@@ -100,6 +108,8 @@ public sealed class ClassroomServer(
         queuedHandler = (command, targets) => commandSockets.Push(targets, command);
         commands.CommandQueued += queuedHandler;
         MapRoutes(app);
+        presenceCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        presenceTask = RunPresenceAuditLoopAsync(presenceCts.Token);
         await app.StartAsync(cancellationToken);
     }
 
@@ -116,6 +126,7 @@ public sealed class ClassroomServer(
         application.MapPost("/heartbeat", async ([FromBody] HeartbeatRequest request, CancellationToken ct) =>
         {
             clients.Heartbeat(request);
+            await WritePresenceAuditsAsync(ct);
             fileSync.BindClient(request.ClientId, request.StudentId);
             var home = request.StudentId is Guid studentId
                 ? await fileSync.ResolveStudentHomeAsync(studentId, ct)
@@ -329,26 +340,89 @@ public sealed class ClassroomServer(
             return;
         }
 
-        await commandSockets.AcceptAsync(context, clientId, commands, context.RequestAborted);
+        clientId = NormalizeClientIdHeader(clientId);
+        await commandSockets.AcceptAsync(
+            context,
+            clientId,
+            commands,
+            context.RequestAborted,
+            onChannelOpened: () => audit.WriteAsync("Система", "Подключение канала", clientId, "/ws", "", 101, 0, CancellationToken.None),
+            onChannelClosed: () => audit.WriteAsync("Система", "Отключение канала", clientId, "/ws", "", 200, 0, CancellationToken.None));
     }
 
+    private async Task RunPresenceAuditLoopAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+                await WritePresenceAuditsAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async Task WritePresenceAuditsAsync(CancellationToken ct)
+    {
+        foreach (var change in clients.DrainPresenceEvents())
+        {
+            var action = change.Online ? "Подключение" : "Отключение";
+            var details = string.IsNullOrWhiteSpace(change.Hostname) ? string.Empty : change.Hostname;
+            var target = string.IsNullOrWhiteSpace(change.PcNumber) ? change.ClientId : $"ПК {change.PcNumber}";
+            try
+            {
+                await audit.WriteAsync("Система", action, change.ClientId, target, details, 200, 0, ct);
+            }
+            catch { }
+        }
+    }
+
+    /// <summary>
+    /// Audits only meaningful sync work — not polls, screenshots, telemetry, quizzes, or commands.
+    /// </summary>
     private static bool ShouldAudit(HttpRequest request)
     {
-        if (request.Method is "GET" or "HEAD" or "OPTIONS") return false;
         var path = request.Path.Value ?? string.Empty;
-        return path is not "/heartbeat" and not "/screen" && !path.StartsWith("/commands/", StringComparison.Ordinal);
+        var method = request.Method;
+        if (path.Equals("/upload", StringComparison.OrdinalIgnoreCase) && HttpMethods.IsPost(method)) return true;
+        if (path.Equals("/delete", StringComparison.OrdinalIgnoreCase) && HttpMethods.IsPost(method)) return true;
+        if (path.Equals("/download", StringComparison.OrdinalIgnoreCase) && HttpMethods.IsGet(method)) return true;
+        if (path.Equals("/versions/restore", StringComparison.OrdinalIgnoreCase) && HttpMethods.IsPost(method)) return true;
+        if (path.Equals("/sync/prepare", StringComparison.OrdinalIgnoreCase) && HttpMethods.IsPost(method)) return true;
+        if (path.Equals("/sync/complete", StringComparison.OrdinalIgnoreCase) && HttpMethods.IsPost(method)) return true;
+        if (path.StartsWith("/sync/approval/", StringComparison.OrdinalIgnoreCase) && HttpMethods.IsPost(method)) return true;
+        return false;
     }
 
-    private static string AuditCategory(PathString path)
+    private static string AuditAction(HttpRequest request)
     {
-        var value = path.Value ?? string.Empty;
-        if (value.StartsWith("/sync", StringComparison.Ordinal) || value is "/upload" or "/delete") return "Синхронизация";
-        if (value.StartsWith("/store", StringComparison.Ordinal) || value.StartsWith("/kiberons", StringComparison.Ordinal)) return "Магазин";
-        if (value.StartsWith("/typing", StringComparison.Ordinal)) return "Печать";
-        if (value.StartsWith("/quiz", StringComparison.Ordinal)) return "Викторина";
-        if (value.StartsWith("/command", StringComparison.Ordinal)) return "Команды";
-        if (value.StartsWith("/student", StringComparison.Ordinal) || value.StartsWith("/group", StringComparison.Ordinal) || value.StartsWith("/achievement", StringComparison.Ordinal)) return "Ученики";
-        return "Система";
+        var path = request.Path.Value ?? string.Empty;
+        if (path.Equals("/upload", StringComparison.OrdinalIgnoreCase)) return "Загрузка файла";
+        if (path.Equals("/delete", StringComparison.OrdinalIgnoreCase)) return "Удаление файла";
+        if (path.Equals("/download", StringComparison.OrdinalIgnoreCase)) return "Скачивание файла";
+        if (path.Equals("/versions/restore", StringComparison.OrdinalIgnoreCase)) return "Восстановление версии";
+        if (path.Equals("/sync/prepare", StringComparison.OrdinalIgnoreCase)) return "Подготовка синхронизации";
+        if (path.Equals("/sync/complete", StringComparison.OrdinalIgnoreCase)) return "Завершение синхронизации";
+        if (path.StartsWith("/sync/approval/", StringComparison.OrdinalIgnoreCase)) return "Решение по синхронизации";
+        return request.Method;
+    }
+
+    private static string AuditTarget(HttpRequest request)
+    {
+        var path = request.Path.Value ?? string.Empty;
+        if (path.Equals("/upload", StringComparison.OrdinalIgnoreCase)
+            || path.Equals("/download", StringComparison.OrdinalIgnoreCase)
+            || path.Equals("/delete", StringComparison.OrdinalIgnoreCase)
+            || path.Equals("/versions/restore", StringComparison.OrdinalIgnoreCase))
+        {
+            var filePath = request.Query["path"].ToString();
+            if (string.IsNullOrWhiteSpace(filePath))
+                filePath = request.Headers["X-Relative-Path"].ToString();
+            if (!string.IsNullOrWhiteSpace(filePath))
+                return DecodeUploadPath(filePath);
+        }
+        return path + request.QueryString;
     }
 
     private string? StudentLocationFilter() =>
@@ -406,6 +480,17 @@ public sealed class ClassroomServer(
 
     public async ValueTask DisposeAsync()
     {
+        if (presenceCts is not null)
+        {
+            try { presenceCts.Cancel(); } catch { }
+            if (presenceTask is not null)
+            {
+                try { await presenceTask; } catch { }
+            }
+            presenceCts.Dispose();
+            presenceCts = null;
+            presenceTask = null;
+        }
         if (queuedHandler is not null)
         {
             commands.CommandQueued -= queuedHandler;

@@ -16,13 +16,24 @@ public sealed class StudentCommandSockets : IAsyncDisposable
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<Guid, Session>> sessions =
         new(StringComparer.OrdinalIgnoreCase);
 
-    public async Task AcceptAsync(HttpContext context, string clientId, ReliableCommandQueue commands, CancellationToken cancellationToken)
+    public async Task AcceptAsync(
+        HttpContext context,
+        string clientId,
+        ReliableCommandQueue commands,
+        CancellationToken cancellationToken,
+        Func<Task>? onChannelOpened = null,
+        Func<Task>? onChannelClosed = null)
     {
         using var socket = await context.WebSockets.AcceptWebSocketAsync();
         var session = new Session(socket);
         var id = Guid.NewGuid();
         var bag = sessions.GetOrAdd(clientId, _ => new ConcurrentDictionary<Guid, Session>());
+        var opened = bag.IsEmpty;
         bag[id] = session;
+        if (opened && onChannelOpened is not null)
+        {
+            try { await onChannelOpened(); } catch { }
+        }
         try
         {
             await SendPendingAsync(session, clientId, commands, cancellationToken);
@@ -43,9 +54,14 @@ public sealed class StudentCommandSockets : IAsyncDisposable
         finally
         {
             bag.TryRemove(id, out _);
-            if (bag.IsEmpty)
+            var closed = bag.IsEmpty;
+            if (closed)
                 sessions.TryRemove(clientId, out _);
             await session.DisposeAsync();
+            if (closed && onChannelClosed is not null)
+            {
+                try { await onChannelClosed(); } catch { }
+            }
         }
     }
 

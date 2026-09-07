@@ -102,6 +102,19 @@ public sealed class TypingLessonServiceTests : IAsyncLifetime
             new TelemetryUpdateRequest(studentId, 0, 5, 1, 10, 0, ParticipantStatus.Typing, new Dictionary<string, int>())));
     }
 
+    [Fact]
+    public async Task DefaultLessons_CannotBeUpdated()
+    {
+        await ClassroomDatabase.SeedDefaultsAsync(options);
+        var service = new TypingLessonService(options);
+        var defaults = await service.ListLessonsAsync();
+        var preset = Assert.Single(defaults.Where(x => TypingLessonCatalog.IsDefaultName(x.Name)).Take(1));
+
+        await Assert.ThrowsAsync<LessonValidationException>(() => service.UpdateLessonAsync(preset.Id, new UpdateLessonRequest(
+            preset.Name, "changed", LessonContentKind.Custom, "ru-RU", 50, 10, LessonLifecycle.Published,
+            [new LessonStepDraft("Текст", "новый текст")])));
+    }
+
     public async Task DisposeAsync()
     {
         await Task.Yield();

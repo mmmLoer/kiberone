@@ -6,8 +6,14 @@
 
     <Application.Resources>
         <ResourceDictionary>
+            <!-- Fixed K1BER logo letter colors (R is theme-swapped for dark contrast). -->
+            <SolidColorBrush x:Key="BrandKBrush" Color="#2BB5AE" />
+            <SolidColorBrush x:Key="Brand1Brush" Color="#F5C518" />
+            <SolidColorBrush x:Key="BrandBBrush" Color="#8B1E2D" />
+            <SolidColorBrush x:Key="BrandEBrush" Color="#8A8F96" />
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="BrandRBrush" Color="#1A2A4A" />
                     <SolidColorBrush x:Key="CanvasBrush" Color="#F6F8F9" />
                     <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF" />
                     <SolidColorBrush x:Key="SurfaceSoftBrush" Color="#F1F5F6" />
@@ -40,6 +46,7 @@
                     <BoxShadows x:Key="CardShadow">0 6 18 0 #0D243239</BoxShadows>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="BrandRBrush" Color="#7B96B8" />
                     <SolidColorBrush x:Key="CanvasBrush" Color="#0F1418" />
                     <SolidColorBrush x:Key="SurfaceBrush" Color="#1A2228" />
                     <SolidColorBrush x:Key="SurfaceSoftBrush" Color="#232C33" />
@@ -125,6 +132,19 @@
             <Setter Property="CornerRadius" Value="14" />
             <Setter Property="Padding" Value="24" />
             <Setter Property="BoxShadow" Value="{DynamicResource CardShadow}" />
+        </Style>
+        <Style Selector="Border.lessonCard">
+            <Setter Property="Width" Value="300" />
+            <Setter Property="MinHeight" Value="148" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="16" />
+            <Setter Property="Margin" Value="0,0,14,14" />
+        </Style>
+        <Style Selector="Border.lessonCard:pointerover">
+            <Setter Property="BorderBrush" Value="{DynamicResource TealBrush}" />
         </Style>
         <Style Selector="Border.subcard">
             <Setter Property="Background" Value="{DynamicResource SurfaceSoftBrush}" />
@@ -229,6 +249,38 @@
         <Style Selector="Button.ghost:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource SoftHoverBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource TealBrush}" />
+        </Style>
+
+        <Style Selector="Button.themeToggle Path">
+            <Setter Property="Fill" Value="{DynamicResource InkBrush}" />
+            <Setter Property="RenderTransformOrigin" Value="50%,50%" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.2" Easing="CubicEaseOut" />
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.2" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.themeToggle Path.themeSun">
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="RenderTransform" Value="rotate(0deg)" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+        </Style>
+        <Style Selector="Button.themeToggle.dark Path.themeSun">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="RenderTransform" Value="rotate(90deg)" />
+        </Style>
+        <Style Selector="Button.themeToggle Path.themeMoon">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="RenderTransform" Value="rotate(-90deg)" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+        </Style>
+        <Style Selector="Button.themeToggle.dark Path.themeMoon">
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="RenderTransform" Value="rotate(0deg)" />
+        </Style>
+        <Style Selector="Button.themeToggle:pointerover Path">
+            <Setter Property="Fill" Value="{DynamicResource TealBrush}" />
         </Style>
 
         <Style Selector="Border.segmentBar">
@@ -419,9 +471,10 @@
         <Style Selector="Button.nav.compact">
             <Setter Property="FontSize" Value="13" />
         </Style>
+        <Style Selector="Button.nav:pointerover">
+            <Setter Property="Foreground" Value="{DynamicResource TealBrush}" />
+        </Style>
         <Style Selector="Button.nav:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="{DynamicResource SoftHoverBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource MintBrush}" />
             <Setter Property="TextElement.Foreground" Value="{DynamicResource TealBrush}" />
         </Style>
         <Style Selector="Button.nav.active">
@@ -519,6 +572,11 @@
             <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
             <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.15" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
         </Style>
         <Style Selector="MenuItem">
             <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
@@ -561,6 +619,122 @@
             <Setter Property="Height" Value="0" />
             <Setter Property="Opacity" Value="0" />
             <Setter Property="IsHitTestVisible" Value="False" />
+        </Style>
+
+        <!-- Shared motion language: ~200ms cubic ease-out, subtle opacity + transform. -->
+        <Style Selector="Border.motionFade, Grid.motionFade, StackPanel.motionFade, ScrollViewer.motionFade, Panel.motionFade">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="RenderTransformOrigin" Value="50%,50%" />
+            <Setter Property="RenderTransform" Value="translateY(6px) scale(0.98)" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.2" Easing="CubicEaseOut" />
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.2" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Border.motionFade.open, Grid.motionFade.open, StackPanel.motionFade.open, ScrollViewer.motionFade.open, Panel.motionFade.open">
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="RenderTransform" Value="none" />
+        </Style>
+
+        <Style Selector="Border.motionFadeStart, Grid.motionFadeStart, StackPanel.motionFadeStart">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="RenderTransformOrigin" Value="50%,50%" />
+            <Setter Property="RenderTransform" Value="translateX(10px) scale(0.98)" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.2" Easing="CubicEaseOut" />
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.2" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Border.motionFadeStart.open, Grid.motionFadeStart.open, StackPanel.motionFadeStart.open">
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="RenderTransform" Value="none" />
+        </Style>
+
+        <Style Selector="Border.groupsWorkspace">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="ClipToBounds" Value="True" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Width" Duration="0:0:0.22" Easing="CubicEaseOut" />
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.18" Easing="CubicEaseOut" />
+                    <ThicknessTransition Property="Margin" Duration="0:0:0.22" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Border.groupsWorkspace.open">
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="IsHitTestVisible" Value="True" />
+            <Setter Property="Margin" Value="18,0,0,0" />
+        </Style>
+
+        <Style Selector="StackPanel.revealForm">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+            <Setter Property="MaxHeight" Value="0" />
+            <Setter Property="ClipToBounds" Value="True" />
+            <Setter Property="RenderTransformOrigin" Value="50%,0%" />
+            <Setter Property="RenderTransform" Value="translateY(-4px)" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.2" Easing="CubicEaseOut" />
+                    <DoubleTransition Property="MaxHeight" Duration="0:0:0.22" Easing="CubicEaseOut" />
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.2" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="StackPanel.revealForm.open">
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="IsHitTestVisible" Value="True" />
+            <Setter Property="MaxHeight" Value="280" />
+            <Setter Property="RenderTransform" Value="none" />
+        </Style>
+
+        <Style Selector="Border.listCardInner, Border.lessonCard, Border.subcard">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.15" Easing="CubicEaseOut" />
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.15" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Border.revealPanel">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+            <Setter Property="MaxHeight" Value="0" />
+            <Setter Property="ClipToBounds" Value="True" />
+            <Setter Property="RenderTransformOrigin" Value="50%,0%" />
+            <Setter Property="RenderTransform" Value="translateY(-4px)" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.2" Easing="CubicEaseOut" />
+                    <DoubleTransition Property="MaxHeight" Duration="0:0:0.22" Easing="CubicEaseOut" />
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.2" Easing="CubicEaseOut" />
+                    <BrushTransition Property="Background" Duration="0:0:0.15" Easing="CubicEaseOut" />
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.15" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Border.revealPanel.open">
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="IsHitTestVisible" Value="True" />
+            <Setter Property="MaxHeight" Value="320" />
+            <Setter Property="RenderTransform" Value="none" />
+        </Style>
+
+        <Style Selector="Button.segment /template/ ContentPresenter, Button.choiceCard /template/ ContentPresenter, Button.toggleCard /template/ ContentPresenter, Button.ghost /template/ ContentPresenter, Button.listCard /template/ ContentPresenter">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.15" Easing="CubicEaseOut" />
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.15" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
         </Style>
     </Application.Styles>
 </Application>

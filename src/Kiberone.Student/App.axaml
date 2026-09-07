@@ -8,6 +8,16 @@
         <local:ViewLocator />
     </Application.DataTemplates>
 
+    <Application.Resources>
+        <!-- Fixed K1BER logo letter colors (not theme-swapped). -->
+        <SolidColorBrush x:Key="BrandKBrush" Color="#2BB5AE" />
+        <SolidColorBrush x:Key="Brand1Brush" Color="#F5C518" />
+        <SolidColorBrush x:Key="BrandBBrush" Color="#8B1E2D" />
+        <SolidColorBrush x:Key="BrandEBrush" Color="#8A8F96" />
+        <SolidColorBrush x:Key="BrandRBrush" Color="#1A2A4A" />
+        <SolidColorBrush x:Key="BrandInkBrush" Color="#172126" />
+    </Application.Resources>
+
     <Application.Styles>
         <FluentTheme />
 

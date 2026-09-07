@@ -48,6 +48,8 @@ public sealed class TypingLessonService(DbContextOptions<ClassroomDbContext> opt
     {
         var errors = LessonValidator.Validate(request);
         if (errors.Count > 0) throw new LessonValidationException(errors);
+        if (TypingLessonCatalog.IsDefaultName(request.Name))
+            throw new LessonValidationException(["Нельзя создать урок под именем встроенного пресета."]);
         var lesson = new TypingLessonTemplate
         {
             Name = request.Name.Trim(),
@@ -79,7 +81,11 @@ public sealed class TypingLessonService(DbContextOptions<ClassroomDbContext> opt
         var lesson = await db.TypingLessons.Include(x => x.Steps)
             .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (lesson is null) return null;
+        if (TypingLessonCatalog.IsDefaultName(lesson.Name))
+            throw new LessonValidationException(["Встроенные уроки нельзя изменять. Создайте копию как новый урок."]);
         lesson.Name = request.Name.Trim();
+        if (TypingLessonCatalog.IsDefaultName(lesson.Name))
+            throw new LessonValidationException(["Нельзя сохранить урок под именем встроенного пресета."]);
         lesson.Description = request.Description.Trim();
         lesson.ContentKind = request.ContentKind;
         lesson.KeyboardLayout = request.KeyboardLayout.Trim();
