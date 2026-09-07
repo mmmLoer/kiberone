@@ -9,7 +9,10 @@ public sealed class VpnController
         "VPN-служба не установлена. Запустите Repair-Student-Vpn.cmd или переустановите Student от администратора (один раз).";
 
     private const string ServiceStoppedMessage =
-        "VPN-служба установлена, но не запущена. Выполните: sc start KIBERoneStudentVpn";
+        "VPN-служба установлена, но не отвечает. Запустите Repair-Student-Vpn.cmd от администратора или: sc start KIBERoneStudentVpn";
+
+    private const string ServicePipeMessage =
+        "VPN-служба запущена, но pipe ещё не готов. Подождите пару секунд и включите VPN снова.";
 
     private readonly VpnOptions options;
     private readonly VpnBridgeClient bridgeClient = new();
@@ -29,6 +32,9 @@ public sealed class VpnController
 
     public bool IsServiceAvailable => TryResolveBridge() is not null;
     public string ConfigPath => options.ResolvedConfigPath;
+
+    /// <summary>Waits for the bridge pipe (same as Connect). Use from /verify-vpn.</summary>
+    public bool WaitForBridge() => EnsureBridgeReady() is not null;
 
     public bool IsConnected
     {
@@ -226,6 +232,34 @@ public sealed class VpnController
         }
     }
 
+    /// <summary>
+    /// Copies staged Student.exe into the install dir. Uses the SYSTEM bridge when Program Files is not writable.
+    /// </summary>
+    public bool TryApplyStudentUpdate(string sourceExe, string targetExe)
+    {
+        try
+        {
+            var targetDir = Path.GetDirectoryName(targetExe);
+            if (!string.IsNullOrWhiteSpace(targetDir) && CanWriteToPath(Path.Combine(targetDir, "probe")))
+            {
+                File.Copy(sourceExe, targetExe, overwrite: true);
+                return true;
+            }
+
+            var activeBridge = EnsureBridgeReady();
+            if (activeBridge is null)
+                return false;
+
+            activeBridge.ApplyUpdate(sourceExe, targetExe);
+            return true;
+        }
+        catch (Exception error)
+        {
+            VpnLog.Warn("controller", $"TryApplyStudentUpdate failed: {error.Message}");
+            return false;
+        }
+    }
+
     private VpnBridgeClient? EnsureBridgeReady()
     {
         var activeBridge = TryResolveBridge();
@@ -245,7 +279,25 @@ public sealed class VpnController
             ResetBridgeCache();
         }
 
-        return TryResolveBridge();
+        // After install/reboot the service can be Running before the named pipe accepts clients.
+        for (var attempt = 0; attempt < 30; attempt++)
+        {
+            ResetBridgeCache();
+            activeBridge = TryResolveBridge();
+            if (activeBridge is not null)
+                return activeBridge;
+
+            if (!bridgeClient.IsServiceRunning)
+            {
+                TryStartBridgeService();
+                ResetBridgeCache();
+            }
+
+            Thread.Sleep(500);
+        }
+
+        VpnLog.Warn("controller", "VPN bridge service did not answer pipe ping in time.");
+        return null;
     }
 
     private void ResetBridgeCache()
@@ -326,10 +378,13 @@ public sealed class VpnController
         if (!options.RequireBridge)
             return string.Empty;
 
-        if (bridgeClient.IsServiceInstalled && !bridgeClient.IsServiceRunning)
+        if (!bridgeClient.IsServiceInstalled)
+            return ServiceMissingMessage;
+
+        if (!bridgeClient.IsServiceRunning)
             return ServiceStoppedMessage;
 
-        return ServiceMissingMessage;
+        return ServicePipeMessage;
     }
 
     private void EnsureDirectAllowed()

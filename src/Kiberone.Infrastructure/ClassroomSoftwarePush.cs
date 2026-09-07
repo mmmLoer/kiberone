@@ -66,7 +66,20 @@ public static class ClassroomSoftwarePush
             await DownloadAssetAsync(http, item, destinationRoot, ct);
             downloaded++;
             if (!string.IsNullOrWhiteSpace(item.Sha256))
+            {
+                var verifiedPath = item.Kind == "folder"
+                    ? null
+                    : Path.Combine(destinationRoot, item.Name);
+                if (verifiedPath is not null && File.Exists(verifiedPath))
+                {
+                    await using var stream = File.OpenRead(verifiedPath);
+                    var hash = Convert.ToHexString(await System.Security.Cryptography.SHA256.HashDataAsync(stream, ct));
+                    if (!hash.Equals(item.Sha256, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException($"SHA-256 не совпал для «{item.Name}».");
+                }
+
                 applied[item.Name] = item.Sha256;
+            }
 
             if (!runInstallers) continue;
             var folder = item.Kind == "folder" ? target : Path.GetDirectoryName(target)!;

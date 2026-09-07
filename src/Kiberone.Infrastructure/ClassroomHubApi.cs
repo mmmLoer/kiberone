@@ -11,7 +11,22 @@ public static class ClassroomHubApi
     {
         app.MapGet("/api/health", () => Results.Ok(new { ok = true }));
         app.MapGet("/api/locations", () => Results.Json(store.List()));
-        app.MapGet("/api/locations/{location}/roster", (string location) => Results.Json(store.Get(location)));
+        app.MapGet("/api/locations/{location}/roster", (string location, HttpRequest request) =>
+        {
+            var password = request.Headers["X-Location-Password"].ToString();
+            if (string.IsNullOrWhiteSpace(password))
+                password = request.Query["password"].ToString();
+            if (string.IsNullOrWhiteSpace(password))
+                return Results.Json(new { error = "Нужен пароль локации." }, statusCode: 401);
+            try
+            {
+                return Results.Json(store.GetAuthorized(location, password));
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return Results.Json(new { error = "Неверный пароль локации." }, statusCode: 403);
+            }
+        });
         app.MapPut("/api/locations/{location}/roster", async (string location, HttpRequest request, CancellationToken ct) =>
         {
             var body = await JsonSerializer.DeserializeAsync<LocationRosterUploadRequest>(request.Body, new JsonSerializerOptions(JsonSerializerDefaults.Web), ct);

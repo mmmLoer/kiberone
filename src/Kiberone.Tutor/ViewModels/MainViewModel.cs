@@ -706,7 +706,12 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         {
             IsBusy = true;
             await ApplyLocationProgramAsync();
-            var snapshot = await CreateHubClient().DownloadAsync(LocationName);
+            if (string.IsNullOrWhiteSpace(LocationUploadPassword))
+            {
+                HubStatus = "Укажите пароль локации, чтобы скачать roster с сервера.";
+                return;
+            }
+            var snapshot = await CreateHubClient().DownloadAsync(LocationName, LocationUploadPassword);
             if (snapshot is null)
                 throw new InvalidOperationException("Сервер не вернул данные локации.");
             if (snapshot.Groups.Count == 0 && snapshot.Students.Count == 0)
@@ -2915,9 +2920,12 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             await ApplyLocationProgramAsync();
             try
             {
-                var snapshot = await CreateHubClient().DownloadAsync(LocationName);
-                if (snapshot is not null && (snapshot.Groups.Count > 0 || snapshot.Students.Count > 0))
-                    await classroom.ReplaceLocationRosterAsync(snapshot);
+                if (!string.IsNullOrWhiteSpace(LocationUploadPassword))
+                {
+                    var snapshot = await CreateHubClient().DownloadAsync(LocationName, LocationUploadPassword);
+                    if (snapshot is not null && (snapshot.Groups.Count > 0 || snapshot.Students.Count > 0))
+                        await classroom.ReplaceLocationRosterAsync(snapshot);
+                }
             }
             catch (Exception error)
             {

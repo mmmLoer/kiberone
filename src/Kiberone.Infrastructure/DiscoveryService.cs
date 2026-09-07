@@ -371,9 +371,11 @@ public static class LocalAddressResolver
         if (lan.Count == 0)
             return IsPrivate(address);
 
-        // Prefer beacons that share a classroom subnet. WireGuard tunnel IPs (often 10.x)
-        // are private but not on the student LAN, so they must be ignored.
-        return lan.Any(endpoint => IsSameSubnet(endpoint, address));
+        // Prefer same-subnet classroom beacons; also allow other private hosts (routed WISP).
+        if (lan.Any(endpoint => IsSameSubnet(endpoint, address)))
+            return true;
+
+        return IsPrivate(address);
     }
 
     internal static bool IsClassroomLanInterface(NetworkInterface network)

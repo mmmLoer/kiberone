@@ -174,7 +174,7 @@ public sealed class ClassroomDatabaseSeedTests : IAsyncLifetime
         await using var db = new ClassroomDbContext(options);
         Assert.Empty(await db.Groups.ToListAsync());
         Assert.Empty(await db.Students.ToListAsync());
-        Assert.Equal(2, await db.TypingLessons.CountAsync());
+        Assert.Equal(3, await db.TypingLessons.CountAsync());
         Assert.Equal(3, await db.Achievements.CountAsync());
         Assert.Equal(3, await db.StoreItems.CountAsync());
     }

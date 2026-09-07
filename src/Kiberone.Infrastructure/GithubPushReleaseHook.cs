@@ -21,6 +21,8 @@ public static class GithubPushReleaseHook
                 return Results.NotFound();
 
             var payload = await new StreamReader(request.Body).ReadToEndAsync();
+            if (payload.Length > 2_000_000)
+                return Results.Json(new { error = "Слишком большое тело webhook." }, statusCode: 413);
             if (!VerifySignature(secret, payload, request.Headers["X-Hub-Signature-256"].ToString()))
                 return Results.Json(new { error = "Неверная подпись webhook." }, statusCode: 401);
 
@@ -58,13 +60,17 @@ public static class GithubPushReleaseHook
         if (string.IsNullOrWhiteSpace(header) || !header.StartsWith("sha256=", StringComparison.OrdinalIgnoreCase))
             return false;
         var expectedHex = header["sha256=".Length..].Trim();
+        if (expectedHex.Length == 0 || expectedHex.Length % 2 != 0)
+            return false;
         var key = Encoding.UTF8.GetBytes(secret);
         var body = Encoding.UTF8.GetBytes(payload);
         var hash = HMACSHA256.HashData(key, body);
         var actualHex = Convert.ToHexString(hash);
-        return CryptographicOperations.FixedTimeEquals(
-            Encoding.ASCII.GetBytes(actualHex.ToLowerInvariant()),
-            Encoding.ASCII.GetBytes(expectedHex.ToLowerInvariant()));
+        var actual = Encoding.ASCII.GetBytes(actualHex.ToLowerInvariant());
+        var expected = Encoding.ASCII.GetBytes(expectedHex.ToLowerInvariant());
+        if (actual.Length != expected.Length)
+            return false;
+        return CryptographicOperations.FixedTimeEquals(actual, expected);
     }
 
     private static void StartReleaseUnit(string unit)

@@ -11,12 +11,14 @@ using System.Diagnostics;
 
 namespace Kiberone.Infrastructure;
 
-public sealed record ClassroomServerOptions(string SyncToken, int Port = 8765)
+public sealed record ClassroomServerOptions(string SyncToken, string TutorToken, int Port = 8765)
 {
     public void Validate()
     {
         if (string.IsNullOrWhiteSpace(SyncToken) || SyncToken.Length < 24)
             throw new InvalidOperationException("SyncToken должен содержать не менее 24 символов.");
+        if (string.IsNullOrWhiteSpace(TutorToken) || TutorToken.Length < 24)
+            throw new InvalidOperationException("TutorToken должен содержать не менее 24 символов.");
         if (Port is < 1 or > 65535) throw new InvalidOperationException("Некорректный TCP-порт.");
     }
 }
@@ -192,8 +194,18 @@ public sealed class ClassroomServer(
             !IsTutor(context) ? Results.Unauthorized() : await classroom.DeleteStudentAsync(id, ct) ? Results.NoContent() : Results.NotFound());
         application.MapPost("/grades", async (HttpContext context, [FromBody] GradeDraft draft, CancellationToken ct) =>
             IsTutor(context) ? Results.Ok(await classroom.AddGradeAsync(draft, ct)) : Results.Unauthorized());
-        application.MapPost("/check-in", ([FromBody] CheckInRequest request, CancellationToken ct) =>
-            classroom.CheckInAsync(request.StudentId, request.Topic, request.PcNumber, request.ClientId, ct));
+        application.MapPost("/check-in", async (HttpContext context, [FromBody] CheckInRequest request, CancellationToken ct) =>
+        {
+            var headerClient = NormalizeClientIdHeader(context.Request.Headers["X-Client-Id"].ToString());
+            if (string.IsNullOrWhiteSpace(headerClient)
+                || !string.Equals(headerClient, request.ClientId, StringComparison.OrdinalIgnoreCase))
+                return Results.Json(new { error = "client_id не совпадает." }, statusCode: 403);
+            var bound = clients.GetAll().FirstOrDefault(c =>
+                string.Equals(c.ClientId, headerClient, StringComparison.OrdinalIgnoreCase));
+            if (bound?.StudentId is Guid studentId && studentId != request.StudentId)
+                return Results.Json(new { error = "student_id не привязан к этому ПК." }, statusCode: 403);
+            return Results.Ok(await classroom.CheckInAsync(request.StudentId, request.Topic, request.PcNumber, request.ClientId, ct));
+        });
         application.MapGet("/achievements", (CancellationToken ct) => classroom.ListAchievementsAsync(ct));
         application.MapPost("/achievements", async (HttpContext context, [FromBody] AchievementDraft draft, CancellationToken ct) =>
             IsTutor(context) ? Results.Ok(await classroom.CreateAchievementAsync(draft, ct)) : Results.Unauthorized());
@@ -206,7 +218,17 @@ public sealed class ClassroomServer(
             await classroom.GetSecretItemAsync(code, ct) is { } item ? Results.Ok(item) : Results.NotFound());
         application.MapPost("/store/items", async (HttpContext context, [FromBody] StoreItemDraft draft, CancellationToken ct) =>
             IsTutor(context) ? Results.Ok(await classroom.CreateStoreItemAsync(draft, ct)) : Results.Unauthorized());
-        application.MapPost("/store/purchase", ([FromBody] PurchaseRequest request, CancellationToken ct) => classroom.PurchaseAsync(request, ct));
+        application.MapPost("/store/purchase", async (HttpContext context, [FromBody] PurchaseRequest request, CancellationToken ct) =>
+        {
+            var headerClient = NormalizeClientIdHeader(context.Request.Headers["X-Client-Id"].ToString());
+            if (string.IsNullOrWhiteSpace(headerClient))
+                return Results.Unauthorized();
+            var bound = clients.GetAll().FirstOrDefault(c =>
+                string.Equals(c.ClientId, headerClient, StringComparison.OrdinalIgnoreCase));
+            if (bound?.StudentId is not Guid studentId || studentId != request.StudentId)
+                return Results.Json(new { error = "Покупка только для ученика, привязанного к этому ПК." }, statusCode: 403);
+            return Results.Ok(await classroom.PurchaseAsync(request, ct));
+        });
         application.MapPut("/store/orders/{id:guid}/status", async (HttpContext context, Guid id, [FromBody] UpdateOrderStatusRequest request, CancellationToken ct) =>
             !IsTutor(context) ? Results.Unauthorized() : await classroom.UpdateOrderStatusAsync(id, request, ct) is { } order ? Results.Ok(order) : Results.NotFound());
         application.MapPost("/sync/prepare", ([FromBody] SyncPrepareRequest request, CancellationToken ct) => fileSync.PrepareAsync(request, ct));
@@ -224,13 +246,19 @@ public sealed class ClassroomServer(
         application.MapPost("/upload", async (HttpContext context, CancellationToken ct) =>
         {
             var clientId = NormalizeClientIdHeader(context.Request.Headers["X-Client-Id"].ToString());
+            if (string.IsNullOrWhiteSpace(clientId))
+                return Results.Unauthorized();
             var path = ResolveUploadRelativePath(context);
             if (string.IsNullOrWhiteSpace(path))
                 return Results.BadRequest(new { error = "Нужен путь файла (query path или X-Relative-Path)." });
             return Results.Ok(await fileSync.UploadAsync(clientId, path, context.Request.Body, ct));
         });
-        application.MapPost("/delete", async ([FromBody] DeleteFileRequest request, CancellationToken ct) =>
+        application.MapPost("/delete", async (HttpContext context, [FromBody] DeleteFileRequest request, CancellationToken ct) =>
         {
+            var headerClient = NormalizeClientIdHeader(context.Request.Headers["X-Client-Id"].ToString());
+            if (string.IsNullOrWhiteSpace(headerClient)
+                || !string.Equals(headerClient, request.ClientId, StringComparison.OrdinalIgnoreCase))
+                return Results.Json(new { error = "client_id не совпадает." }, statusCode: 403);
             await fileSync.DeleteAsync(request.ClientId, request.Path, ct);
             return Results.Ok(new { ok = true });
         });
@@ -326,8 +354,9 @@ public sealed class ClassroomServer(
     private string? StudentLocationFilter() =>
         LiveState.ShowAllLocations ? null : LiveState.LocationName;
 
-    private static bool IsTutor(HttpContext context) =>
-        context.Request.Headers["X-Tutor"].ToString().Equals("1", StringComparison.Ordinal);
+    private bool IsTutor(HttpContext context) =>
+        context.Request.Headers["X-Tutor"].ToString().Equals("1", StringComparison.Ordinal)
+        && TokensMatch(context.Request.Headers["X-Tutor-Token"].ToString(), serverOptions.TutorToken);
 
     private static string NormalizeClientIdHeader(string value)
     {

@@ -20,7 +20,7 @@ public static class VpnInstallVerifier
 
         var options = new VpnOptions { RequireBridge = true };
         var controller = new VpnController(options);
-        if (!controller.IsServiceAvailable)
+        if (!controller.WaitForBridge())
         {
             Console.WriteLine("Ошибка: служба KIBERoneStudentVpn не запущена.");
             Console.WriteLine("Запустите Repair-Student-Vpn.cmd от администратора.");

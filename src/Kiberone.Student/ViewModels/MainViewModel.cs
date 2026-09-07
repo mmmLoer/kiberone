@@ -76,6 +76,7 @@ public partial class MainViewModel : ViewModelBase
     private bool loginGroupChosenByUser;
     private string? lastPreferredGroup;
     public Action? UpdateRequested { get; set; }
+    public Action? RetryRequested { get; set; }
     public Action? FocusEnabled { get; set; }
     public Action? FocusDisabled { get; set; }
     public Action? WatchdogEnabled { get; set; }
@@ -458,6 +459,7 @@ public partial class MainViewModel : ViewModelBase
     {
         ConnectionActionMessage = "Ищем Tutor в локальной сети… Обычно это занимает несколько секунд.";
         StatusMessage = "Повторно ищем Tutor в локальной сети…";
+        RetryRequested?.Invoke();
     }
 
     public CommandExecutionResult ApplyCommand(ClassroomCommand command)
@@ -506,9 +508,16 @@ public partial class MainViewModel : ViewModelBase
                 StatusMessage = "Снова можно открывать все окна.";
                 return CommandExecutionResult.Success;
             case ClassroomCommandKinds.WatchdogOn:
-                WatchdogEnabled?.Invoke();
-                StatusMessage = "Приложение теперь нельзя закрыть.";
-                return CommandExecutionResult.Success;
+                try
+                {
+                    WatchdogEnabled?.Invoke();
+                    StatusMessage = "Приложение теперь нельзя закрыть.";
+                    return CommandExecutionResult.Success;
+                }
+                catch (Exception error)
+                {
+                    return new CommandExecutionResult(false, error.Message);
+                }
             case ClassroomCommandKinds.WatchdogOff:
                 WatchdogDisabled?.Invoke();
                 StatusMessage = "Приложение снова можно закрыть.";
@@ -537,6 +546,27 @@ public partial class MainViewModel : ViewModelBase
                 QuizFeedback = "Выберите один вариант.";
                 IsQuizVisible = true;
                 return CommandExecutionResult.Success;
+            case ClassroomCommandKinds.OpenUrl:
+            {
+                var url = command.Payload.TryGetProperty("url", out var urlProperty) ? urlProperty.GetString() : null;
+                if (string.IsNullOrWhiteSpace(url)
+                    || !Uri.TryCreate(url, UriKind.Absolute, out var uri)
+                    || uri.Scheme is not ("https" or "http")
+                    || uri.Scheme == "http" && !uri.IsLoopback)
+                    return new CommandExecutionResult(false, "Разрешены только https-ссылки.");
+                try
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri.AbsoluteUri)
+                    {
+                        UseShellExecute = true
+                    });
+                    return CommandExecutionResult.Success;
+                }
+                catch (Exception error)
+                {
+                    return new CommandExecutionResult(false, error.Message);
+                }
+            }
             default:
                 return new CommandExecutionResult(false, $"Команда {command.Kind} пока не поддерживается этим экраном.");
         }

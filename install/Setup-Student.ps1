@@ -48,9 +48,8 @@ if ($null -eq $vpnError) {
     & $installedExe /verify-vpn
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
-        Write-Warning "Student is installed, but VPN probe check failed."
-        Write-Warning "Rerun Install-Student.cmd or Repair-Student-Vpn.cmd as admin."
-        exit $LASTEXITCODE
+        Write-Warning "Student and VPN service are installed, but embedded VPN probe failed."
+        Write-Warning "That is OK for class use after Tutor pushes a real config."
     }
 } else {
     Write-Host ""

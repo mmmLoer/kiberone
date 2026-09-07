@@ -104,7 +104,10 @@ public partial class App : Application
         var tokenPath = Path.Combine(dataDirectory, "sync-token.txt");
         var token = File.Exists(tokenPath) ? File.ReadAllText(tokenPath).Trim() : Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         if (!File.Exists(tokenPath)) File.WriteAllText(tokenPath, token);
-        var serverOptions = new ClassroomServerOptions(token);
+        var tutorTokenPath = Path.Combine(dataDirectory, "tutor-token.txt");
+        var tutorToken = File.Exists(tutorTokenPath) ? File.ReadAllText(tutorTokenPath).Trim() : Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        if (!File.Exists(tutorTokenPath)) File.WriteAllText(tutorTokenPath, tutorToken);
+        var serverOptions = new ClassroomServerOptions(token, tutorToken);
         var clientRegistry = new ClientRegistry();
         var commandQueue = new ReliableCommandQueue(clientRegistry);
         var quizService = new QuizService(databaseOptions, clientRegistry, commandQueue);

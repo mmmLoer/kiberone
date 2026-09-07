@@ -84,7 +84,19 @@ public sealed class VpnBridgeServer
 
     private static VpnBridgeResponse Execute(VpnBridgeRequest request)
     {
-        var configPath = ResolveConfigPath(request.ConfigPath);
+        if (request.Action == VpnBridgeAction.ApplyUpdate)
+            return ApplyUpdate(request);
+
+        string configPath;
+        try
+        {
+            configPath = ResolveConfigPath(request.ConfigPath);
+        }
+        catch (InvalidOperationException error)
+        {
+            return new VpnBridgeResponse(false, Error: error.Message);
+        }
+
         return request.Action switch
         {
             VpnBridgeAction.Ping => new VpnBridgeResponse(true, State: "ready"),
@@ -94,6 +106,33 @@ public sealed class VpnBridgeServer
             VpnBridgeAction.Disconnect => Disconnect(configPath),
             _ => new VpnBridgeResponse(false, Error: $"Неизвестное действие: {request.Action}")
         };
+    }
+
+    private static VpnBridgeResponse ApplyUpdate(VpnBridgeRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.SourcePath) || string.IsNullOrWhiteSpace(request.TargetPath))
+            return new VpnBridgeResponse(false, Error: "Нужны source_path и target_path для обновления.");
+
+        if (!VpnOptions.IsAllowedUpdateSourcePath(request.SourcePath))
+            return new VpnBridgeResponse(false, Error: "Источник обновления вне разрешённой папки.");
+
+        if (!VpnOptions.IsAllowedUpdateTargetPath(request.TargetPath))
+            return new VpnBridgeResponse(false, Error: "Цель обновления вне разрешённой папки Student.");
+
+        try
+        {
+            var source = Path.GetFullPath(request.SourcePath);
+            var target = Path.GetFullPath(request.TargetPath);
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(source, target, overwrite: true);
+            VpnLog.Info("bridge", $"Applied update {source} -> {target}");
+            return new VpnBridgeResponse(true, State: "updated", ConfigPath: target);
+        }
+        catch (Exception error)
+        {
+            VpnLog.Error("bridge", "ApplyUpdate failed", error);
+            return new VpnBridgeResponse(false, Error: error.Message);
+        }
     }
 
     private static VpnBridgeResponse InstallConfig(VpnBridgeRequest request, string configPath)
@@ -241,8 +280,15 @@ public sealed class VpnBridgeServer
             ConfigExists: true);
     }
 
-    private static string ResolveConfigPath(string? configPath) =>
-        string.IsNullOrWhiteSpace(configPath) ? VpnOptions.ManagedConfigPath : Path.GetFullPath(configPath);
+    private static string ResolveConfigPath(string? configPath)
+    {
+        if (!VpnOptions.IsAllowedBridgeConfigPath(configPath))
+            throw new InvalidOperationException("VPN config path вне ProgramData\\KIBERone\\Student\\vpn.");
+
+        return string.IsNullOrWhiteSpace(configPath)
+            ? VpnOptions.ManagedConfigPath
+            : Path.GetFullPath(configPath);
+    }
 
     private static async Task<VpnBridgeRequest?> ReadRequestAsync(Stream stream, CancellationToken cancellationToken)
     {

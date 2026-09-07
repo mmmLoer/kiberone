@@ -12,6 +12,7 @@ param(
 
     [string] $InstallDir = "",
     [switch] $InPlace,
+    [switch] $AllowMissingWireGuard,
     [string] $VpnDir = "$env:ProgramData\KIBERone\Student\vpn",
     [string] $ServiceName = "KIBERoneStudentVpn"
 )
@@ -70,13 +71,24 @@ function Ensure-WireGuardPrerequisite {
     Write-Host "WireGuard NT not detected. Installing WireGuard 1.1 (one-time kernel driver) ..."
     $winget = Get-Command winget -ErrorAction SilentlyContinue
     if ($null -eq $winget) {
-        Write-Warning "Install WireGuard manually from https://www.wireguard.com/install/ then rerun this script."
-        return
+        if ($AllowMissingWireGuard) {
+            Write-Warning "winget missing; WireGuard not installed (-AllowMissingWireGuard)."
+            return
+        }
+        throw "WireGuard not found and winget is missing. Install from https://www.wireguard.com/install/ then rerun."
     }
 
     & winget install WireGuard.WireGuard --accept-package-agreements --accept-source-agreements
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warning "winget install WireGuard failed. Install manually from https://www.wireguard.com/install/"
+    if ($LASTEXITCODE -ne 0 -and -not (Test-Path -LiteralPath $wireguardExe)) {
+        if ($AllowMissingWireGuard) {
+            Write-Warning "winget install WireGuard failed (-AllowMissingWireGuard)."
+            return
+        }
+        throw "winget install WireGuard failed. Install manually from https://www.wireguard.com/install/"
+    }
+
+    if (-not (Test-Path -LiteralPath $wireguardExe) -and -not $AllowMissingWireGuard) {
+        throw "WireGuard still missing after install attempt: $wireguardExe"
     }
 }
 
@@ -107,6 +119,8 @@ if ($InstallDir -ne $resolvedSource) {
 
 Write-Host "Configuring VPN directory ACL: $VpnDir"
 Set-VpnDirectoryAcl $VpnDir
+Write-Host "Configuring Student install ACL for in-app updates: $InstallDir"
+Set-VpnDirectoryAcl $InstallDir
 
 $installedExe = (Resolve-Path -LiteralPath (Join-Path $InstallDir "Kiberone.Student.exe")).Path
 $binPath = Get-ServiceBinaryPath $installedExe
@@ -155,8 +169,11 @@ Write-Host "You can keep launching Student from dist\Student-win-x64."
 Write-Host "Tutor can push .conf files and enable VPN without UAC prompts."
 
 Write-Host ""
-Write-Host "Verifying VPN probes ..."
+Write-Host "Verifying VPN probes (optional; failure must not undo service install) ..."
 & $installedExe /verify-vpn
 if ($LASTEXITCODE -ne 0) {
-    throw "VPN probe check failed. See messages above."
+    Write-Warning "VPN probe check failed. Service $ServiceName is still installed and running."
+    Write-Warning "Real classroom configs from Tutor should still connect. Re-check WireGuard if needed."
+    # Exit 0: callers (Inno / Repair / old in-app UAC path) must treat service install as success.
+    exit 0
 }

@@ -31,6 +31,12 @@ if ($LASTEXITCODE -ne 0) {
 & sc.exe description $ServiceName "WireGuard tunnel bridge for KIBERone Student." | Out-Null
 & sc.exe failure $ServiceName reset= 86400 actions= restart/5000/restart/5000/restart/5000 | Out-Null
 
+# Same DACL as install-student-vpn-service.ps1 — Users can start/stop without UAC.
+$sdResult = & sc.exe sdset $ServiceName "D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWRPWPDTLOCRRC;;;IU)(A;;RPWPDTRC;;;BU)" 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Warning "Could not loosen service ACL (non-fatal): $sdResult"
+}
+
 $startResult = & sc.exe start $ServiceName 2>&1
 if ($LASTEXITCODE -ne 0) {
     throw "sc.exe start failed: $startResult"

@@ -1,6 +1,6 @@
 ; KIBERone Student — requires Administrator (VPN Windows service).
 #ifndef MyAppVersion
-  #define MyAppVersion "0.10.15"
+  #define MyAppVersion "0.10.17"
 #endif
 #ifndef DistRoot
   #define DistRoot "..\..\dist"
@@ -51,13 +51,33 @@ Name: "{group}\Repair Student VPN"; Filename: "{app}\Repair-Student-Vpn.cmd"; Wo
 Name: "{autodesktop}\KIBERone Student"; Filename: "{app}\Kiberone.Student.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "powershell.exe"; \
-  Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\service\install-student-vpn-service.ps1"" -SourceDir ""{app}"" -InPlace"; \
-  WorkingDir: "{app}"; Flags: runhidden waituntilterminated; \
-  StatusMsg: "Установка VPN-службы KIBERoneStudentVpn…"
 Filename: "{app}\Kiberone.Student.exe"; Description: "Запустить Student"; Flags: nowait postinstall skipifsilent; WorkingDir: "{app}"
 
 [UninstallRun]
 Filename: "{cmd}"; \
   Parameters: "/c net stop KIBERoneStudentVpn >nul 2>&1 & sc delete KIBERoneStudentVpn >nul 2>&1"; \
   Flags: runhidden waituntilterminated; RunOnceId: "RemoveVpnService"
+
+[Code]
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
+  Script: String;
+begin
+  if CurStep = ssPostInstall then
+  begin
+    Script := ExpandConstant('{app}\service\install-student-vpn-service.ps1');
+    if not FileExists(Script) then
+      RaiseException('Не найден скрипт установки VPN: ' + Script);
+    if not Exec(
+        'powershell.exe',
+        '-NoProfile -ExecutionPolicy Bypass -File "' + Script + '" -SourceDir "' + ExpandConstant('{app}') + '" -InPlace',
+        ExpandConstant('{app}'),
+        SW_HIDE,
+        ewWaitUntilTerminated,
+        ResultCode) then
+      RaiseException('Не удалось запустить установку VPN-службы.');
+    if ResultCode <> 0 then
+      RaiseException('Установка VPN-службы завершилась с кодом ' + IntToStr(ResultCode) + '. Проверьте WireGuard и повторите установку.');
+  end;
+end;

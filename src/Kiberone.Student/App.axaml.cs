@@ -52,6 +52,7 @@ public partial class App : Avalonia.Application
             agent.VpnCommandHandler = HandleVpnCommand;
             agent.LaunchInstaller = DesktopWallpaper.LaunchInstaller;
             agent.ApplyWallpaperFile = DesktopWallpaper.Apply;
+            agent.ApplyElevatedUpdate = (source, target) => vpn!.TryApplyStudentUpdate(source, target);
             focusMode = new FocusModeManager();
             watchdog = new WatchdogManager();
             focusMode.GameWindowsClosed += _ => agent.QueueClientEvent("games_addict");
@@ -74,22 +75,58 @@ public partial class App : Avalonia.Application
             agent.UpdateStateChanged += state => Dispatcher.UIThread.Post(() => viewModel.SetUpdateState(state));
             agent.UpdateRestartRequested += () => Dispatcher.UIThread.Post(() =>
             {
+                try { watchdog?.Stop(); } catch { /* ignore */ }
                 viewModel.SetUpdateState("Перезапуск для установки обновления…");
+                agent.PrepareStagedUpdate();
                 desktop.Shutdown();
             });
             agent.StudentsAvailable += students => Dispatcher.UIThread.Post(() => viewModel.SetStudents(students, agent.PreferredGroupName));
             agent.LessonsAvailable += lessons => Dispatcher.UIThread.Post(() => viewModel.SetTutorLessons(lessons));
             agent.PreferredGroupChanged += group => Dispatcher.UIThread.Post(() => viewModel.ApplyPreferredGroup(group));
             viewModel.UpdateRequested = agent.RequestUpdateInstallation;
+            viewModel.RetryRequested = agent.ForceRediscover;
             viewModel.QuizAnswerRequested = agent.SubmitQuizAnswer;
             viewModel.StudentSelected = agent.AssignStudent;
-            agent.CommandHandler = async (command, _) => await Dispatcher.UIThread.InvokeAsync(() => viewModel.ApplyCommand(command));
+            agent.CommandHandler = async (command, ct) =>
+            {
+                // Post to UI without blocking shutdown: InvokeAsync would deadlock if Exit waits on the agent.
+                var completion = new TaskCompletionSource<CommandExecutionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+                Dispatcher.UIThread.Post(() =>
+                {
+                    try
+                    {
+                        completion.TrySetResult(viewModel.ApplyCommand(command));
+                    }
+                    catch (Exception error)
+                    {
+                        completion.TrySetResult(new CommandExecutionResult(false, error.Message));
+                    }
+                });
+                await using var registration = ct.Register(() => completion.TrySetCanceled(ct));
+                return await completion.Task;
+            };
             agent.Start();
             desktop.Exit += (_, _) =>
             {
                 screenLock?.Hide();
-                focusMode?.DisposeAsync().AsTask().GetAwaiter().GetResult();
-                agent?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                try { watchdog?.Stop(); } catch { /* ignore */ }
+                try { focusMode?.Stop(); } catch { /* ignore */ }
+                // Never block the UI thread on agent dispose (in-flight UI commands would deadlock).
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        if (focusMode is not null)
+                            await focusMode.DisposeAsync();
+                    }
+                    catch { /* ignore */ }
+                    try
+                    {
+                        if (agent is not null)
+                            await agent.DisposeAsync();
+                    }
+                    catch { /* ignore */ }
+                });
             };
         }
 

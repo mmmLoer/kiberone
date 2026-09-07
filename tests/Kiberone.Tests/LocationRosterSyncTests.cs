@@ -63,7 +63,8 @@ public sealed class LocationRosterSyncTests
         var address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.First();
 
         var client = new ClassroomHubClient(address);
-        var empty = await client.DownloadAsync("ШБ");
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => client.DownloadAsync("ШБ", "wrong"));
+        var empty = await client.DownloadAsync("ШБ", "Shb-Test-4821");
         Assert.NotNull(empty);
         Assert.Empty(empty!.Students);
 
@@ -75,7 +76,7 @@ public sealed class LocationRosterSyncTests
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => client.UploadAsync("ШБ", "wrong", snapshot));
         await client.UploadAsync("ШБ", "Shb-Test-4821", snapshot);
-        var loaded = await client.DownloadAsync("ШБ");
+        var loaded = await client.DownloadAsync("ШБ", "Shb-Test-4821");
         Assert.Single(loaded!.Groups);
         Assert.Equal("Мл3Сб10", loaded.Groups[0].Name);
 

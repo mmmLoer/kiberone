@@ -66,6 +66,12 @@ public sealed class ClassroomHubStore
             return ReadUnlocked(location) ?? Empty(location);
     }
 
+    public LocationRosterSnapshot GetAuthorized(string location, string password)
+    {
+        EnsureAuthorized(location, password);
+        return Get(location);
+    }
+
     public LocationRosterSnapshot Put(string location, string password, LocationRosterSnapshot snapshot)
     {
         if (!secrets.TryGetValue(location.Trim(), out var secret) || !LocationPassword.Verify(password, secret.Salt, secret.Hash))
@@ -166,7 +172,13 @@ public sealed class ClassroomHubStore
         if (manifest is null || string.IsNullOrWhiteSpace(manifest.Filename))
             return null;
         var file = Path.Combine(updatesDirectory, Path.GetFileName(manifest.Filename));
-        return File.Exists(file) ? manifest : null;
+        if (!File.Exists(file))
+            return null;
+        var info = new FileInfo(file);
+        if (info.Length != manifest.Size)
+            return null;
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(file)));
+        return hash.Equals(manifest.Sha256, StringComparison.OrdinalIgnoreCase) ? manifest : null;
     }
 
     public Stream? OpenStudentUpdate()

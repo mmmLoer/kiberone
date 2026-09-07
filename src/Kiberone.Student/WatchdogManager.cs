@@ -9,7 +9,10 @@ internal sealed class WatchdogManager
     public string SentinelPath => Path.Combine(directory, "restarted.flag");
     private string ScriptPath => Path.Combine(directory, "watchdog.cmd");
 
-    public bool CanRun => Environment.ProcessPath is { } path && Path.GetFileName(path).Contains("KIBERoneStudent", StringComparison.OrdinalIgnoreCase);
+    public bool CanRun =>
+        Environment.ProcessPath is { } path
+        && Infrastructure.StudentAgent.IsStudentExecutablePath(path);
+
     public bool IsActive { get; private set; }
 
     public bool ConsumeRestartSentinel()
@@ -22,7 +25,7 @@ internal sealed class WatchdogManager
     public void Start()
     {
         if (IsActive) return;
-        if (!CanRun) throw new InvalidOperationException("Watchdog доступен только в собранном KIBERoneStudent.exe.");
+        if (!CanRun) throw new InvalidOperationException("Watchdog доступен только в собранном Kiberone.Student.exe.");
         Directory.CreateDirectory(directory);
         if (File.Exists(StopPath)) File.Delete(StopPath);
         var executable = Environment.ProcessPath!;
@@ -48,7 +51,6 @@ internal sealed class WatchdogManager
 
     public void Stop()
     {
-        if (!IsActive && File.Exists(StopPath)) return;
         Directory.CreateDirectory(directory);
         File.WriteAllText(StopPath, "stop");
         IsActive = false;

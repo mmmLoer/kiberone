@@ -1,7 +1,7 @@
 ; KIBERone combined setup — always elevates (Student VPN needs admin).
 ; Wizard: choose Student / Tutor / both.
 #ifndef MyAppVersion
-  #define MyAppVersion "0.10.15"
+  #define MyAppVersion "0.10.17"
 #endif
 #ifndef DistRoot
   #define DistRoot "..\..\dist"
@@ -63,10 +63,6 @@ Name: "{autodesktop}\KIBERone Student"; Filename: "{app}\Student\Kiberone.Studen
 Name: "{autodesktop}\KIBERone Tutor"; Filename: "{app}\Tutor\Kiberone.Tutor.exe"; WorkingDir: "{app}\Tutor"; Tasks: desktopicon; Components: tutor
 
 [Run]
-Filename: "powershell.exe"; \
-  Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\Student\service\install-student-vpn-service.ps1"" -SourceDir ""{app}\Student"" -InPlace"; \
-  WorkingDir: "{app}\Student"; Flags: runhidden waituntilterminated; Components: student; \
-  StatusMsg: "Установка VPN-службы…"
 Filename: "{app}\Student\Kiberone.Student.exe"; Description: "Запустить Student"; Flags: nowait postinstall skipifsilent unchecked; Components: student; WorkingDir: "{app}\Student"
 Filename: "{app}\Tutor\Kiberone.Tutor.exe"; Description: "Запустить Tutor"; Flags: nowait postinstall skipifsilent unchecked; Components: tutor; WorkingDir: "{app}\Tutor"
 
@@ -74,3 +70,27 @@ Filename: "{app}\Tutor\Kiberone.Tutor.exe"; Description: "Запустить Tut
 Filename: "{cmd}"; \
   Parameters: "/c net stop KIBERoneStudentVpn >nul 2>&1 & sc delete KIBERoneStudentVpn >nul 2>&1"; \
   Flags: runhidden waituntilterminated; RunOnceId: "RemoveVpnService"
+
+[Code]
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
+  Script: String;
+begin
+  if (CurStep = ssPostInstall) and IsComponentSelected('student') then
+  begin
+    Script := ExpandConstant('{app}\Student\service\install-student-vpn-service.ps1');
+    if not FileExists(Script) then
+      RaiseException('Не найден скрипт установки VPN: ' + Script);
+    if not Exec(
+        'powershell.exe',
+        '-NoProfile -ExecutionPolicy Bypass -File "' + Script + '" -SourceDir "' + ExpandConstant('{app}\Student') + '" -InPlace',
+        ExpandConstant('{app}\Student'),
+        SW_HIDE,
+        ewWaitUntilTerminated,
+        ResultCode) then
+      RaiseException('Не удалось запустить установку VPN-службы.');
+    if ResultCode <> 0 then
+      RaiseException('Установка VPN-службы завершилась с кодом ' + IntToStr(ResultCode) + '.');
+  end;
+end;

@@ -32,8 +32,21 @@ public sealed class ClassroomHubClient
         return rows ?? [];
     }
 
-    public Task<LocationRosterSnapshot?> DownloadAsync(string location, CancellationToken ct = default) =>
-        http.GetFromJsonAsync<LocationRosterSnapshot>($"api/locations/{Uri.EscapeDataString(location.Trim())}/roster", ct);
+    public async Task<LocationRosterSnapshot?> DownloadAsync(string location, string password, CancellationToken ct = default)
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"api/locations/{Uri.EscapeDataString(location.Trim())}/roster");
+        request.Headers.TryAddWithoutValidation("X-Location-Password", password);
+        using var response = await http.SendAsync(request, ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.Forbidden
+            || response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            throw new UnauthorizedAccessException("Неверный пароль локации.");
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<LocationRosterSnapshot>(Json, ct);
+    }
 
     public async Task UploadAsync(string location, string password, LocationRosterSnapshot snapshot, CancellationToken ct = default)
     {

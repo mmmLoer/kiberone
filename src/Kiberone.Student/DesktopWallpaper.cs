@@ -35,6 +35,15 @@ internal static class DesktopWallpaper
     {
         if (!File.Exists(path))
             return new CommandExecutionResult(false, "Установщик не найден.");
+
+        // Do not auto-launch setups that request elevation — that would surface UAC mid-lesson.
+        // Files are still downloaded to the desktop starter folder for manual install.
+        var extension = Path.GetExtension(path);
+        if (extension.Equals(".msi", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".msix", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".appx", StringComparison.OrdinalIgnoreCase))
+            return new CommandExecutionResult(true, "Установщик сохранён на рабочий стол (запуск вручную без UAC на уроке).");
+
         var start = new ProcessStartInfo(path)
         {
             UseShellExecute = true,

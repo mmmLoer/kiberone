@@ -43,6 +43,7 @@ public sealed class StudentAgent : IAsyncDisposable
     private ClientWebSocket? commandSocket;
     private int commandSocketLive;
     private bool sessionOnline;
+    private int rediscoverRequested;
 
     public StudentAgent(string? pcNumber = null, string? watchFolder = null)
     {
@@ -62,6 +63,8 @@ public sealed class StudentAgent : IAsyncDisposable
     public Func<ClassroomCommand, CommandExecutionResult>? VpnCommandHandler { get; set; }
     public Func<string, CommandExecutionResult>? LaunchInstaller { get; set; }
     public Func<string, CommandExecutionResult>? ApplyWallpaperFile { get; set; }
+    /// <summary>Optional SYSTEM copy for Program Files Student updates (VPN bridge).</summary>
+    public Func<string, string, bool>? ApplyElevatedUpdate { get; set; }
     public Func<bool>? VpnStateProvider { get; set; }
     public Func<VpnRuntimeInfo>? VpnRuntimeProvider { get; set; }
     public Func<bool>? ScreenLockStateProvider { get; set; }
@@ -96,6 +99,8 @@ public sealed class StudentAgent : IAsyncDisposable
         if (loopTask is not null) return;
         loopTask = RunAsync(hintAddress, lifetime.Token);
     }
+
+    public void ForceRediscover() => Interlocked.Exchange(ref rediscoverRequested, 1);
 
     private async Task RunAsync(string? hintAddress, CancellationToken cancellationToken)
     {
@@ -144,6 +149,12 @@ public sealed class StudentAgent : IAsyncDisposable
             Task? socketTask = null;
             while (!cancellationToken.IsCancellationRequested && consecutiveFailures < 5)
             {
+                if (Interlocked.Exchange(ref rediscoverRequested, 0) == 1)
+                {
+                    Raise(false, "Повторный поиск Tutor…", null);
+                    break;
+                }
+
                 try
                 {
                     if (!rosterLoaded || DateTimeOffset.UtcNow >= nextRosterAt)
@@ -415,13 +426,22 @@ public sealed class StudentAgent : IAsyncDisposable
         {
             result = new CommandExecutionResult(false, error.Message);
         }
-        var acknowledgement = new CommandAcknowledgement(command.Id, result.Succeeded, result.Error);
-        using var response = await http.PostAsJsonAsync(
-            $"/commands/{command.Id}/ack?client_id={Uri.EscapeDataString(clientId)}",
-            acknowledgement,
-            JsonOptions,
-            cancellationToken);
-        response.EnsureSuccessStatusCode();
+        try
+        {
+            var acknowledgement = new CommandAcknowledgement(command.Id, result.Succeeded, result.Error);
+            using var response = await http.PostAsJsonAsync(
+                $"/commands/{command.Id}/ack?client_id={Uri.EscapeDataString(clientId)}",
+                acknowledgement,
+                JsonOptions,
+                cancellationToken);
+            response.EnsureSuccessStatusCode();
+        }
+        catch
+        {
+            // Allow Tutor to redeliver if ACK never reached the server.
+            handledCommands.TryRemove(command.Id, out _);
+            throw;
+        }
     }
 
     private void ApplyWorkspaceCommand(ClassroomCommand command)
@@ -566,35 +586,95 @@ public sealed class StudentAgent : IAsyncDisposable
         }
     }
 
-    private void ScheduleStagedUpdate()
+    private void ScheduleStagedUpdate() => PrepareStagedUpdate();
+
+    /// <summary>
+    /// Writes the apply-update script (and optionally copies via SYSTEM VPN bridge into Program Files).
+    /// Call before Shutdown so the script exists even if dispose is fire-and-forget.
+    /// </summary>
+    public void PrepareStagedUpdate()
     {
         if (stagedUpdatePath is null || !File.Exists(stagedUpdatePath)) return;
         var current = Environment.ProcessPath;
         if (string.IsNullOrWhiteSpace(current) || !IsStudentExecutablePath(current)) return;
+
+        var watchdogStop = Path.Combine(Path.GetTempPath(), "KIBERone-Classroom-Watchdog", "stop.flag");
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(watchdogStop)!);
+            File.WriteAllText(watchdogStop, "stop");
+        }
+        catch
+        {
+            // best effort
+        }
+
+        var appliedViaBridge = false;
+        if (ApplyElevatedUpdate is not null)
+        {
+            try
+            {
+                appliedViaBridge = ApplyElevatedUpdate(stagedUpdatePath, current);
+            }
+            catch
+            {
+                appliedViaBridge = false;
+            }
+        }
+
         var script = Path.Combine(Path.GetDirectoryName(stagedUpdatePath)!, $"apply-update-{Guid.NewGuid():N}.cmd");
         var pid = Environment.ProcessId;
-        // Prefer copy+delete: move across volumes fails; VPN service may briefly lock the target.
-        File.WriteAllLines(script,
-        [
-            "@echo off",
-            "setlocal",
-            ":wait",
-            $"tasklist /FI \"PID eq {pid}\" 2>NUL | find \"{pid}\" >NUL",
-            "if not errorlevel 1 (ping 127.0.0.1 -n 2 >NUL & goto wait)",
-            "net stop KIBERoneStudentVpn >NUL 2>&1",
-            "ping 127.0.0.1 -n 2 >NUL",
-            $"copy /Y \"{stagedUpdatePath}\" \"{current}\" >NUL",
-            $"if errorlevel 1 copy /Y \"{stagedUpdatePath}\" \"{current}\" >NUL",
-            $"del /F /Q \"{stagedUpdatePath}\" >NUL 2>&1",
-            "net start KIBERoneStudentVpn >NUL 2>&1",
-            $"start \"\" \"{current}\"",
-            "del \"%~f0\""
-        ]);
+        if (appliedViaBridge)
+        {
+            File.WriteAllLines(script,
+            [
+                "@echo off",
+                "setlocal",
+                ":wait",
+                $"tasklist /FI \"PID eq {pid}\" 2>NUL | find \"{pid}\" >NUL",
+                "if not errorlevel 1 (ping 127.0.0.1 -n 2 >NUL & goto wait)",
+                "net stop KIBERoneStudentVpn >NUL 2>&1",
+                "ping 127.0.0.1 -n 2 >NUL",
+                "net start KIBERoneStudentVpn >NUL 2>&1",
+                $"del /F /Q \"{stagedUpdatePath}\" >NUL 2>&1",
+                $"start \"\" \"{current}\"",
+                "del \"%~f0\""
+            ]);
+        }
+        else
+        {
+            File.WriteAllLines(script,
+            [
+                "@echo off",
+                "setlocal",
+                ":wait",
+                $"tasklist /FI \"PID eq {pid}\" 2>NUL | find \"{pid}\" >NUL",
+                "if not errorlevel 1 (ping 127.0.0.1 -n 2 >NUL & goto wait)",
+                "echo stop>\"%TEMP%\\KIBERone-Classroom-Watchdog\\stop.flag\"",
+                "ping 127.0.0.1 -n 2 >NUL",
+                "net stop KIBERoneStudentVpn >NUL 2>&1",
+                "ping 127.0.0.1 -n 2 >NUL",
+                $"copy /Y \"{stagedUpdatePath}\" \"{current}\" >NUL",
+                "if errorlevel 1 (",
+                "  echo UPDATE_COPY_FAILED>%TEMP%\\kiberone-update-failed.txt",
+                "  net start KIBERoneStudentVpn >NUL 2>&1",
+                $"  start \"\" \"{current}\"",
+                "  del \"%~f0\"",
+                "  exit /b 1",
+                ")",
+                $"del /F /Q \"{stagedUpdatePath}\" >NUL 2>&1",
+                "net start KIBERoneStudentVpn >NUL 2>&1",
+                $"start \"\" \"{current}\"",
+                "del \"%~f0\""
+            ]);
+        }
+
         var start = new ProcessStartInfo("cmd.exe") { UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden };
         start.ArgumentList.Add("/d");
         start.ArgumentList.Add("/c");
         start.ArgumentList.Add(script);
         Process.Start(start);
+        stagedUpdatePath = null;
     }
 
     public static bool IsStudentExecutablePath(string path)
@@ -616,9 +696,19 @@ public sealed class StudentAgent : IAsyncDisposable
     private static string ResolveClientId()
     {
         var address = NetworkInterface.GetAllNetworkInterfaces()
-            .Where(network => network.NetworkInterfaceType != NetworkInterfaceType.Loopback && network.OperationalStatus == OperationalStatus.Up)
+            .Where(LocalAddressResolver.IsClassroomLanInterface)
             .Select(network => network.GetPhysicalAddress().ToString())
             .FirstOrDefault(value => value.Length >= 12);
+        if (string.IsNullOrWhiteSpace(address))
+        {
+            address = NetworkInterface.GetAllNetworkInterfaces()
+                .Where(network => network.NetworkInterfaceType != NetworkInterfaceType.Loopback
+                                  && network.OperationalStatus == OperationalStatus.Up
+                                  && !LocalAddressResolver.IsTunnelName(network.Name)
+                                  && !LocalAddressResolver.IsTunnelName(network.Description))
+                .Select(network => network.GetPhysicalAddress().ToString())
+                .FirstOrDefault(value => value.Length >= 12);
+        }
         return string.IsNullOrWhiteSpace(address) ? $"host-{Environment.MachineName.ToLowerInvariant()}" : address.ToLowerInvariant();
     }
 
@@ -626,7 +716,7 @@ public sealed class StudentAgent : IAsyncDisposable
     {
         if (command.Kind == ClassroomCommandKinds.InstallStarterPack)
         {
-            var runInstallers = !command.Payload.TryGetProperty("run_installers", out var flag) || flag.ValueKind != JsonValueKind.False;
+            var runInstallers = command.Payload.TryGetProperty("run_installers", out var flag) && flag.ValueKind == JsonValueKind.True;
             UpdateStateChanged?.Invoke("Скачиваем стартовый пакет…");
             var destination = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
@@ -672,13 +762,8 @@ public sealed class StudentAgent : IAsyncDisposable
 
         try
         {
-            // Keep the agent loop responsive: VPN setup can block on SCM/ping.
-            var work = Task.Run(() => VpnCommandHandler(command), cancellationToken);
-            var finished = await Task.WhenAny(work, Task.Delay(TimeSpan.FromSeconds(45), cancellationToken));
-            if (finished != work)
-                return new CommandExecutionResult(false, "VPN-команда не завершилась за 45 с.");
-
-            return await work;
+            // VPN connect/health can exceed 45s on slow PCs; abandoning the task left VpnCommandGate locked.
+            return await Task.Run(() => VpnCommandHandler(command), cancellationToken);
         }
         catch (Exception error)
         {

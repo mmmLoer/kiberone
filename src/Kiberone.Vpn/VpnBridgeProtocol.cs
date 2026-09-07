@@ -10,13 +10,16 @@ public enum VpnBridgeAction
     Status,
     InstallConfig,
     Connect,
-    Disconnect
+    Disconnect,
+    ApplyUpdate
 }
 
 public sealed record VpnBridgeRequest(
     VpnBridgeAction Action,
     string? ConfigPath = null,
-    string? ConfigBase64 = null);
+    string? ConfigBase64 = null,
+    string? SourcePath = null,
+    string? TargetPath = null);
 
 public sealed record VpnBridgeResponse(
     bool Ok,

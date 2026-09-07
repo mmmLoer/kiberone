@@ -86,9 +86,24 @@ public sealed class VpnBridgeClient
 
     public VpnStatus Disconnect(string configPath) => ToStatus(Send(new VpnBridgeRequest(VpnBridgeAction.Disconnect, configPath)), configPath);
 
+    public void ApplyUpdate(string sourcePath, string targetPath)
+    {
+        var response = Send(new VpnBridgeRequest(
+            VpnBridgeAction.ApplyUpdate,
+            SourcePath: sourcePath,
+            TargetPath: targetPath));
+        if (!response.Ok)
+            throw new InvalidOperationException(response.Error ?? "Не удалось применить обновление через VPN-службу.");
+    }
+
     private VpnBridgeResponse Send(VpnBridgeRequest request)
     {
-        var readTimeout = request.Action == VpnBridgeAction.Connect ? ConnectReadTimeout : DefaultReadTimeout;
+        var readTimeout = request.Action switch
+        {
+            VpnBridgeAction.Connect => ConnectReadTimeout,
+            VpnBridgeAction.ApplyUpdate => TimeSpan.FromSeconds(60),
+            _ => DefaultReadTimeout
+        };
         try
         {
             using var pipe = new NamedPipeClientStream(".", VpnBridgeConstants.PipeName, PipeDirection.InOut, PipeOptions.None);
