@@ -127,6 +127,13 @@ if ($LASTEXITCODE -ne 0) {
 & sc.exe description $ServiceName "WireGuard tunnel bridge for KIBERone Student. Installed once; no UAC during lessons." | Out-Null
 & sc.exe failure $ServiceName reset= 86400 actions= restart/5000/restart/5000/restart/5000 | Out-Null
 
+# Let standard users start/query the already-installed bridge without a second UAC prompt.
+# SY/BA keep full control; BU gets start/stop/query.
+$sdResult = & sc.exe sdset $ServiceName "D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWRPWPDTLOCRRC;;;IU)(A;;RPWPDTRC;;;BU)" 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Warning "Could not loosen service ACL (non-fatal): $sdResult"
+}
+
 $startResult = & sc.exe start $ServiceName 2>&1
 if ($LASTEXITCODE -ne 0) {
     throw "sc.exe start failed: $startResult"

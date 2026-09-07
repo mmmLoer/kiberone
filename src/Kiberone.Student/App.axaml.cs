@@ -270,7 +270,7 @@ public partial class App : Avalonia.Application
     private CommandExecutionResult ReportVpnFailure(string message)
     {
         if (message.Contains("VPN-служба не установлена", StringComparison.Ordinal))
-            message += " Подтвердите UAC при первом включении VPN или запустите Repair-Student-Vpn.cmd от администратора.";
+            message += " Запустите Repair-Student-Vpn.cmd от администратора (один раз при установке).";
         VpnLog.Error("student", $"VPN command failed: {message}");
         if (!message.Contains("vpn.log", StringComparison.OrdinalIgnoreCase))
             message += $" Лог: {VpnLog.PrimaryLogPath}";

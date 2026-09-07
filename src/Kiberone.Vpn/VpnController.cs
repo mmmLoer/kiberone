@@ -6,7 +6,7 @@ namespace Kiberone.Vpn;
 public sealed class VpnController
 {
     private const string ServiceMissingMessage =
-        "VPN-служба не установлена. Подтвердите запрос UAC или запустите Install-Student.cmd от администратора.";
+        "VPN-служба не установлена. Запустите Repair-Student-Vpn.cmd или переустановите Student от администратора (один раз).";
 
     private const string ServiceStoppedMessage =
         "VPN-служба установлена, но не запущена. Выполните: sc start KIBERoneStudentVpn";
@@ -232,12 +232,14 @@ public sealed class VpnController
         if (activeBridge is not null || !options.RequireBridge)
             return activeBridge;
 
+        // Never prompt UAC during lessons. Service must be installed once by Setup-Student / Inno / Repair-Student-Vpn.
         if (!bridgeClient.IsServiceInstalled)
         {
-            if (VpnServiceInstaller.TryInstallInPlace())
-                ResetBridgeCache();
+            VpnLog.Warn("controller", "VPN bridge service is not installed; refusing interactive UAC install.");
+            return null;
         }
-        else if (!bridgeClient.IsServiceRunning)
+
+        if (!bridgeClient.IsServiceRunning)
         {
             TryStartBridgeService();
             ResetBridgeCache();

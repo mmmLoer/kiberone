@@ -2,6 +2,9 @@ using System.Diagnostics;
 
 namespace Kiberone.Vpn;
 
+/// <summary>
+/// Elevated VPN service install. Call only from repair tooling — never from lesson-time Connect.
+/// </summary>
 public static class VpnServiceInstaller
 {
     public static string ServiceScriptPath =>
@@ -9,6 +12,10 @@ public static class VpnServiceInstaller
 
     public static bool IsScriptAvailable => File.Exists(ServiceScriptPath);
 
+    /// <summary>
+    /// Interactive elevated install for Repair-Student-Vpn / manual recovery.
+    /// Do not call from VpnController Connect path.
+    /// </summary>
     public static bool TryInstallInPlace(TimeSpan? timeout = null)
     {
         var installDir = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
