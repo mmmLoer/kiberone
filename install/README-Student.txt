@@ -6,8 +6,8 @@ KIBERone Student - установка (Windows x64)
 
 Установщик:
 - копирует программу в Program Files\KIBERone\Student
-- ставит WireGuard (если нужно) и VPN-службу KIBERoneStudentVpn
-- после этого VPN включается из Tutor без UAC
+- ставит VPN-службу KIBERoneStudentVpn (встроенный WireGuard: tunnel.dll + wireguard.dll)
+- после этого VPN включается из Tutor без UAC и без отдельной установки WireGuard
 
 Конфиг VPN тьютор раздаёт автоматически.
 

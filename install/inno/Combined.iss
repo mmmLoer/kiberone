@@ -1,7 +1,7 @@
 ; KIBERone combined setup — always elevates (Student VPN needs admin).
 ; Wizard: choose Student / Tutor / both.
 #ifndef MyAppVersion
-  #define MyAppVersion "0.10.18"
+  #define MyAppVersion "0.10.19"
 #endif
 #ifndef DistRoot
   #define DistRoot "..\..\dist"
@@ -98,7 +98,7 @@ begin
     end;
     if ResultCode <> 0 then
       MsgBox('Student установлен. VPN-служба не поднялась (код ' + IntToStr(ResultCode) + ').'#13#10 +
-        'Для теста Tutor↔Student это нормально. Нужен VPN: WireGuard + Repair-Student-Vpn.cmd.',
+        'Для теста Tutor↔Student это нормально. Нужен VPN: Repair-Student-Vpn.cmd.',
         mbInformation, MB_OK);
   end;
 end;

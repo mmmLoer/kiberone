@@ -1,6 +1,6 @@
 ; KIBERone Student — requires Administrator (VPN Windows service).
 #ifndef MyAppVersion
-  #define MyAppVersion "0.10.18"
+  #define MyAppVersion "0.10.19"
 #endif
 #ifndef DistRoot
   #define DistRoot "..\..\dist"
@@ -87,8 +87,8 @@ begin
     end;
     if ResultCode <> 0 then
       MsgBox('Student установлен. VPN-служба не поднялась (код ' + IntToStr(ResultCode) + ').'#13#10#13#10 +
-        'На виртуалках часто нет WireGuard — для теста Tutor↔Student это нормально.'#13#10 +
-        'Нужен VPN: поставьте WireGuard с https://www.wireguard.com/install/ и запустите Repair-Student-Vpn.cmd.',
+        'Для теста Tutor↔Student VPN не обязателен.'#13#10 +
+        'Нужен VPN: запустите Repair-Student-Vpn.cmd от администратора.',
         mbInformation, MB_OK);
   end;
 end;

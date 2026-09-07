@@ -60,32 +60,13 @@ function Set-ServiceBinaryPath([string] $Name, [string] $BinaryPath) {
     }
 }
 
-function Ensure-WireGuardPrerequisite {
-    $wireguardExe = "${env:ProgramFiles}\WireGuard\wireguard.exe"
-    if (Test-Path -LiteralPath $wireguardExe) {
-        Write-Host "WireGuard prerequisite: OK ($wireguardExe)"
-        return
-    }
-
-    Write-Host "WireGuard NT not detected. Installing WireGuard 1.1 (one-time kernel driver) ..."
-    $winget = Get-Command winget -ErrorAction SilentlyContinue
-    if ($null -eq $winget) {
-        Write-Warning "winget missing; WireGuard not installed. Classroom discovery still works; VPN tunnels need WireGuard from https://www.wireguard.com/install/"
-        return
-    }
-
-    & winget install WireGuard.WireGuard --accept-package-agreements --accept-source-agreements
-    if (-not (Test-Path -LiteralPath $wireguardExe)) {
-        Write-Warning "WireGuard still missing after winget. Install manually if you need VPN tunnels: https://www.wireguard.com/install/"
-    }
-}
+# VPN uses WireGuard embeddable-dll-service (tunnel.dll + wireguard.dll next to the EXE).
+# No separate WireGuard GUI / winget install is required — the NT driver is loaded by wireguard.dll on first tunnel start.
 
 $sourceExe = Join-Path $SourceDir "Kiberone.Student.exe"
 Assert-File $sourceExe "Publish Student first."
 Assert-File (Join-Path $SourceDir "native\tunnel.dll") "Copy tunnel.dll into native\."
 Assert-File (Join-Path $SourceDir "native\wireguard.dll") "Copy wireguard.dll into native\."
-
-Ensure-WireGuardPrerequisite
 
 $resolvedSource = (Resolve-Path $SourceDir).Path
 if ($InPlace) {
