@@ -70,6 +70,8 @@
 
 VPN-агент (отдельно от Classroom LAN): см. `src/Kiberone.VpnAgent/README.md`, установка `scripts/install-vpn-agent.ps1`.
 
+macOS Tutor `.app` after a machine reinstall: `scripts/macos-tutor-setup.md`. Windows installers from Linux CI: `scripts/linux-windows-build.md` / `scripts/linux-ci-release.md`.
+
 ## Следующие этапы
 
 Система реализуется по `SYSTEM_DOCUMENTATION.md`. Текущий срез не объявляется полной готовностью всех 28 экранов: далее необходимы discovery, roster, команды, синхронизация файлов и версии, approvals, магазин, достижения, screen preview, focus/watchdog, deploy/update и полная LAN-интеграция Student.

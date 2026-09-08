@@ -225,3 +225,5 @@ rm -rf "$STAGE"
 | `scripts/publish-student.ps1` | `dotnet publish` Student + native + service script |
 | `scripts/publish-tutor.ps1` | `dotnet publish` Tutor |
 | `install/*` | Содержимое installer zip (setup/shortcut/README) |
+
+macOS Tutor `.app` (не Windows installers): `scripts/macos-tutor-setup.md`.
