@@ -18,6 +18,18 @@ public partial class MainWindow : Window
             if (Application.Current is App app)
                 app.ShutdownServicesAndExit();
         };
+        DataContextChanged += (_, _) => SyncGroupsHostWidth();
+    }
+
+    private void OnGroupsHostSizeChanged(object? sender, SizeChangedEventArgs e) => SyncGroupsHostWidth();
+
+    private void SyncGroupsHostWidth()
+    {
+        if (DataContext is not MainViewModel viewModel)
+            return;
+        var width = GroupsHost.Bounds.Width;
+        if (width > 1)
+            viewModel.GroupsHostWidth = width;
     }
 
     private void OnClassStudentPointerPressed(object? sender, PointerPressedEventArgs e)

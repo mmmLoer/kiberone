@@ -184,6 +184,14 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     public bool HasAchievements => Achievements.Count > 0;
     public bool HasNoAchievements => !HasAchievements;
     public bool HasClassNotices => ClassNotices.Count > 0;
+    public bool HasPendingSyncApprovals => SyncApprovals.Count > 0;
+    public bool HasNoPendingSyncApprovals => !HasPendingSyncApprovals;
+    public string PendingSyncTitle => SyncApprovals.Count switch
+    {
+        0 => "Запросы подтверждения",
+        1 => "1 запрос подтверждения",
+        _ => $"{SyncApprovals.Count} запросов подтверждения"
+    };
     public bool HasSelectedClassStudent => SelectedClassStudents.Count > 0;
     public string SelectedStudentsActionsTitle => SelectedClassStudents.Count <= 1 ? "Этому ученику" : $"Выбранным ({SelectedClassStudents.Count})";
     public string ClassPanelTitle => SelectedClassStudents.Count switch
@@ -211,10 +219,25 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     public bool IsGroupWorkspaceOpen => GroupsWorkspaceMode is "modules" or "students";
     public bool ShowGroupModulesWorkspace => GroupsWorkspaceMode == "modules";
     public bool ShowGroupStudentsWorkspace => GroupsWorkspaceMode == "students";
-    /// <summary>0 closed · 340 choice · 920 choice+detail (340 + 16 gap + 564).</summary>
-    public double GroupsWorkspaceWidth =>
-        !ShowGroupsWorkspace ? 0 :
-        IsGroupWorkspaceOpen ? 920 : 340;
+    private const double GroupsChoicePaneWidth = 340;
+    private const double GroupsListReservedWidth = 268;
+
+    /// <summary>Host width of the groups tab grid; used so the open workspace can take leftover space.</summary>
+    [ObservableProperty] private double groupsHostWidth;
+
+    /// <summary>0 closed · 340 choice · remaining width for choice + modules/students.</summary>
+    public double GroupsWorkspaceWidth
+    {
+        get
+        {
+            if (!ShowGroupsWorkspace)
+                return 0;
+            if (!IsGroupWorkspaceOpen)
+                return GroupsChoicePaneWidth;
+            var host = GroupsHostWidth > 1 ? GroupsHostWidth : 1120;
+            return Math.Max(GroupsChoicePaneWidth, host - GroupsListReservedWidth);
+        }
+    }
     public bool HasScreenPreviews => ScreenPreviews.Count > 0;
     public bool HasNoScreenPreviews => !HasScreenPreviews;
     public bool ShowClassRoster => !ShowClassScreens;
@@ -303,6 +326,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         RebuildClassRoster();
         RebuildClassNotices();
         RefreshRolloutStatus();
+        _ = RefreshPendingApprovalsAsync();
         OnPropertyChanged(nameof(SectionSubtitle));
     }
 
@@ -450,7 +474,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     };
     public string SectionSubtitle => SelectedSectionIndex switch
     {
-        0 => ConnectedClientLabel, 1 => "Каталог как у учеников · отправка и редактирование",
+        0 => ConnectedClientLabel, 1 => "Каталог · отправка и редактирование",
         2 => "Сначала группа, затем модули или ученики", 3 => "Каталог достижений класса",
         4 => "Работы учеников и восстановление", 5 => "Экраны компьютеров класса",
         6 => "Блокировка, окна и сохранения", 7 => "Урок печати для класса",
@@ -1377,10 +1401,6 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             HasLessonResultsNotification = false;
             LessonResultsSummary = string.Empty;
         }
-        else if (notice.Kind == "sync")
-        {
-            dismissedSyncNotice = true;
-        }
 
         RebuildClassNotices();
     }
@@ -1659,7 +1679,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     }
 
     private bool loadingSettings;
-    private bool dismissedSyncNotice;
+    private bool reloadingApprovals;
     private Guid? pendingActiveClassGroupId;
     private bool applyingClassLessonModule;
     private Guid? lastRolloutCommandId;
@@ -2864,24 +2884,27 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     }
 
     [RelayCommand]
-    private async Task ApproveSyncAsync()
-    {
-        if (SelectedSyncApproval is null) { ShowSelectionError("Выберите запрос синхронизации."); return; }
-        await RunActionAsync(async () =>
-        {
-            await fileSync.DecideAsync(SelectedSyncApproval.Id, true);
-            StatusMessage = $"Принята версия ученика для {SelectedSyncApproval.DisplayTitle}.";
-        });
-    }
+    private Task ApproveSyncAsync() => DecideSyncAsync(SelectedSyncApproval, takeStudent: true);
 
     [RelayCommand]
-    private async Task RejectSyncAsync()
+    private Task RejectSyncAsync() => DecideSyncAsync(SelectedSyncApproval, takeStudent: false);
+
+    [RelayCommand]
+    private Task ApproveSyncItemAsync(SyncApprovalCardViewModel? approval) => DecideSyncAsync(approval, takeStudent: true);
+
+    [RelayCommand]
+    private Task RejectSyncItemAsync(SyncApprovalCardViewModel? approval) => DecideSyncAsync(approval, takeStudent: false);
+
+    private async Task DecideSyncAsync(SyncApprovalCardViewModel? approval, bool takeStudent)
     {
-        if (SelectedSyncApproval is null) { ShowSelectionError("Выберите запрос синхронизации."); return; }
+        if (approval is null) { ShowSelectionError("Выберите запрос синхронизации."); return; }
+        SelectedSyncApproval = approval;
         await RunActionAsync(async () =>
         {
-            await fileSync.DecideAsync(SelectedSyncApproval.Id, false);
-            StatusMessage = $"Восстановлена версия тьютора для {SelectedSyncApproval.DisplayTitle}.";
+            await fileSync.DecideAsync(approval.Id, takeStudent);
+            StatusMessage = takeStudent
+                ? $"Принята версия ученика для {approval.DisplayTitle}."
+                : $"Восстановлена версия тьютора для {approval.DisplayTitle}.";
         });
     }
 
@@ -3020,16 +3043,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         StoreItems.Clear();
         foreach (var item in await classroom.ListStoreItemsAsync(true)) StoreItems.Add(new StoreItemCardViewModel(item));
         SelectedStoreItem = StoreItems.FirstOrDefault(x => x.Id == selectedItemId) ?? StoreItems.FirstOrDefault();
-        var selectedApprovalId = SelectedSyncApproval?.Id;
-        SyncApprovals.Clear();
-        var clientSnapshots = clients.GetAll().ToDictionary(x => x.ClientId, StringComparer.OrdinalIgnoreCase);
-        foreach (var approval in await fileSync.ListPendingApprovalsAsync())
-        {
-            clientSnapshots.TryGetValue(approval.ClientId, out var client);
-            var title = ResolveClientDisplayTitle(approval.ClientId, client?.StudentId, client?.PcNumber);
-            SyncApprovals.Add(new SyncApprovalCardViewModel(approval, title));
-        }
-        SelectedSyncApproval = SyncApprovals.FirstOrDefault(x => x.Id == selectedApprovalId) ?? SyncApprovals.FirstOrDefault();
+        await ReloadPendingApprovalsAsync();
         var selectedClientId = SelectedSyncClient?.ClientId;
         SyncClients.Clear();
         foreach (var client in clients.GetAll())
@@ -3065,6 +3079,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
 
     partial void OnIsGroupsChoiceOpenChanged(bool value) => NotifyGroupWorkspace();
     partial void OnGroupsWorkspaceModeChanged(string value) => NotifyGroupWorkspace();
+    partial void OnGroupsHostWidthChanged(double value) => OnPropertyChanged(nameof(GroupsWorkspaceWidth));
 
     private void NotifyGroupWorkspace()
     {
@@ -3227,6 +3242,68 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         OnPropertyChanged(nameof(HasNoClassRosterStudents));
     }
 
+    public async Task RefreshPendingApprovalsAsync()
+    {
+        if (IsBusy || reloadingApprovals) return;
+        reloadingApprovals = true;
+        try
+        {
+            await ReloadPendingApprovalsAsync();
+        }
+        catch
+        {
+        }
+        finally
+        {
+            reloadingApprovals = false;
+        }
+    }
+
+    private async Task ReloadPendingApprovalsAsync()
+    {
+        var selectedApprovalId = SelectedSyncApproval?.Id;
+        IReadOnlyList<SyncApproval> pending;
+        try
+        {
+            pending = await fileSync.ListPendingApprovalsAsync();
+        }
+        catch
+        {
+            return;
+        }
+
+        var clientSnapshots = clients.GetAll().ToDictionary(x => x.ClientId, StringComparer.OrdinalIgnoreCase);
+        var next = new List<SyncApprovalCardViewModel>(pending.Count);
+        foreach (var approval in pending)
+        {
+            clientSnapshots.TryGetValue(approval.ClientId, out var client);
+            var title = ResolveClientDisplayTitle(approval.ClientId, client?.StudentId, client?.PcNumber);
+            next.Add(new SyncApprovalCardViewModel(approval, title));
+        }
+
+        var unchanged = SyncApprovals.Count == next.Count
+            && SyncApprovals.Zip(next, (current, desired) =>
+                current.Id == desired.Id
+                && current.DisplayTitle == desired.DisplayTitle
+                && current.Reason == desired.Reason).All(equal => equal);
+        if (!unchanged)
+        {
+            SyncApprovals.Clear();
+            foreach (var item in next)
+                SyncApprovals.Add(item);
+        }
+
+        SelectedSyncApproval = SyncApprovals.FirstOrDefault(x => x.Id == selectedApprovalId) ?? SyncApprovals.FirstOrDefault();
+        NotifyPendingSyncState();
+    }
+
+    private void NotifyPendingSyncState()
+    {
+        OnPropertyChanged(nameof(HasPendingSyncApprovals));
+        OnPropertyChanged(nameof(HasNoPendingSyncApprovals));
+        OnPropertyChanged(nameof(PendingSyncTitle));
+    }
+
     private void RebuildClassNotices()
     {
         ClassNotices.Clear();
@@ -3234,11 +3311,8 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             ClassNotices.Add(new ClassNoticeViewModel("error", StatusMessage));
         if (HasLessonResultsNotification && !string.IsNullOrWhiteSpace(LessonResultsSummary))
             ClassNotices.Add(new ClassNoticeViewModel("lesson", LessonResultsSummary));
-        if (!dismissedSyncNotice && SyncApprovals.Count > 0)
-            ClassNotices.Add(new ClassNoticeViewModel("sync", SyncApprovals.Count == 1
-                ? "1 файл ждёт подтверждения тьютора"
-                : $"{SyncApprovals.Count} файлов ждут подтверждения"));
         OnPropertyChanged(nameof(HasClassNotices));
+        NotifyPendingSyncState();
     }
 
     private void NotifyCollectionStates()
@@ -3254,6 +3328,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         OnPropertyChanged(nameof(HasAchievements));
         OnPropertyChanged(nameof(HasNoAchievements));
         OnPropertyChanged(nameof(HasClassNotices));
+        NotifyPendingSyncState();
         OnPropertyChanged(nameof(HasSelectedClassStudent));
         OnPropertyChanged(nameof(HasGroups));
         OnPropertyChanged(nameof(HasNoGroups));
@@ -3734,6 +3809,7 @@ public sealed class SyncApprovalCardViewModel(SyncApproval approval, string disp
     public string DisplayTitle { get; } = displayTitle;
     public string Reason { get; } = approval.Reason;
     public string Created { get; } = approval.CreatedAt.ToLocalTime().ToString("g");
+    public string Details => string.IsNullOrWhiteSpace(Reason) ? Created : $"{Reason} · {Created}";
     public override string ToString() => $"{DisplayTitle}: {Reason}";
 }
 
