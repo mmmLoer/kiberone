@@ -17,28 +17,6 @@ public enum StoreOrderStatus
     Cancelled
 }
 
-public sealed class Achievement
-{
-    public Guid Id { get; set; } = Guid.NewGuid();
-    public required string Code { get; set; }
-    public required string Name { get; set; }
-    public string Description { get; set; } = string.Empty;
-    public string Icon { get; set; } = "star";
-    public int XpReward { get; set; }
-    public int KiberonReward { get; set; }
-    public bool IsActive { get; set; } = true;
-    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
-}
-
-public sealed class StudentAchievement
-{
-    public Guid Id { get; set; } = Guid.NewGuid();
-    public Guid StudentId { get; set; }
-    public Guid AchievementId { get; set; }
-    public string Note { get; set; } = string.Empty;
-    public DateTimeOffset AwardedAt { get; set; } = DateTimeOffset.UtcNow;
-}
-
 public sealed class KiberonTransaction
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -89,8 +67,6 @@ public sealed record StudentDraft(
     int? Kiberons = null,
     int? Xp = null);
 public sealed record GradeDraft(Guid StudentId, Guid? ClassroomSessionId, int Value, string Note);
-public sealed record AchievementDraft(string Code, string Name, string Description, string Icon, int XpReward, int KiberonReward);
-public sealed record AwardAchievementRequest(Guid StudentId, Guid AchievementId, string Note);
 public sealed record AdjustKiberonsRequest(Guid StudentId, int Amount, string Reason);
 public sealed record StoreItemDraft(string Sku, string Name, string Description, int Price, int Stock, bool IsSecret);
 public sealed record PurchaseRequest(Guid StudentId, Guid StoreItemId);
@@ -108,9 +84,9 @@ public sealed record StudentSummary(
     DateOnly? Birthday = null,
     string LastName = "",
     string FirstName = "");
-public sealed record StudentProfile(Student Student, IReadOnlyList<Grade> Grades, IReadOnlyList<StudentAchievement> Achievements, IReadOnlyList<KiberonTransaction> KiberonHistory, IReadOnlyList<StoreOrder> Orders);
+public sealed record StudentProfile(Student Student, IReadOnlyList<Grade> Grades, IReadOnlyList<KiberonTransaction> KiberonHistory, IReadOnlyList<StoreOrder> Orders);
 public sealed record PurchaseResult(StoreOrder Order, int BalanceAfter, int StockAfter);
-public sealed record GroupStatistics(Guid GroupId, string GroupName, int StudentCount, double AverageGrade, int TotalXp, int TotalKiberons, int SessionCount, int AchievementCount);
-public sealed record StudentStatistics(Guid StudentId, string DisplayName, string GroupName, int Level, int Xp, int Kiberons, double AverageGrade, int GradeCount, int SessionCount, int AchievementCount, int PurchaseCount);
+public sealed record GroupStatistics(Guid GroupId, string GroupName, int StudentCount, double AverageGrade, int TotalXp, int TotalKiberons, int SessionCount);
+public sealed record StudentStatistics(Guid StudentId, string DisplayName, string GroupName, int Level, int Xp, int Kiberons, double AverageGrade, int GradeCount, int SessionCount, int PurchaseCount);
 public sealed record TypingLessonStatPoint(Guid LessonId, string LessonName, double AverageCpm, double AverageAccuracy, int Attempts, int TotalCorrectKeys);
 public sealed record TypingStatsReport(string Title, string ScopeLabel, IReadOnlyList<TypingLessonStatPoint> Points);

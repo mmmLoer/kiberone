@@ -139,7 +139,8 @@ public sealed class ClassroomServer(
                 assets.GetUpdateFor(request.AppVersion),
                 LiveState.PreferredGroupName,
                 home?.Module,
-                home?.DisplayName));
+                home?.DisplayName,
+                home?.ModuleFolders));
         });
         application.MapGet("/clients", (HttpContext context) =>
             IsTutor(context) ? Results.Ok(clients.GetAll()) : Results.Unauthorized());
@@ -217,11 +218,6 @@ public sealed class ClassroomServer(
                 return Results.Json(new { error = "student_id не привязан к этому ПК." }, statusCode: 403);
             return Results.Ok(await classroom.CheckInAsync(request.StudentId, request.Topic, request.PcNumber, request.ClientId, ct));
         });
-        application.MapGet("/achievements", (CancellationToken ct) => classroom.ListAchievementsAsync(ct));
-        application.MapPost("/achievements", async (HttpContext context, [FromBody] AchievementDraft draft, CancellationToken ct) =>
-            IsTutor(context) ? Results.Ok(await classroom.CreateAchievementAsync(draft, ct)) : Results.Unauthorized());
-        application.MapPost("/achievements/award", async (HttpContext context, [FromBody] AwardAchievementRequest request, CancellationToken ct) =>
-            IsTutor(context) ? Results.Ok(await classroom.AwardAchievementAsync(request, ct)) : Results.Unauthorized());
         application.MapPost("/kiberons/adjust", async (HttpContext context, [FromBody] AdjustKiberonsRequest request, CancellationToken ct) =>
             IsTutor(context) ? Results.Ok(await classroom.AdjustKiberonsAsync(request, ct)) : Results.Unauthorized());
         application.MapGet("/store/items", (bool? include_out_of_stock, CancellationToken ct) => classroom.ListStoreItemsAsync(include_out_of_stock ?? false, ct));
@@ -306,12 +302,6 @@ public sealed class ClassroomServer(
             !IsTutor(context) ? Results.Unauthorized() : assets.OpenScreen(client_id) is { } stream
                 ? Results.File(stream, "image/jpeg", enableRangeProcessing: true)
                 : Results.NotFound());
-        application.MapPost("/events/trigger", async ([FromBody] ClientEventRequest request, CancellationToken ct) =>
-        {
-            var studentId = clients.GetAll().FirstOrDefault(x => x.ClientId == request.ClientId)?.StudentId;
-            if (studentId is null) return Results.Ok(new { awarded = false, reason = "К компьютеру не привязан ученик." });
-            return Results.Ok(await classroom.TriggerSystemAchievementAsync(studentId.Value, request.Event, ct));
-        });
         application.MapPost("/quiz/start", async (HttpContext context, [FromBody] StartQuizRequest request, CancellationToken ct) =>
             IsTutor(context) ? Results.Ok(await quizzes.StartAsync(request, ct)) : Results.Unauthorized());
         application.MapPost("/quiz/answer", ([FromBody] SubmitQuizAnswerRequest request, CancellationToken ct) => quizzes.SubmitAsync(request, ct));

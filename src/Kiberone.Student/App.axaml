@@ -16,6 +16,48 @@
         <SolidColorBrush x:Key="BrandEBrush" Color="#8A8F96" />
         <SolidColorBrush x:Key="BrandRBrush" Color="#1A2A4A" />
         <SolidColorBrush x:Key="BrandInkBrush" Color="#172126" />
+
+        <SolidColorBrush x:Key="CanvasBrush" Color="#F6F8F9" />
+        <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF" />
+        <SolidColorBrush x:Key="SurfaceSoftBrush" Color="#F7FAFA" />
+        <SolidColorBrush x:Key="InkBrush" Color="#13181D" />
+        <SolidColorBrush x:Key="MutedBrush" Color="#6B7880" />
+        <SolidColorBrush x:Key="TealBrush" Color="#068F8A" />
+        <SolidColorBrush x:Key="TealHoverBrush" Color="#047B77" />
+        <SolidColorBrush x:Key="MintBrush" Color="#E0F5F2" />
+        <SolidColorBrush x:Key="LineBrush" Color="#E5EAED" />
+        <SolidColorBrush x:Key="InputBorderBrush" Color="#CAD4D9" />
+        <SolidColorBrush x:Key="AmberBrush" Color="#FFB80D" />
+        <SolidColorBrush x:Key="OnTealBrush" Color="#FFFFFF" />
+
+        <FontFamily x:Key="FontUi">Inter, Segoe UI</FontFamily>
+        <FontFamily x:Key="FontData">Cascadia Mono, Consolas</FontFamily>
+        <x:Double x:Key="TypeCaptionTight">11</x:Double>
+        <x:Double x:Key="TypeCaption">12</x:Double>
+        <x:Double x:Key="TypeEyebrow">11</x:Double>
+        <x:Double x:Key="TypeBodySmall">13</x:Double>
+        <x:Double x:Key="TypeBody">14</x:Double>
+        <x:Double x:Key="TypeTitle">16</x:Double>
+        <x:Double x:Key="TypeScreen">22</x:Double>
+        <x:Double x:Key="TypeMetric">22</x:Double>
+        <x:Double x:Key="Space1">4</x:Double>
+        <x:Double x:Key="Space2">8</x:Double>
+        <x:Double x:Key="Space3">12</x:Double>
+        <x:Double x:Key="Space4">16</x:Double>
+        <x:Double x:Key="Space5">24</x:Double>
+        <x:Double x:Key="HitTarget">36</x:Double>
+        <x:Double x:Key="HitTargetCompact">34</x:Double>
+        <x:Double x:Key="HitTargetMin">32</x:Double>
+        <Thickness x:Key="PadPage">16</Thickness>
+        <Thickness x:Key="PadCard">16</Thickness>
+        <Thickness x:Key="PadCardDense">12</Thickness>
+        <Thickness x:Key="PadSubcard">12</Thickness>
+        <Thickness x:Key="PadButton">16,8</Thickness>
+        <Thickness x:Key="PadControl">12,0</Thickness>
+        <Thickness x:Key="PadPill">12,4</Thickness>
+        <CornerRadius x:Key="RadiusCard">12</CornerRadius>
+        <CornerRadius x:Key="RadiusControl">8</CornerRadius>
+        <CornerRadius x:Key="RadiusPill">100</CornerRadius>
     </Application.Resources>
 
     <Application.Styles>
@@ -23,86 +65,115 @@
 
         <!-- KIBERone Student: quiet learning workspace with yellow used only as guidance. -->
         <Style Selector="Window">
-            <Setter Property="FontFamily" Value="Inter, Segoe UI" />
-            <Setter Property="FontSize" Value="14" />
-            <Setter Property="Foreground" Value="#13181D" />
-            <Setter Property="Background" Value="#F6F8F9" />
+            <Setter Property="FontFamily" Value="{StaticResource FontUi}" />
+            <Setter Property="FontSize" Value="{StaticResource TypeBody}" />
+            <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
+            <Setter Property="Background" Value="{DynamicResource CanvasBrush}" />
         </Style>
 
+        <Style Selector="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
+            <Setter Property="FontSize" Value="{StaticResource TypeBody}" />
+        </Style>
         <Style Selector="TextBlock.brand">
-            <Setter Property="FontSize" Value="20" />
+            <Setter Property="FontSize" Value="{StaticResource TypeScreen}" />
             <Setter Property="FontWeight" Value="Bold" />
-            <Setter Property="Foreground" Value="#068F8A" />
+            <Setter Property="Foreground" Value="{DynamicResource TealBrush}" />
         </Style>
         <Style Selector="TextBlock.eyebrow">
-            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontSize" Value="{StaticResource TypeEyebrow}" />
             <Setter Property="FontWeight" Value="Bold" />
-            <Setter Property="LetterSpacing" Value="1.1" />
-            <Setter Property="Foreground" Value="#068F8A" />
+            <Setter Property="LetterSpacing" Value="1.2" />
+            <Setter Property="Foreground" Value="{DynamicResource TealBrush}" />
         </Style>
         <Style Selector="TextBlock.h1">
-            <Setter Property="FontSize" Value="28" />
+            <Setter Property="FontSize" Value="{StaticResource TypeScreen}" />
             <Setter Property="FontWeight" Value="Bold" />
-            <Setter Property="LineHeight" Value="34" />
+            <Setter Property="LineHeight" Value="28" />
         </Style>
         <Style Selector="TextBlock.h2">
-            <Setter Property="FontSize" Value="20" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="LineHeight" Value="26" />
+            <Setter Property="FontSize" Value="{StaticResource TypeTitle}" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="LineHeight" Value="22" />
+        </Style>
+        <Style Selector="TextBlock.screen">
+            <Setter Property="FontSize" Value="{StaticResource TypeScreen}" />
+            <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+        <Style Selector="TextBlock.title">
+            <Setter Property="FontSize" Value="{StaticResource TypeTitle}" />
+            <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+        <Style Selector="TextBlock.caption">
+            <Setter Property="FontSize" Value="{StaticResource TypeCaption}" />
         </Style>
         <Style Selector="TextBlock.muted">
-            <Setter Property="Foreground" Value="#6B7880" />
+            <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+            <Setter Property="FontSize" Value="{StaticResource TypeCaption}" />
         </Style>
         <Style Selector="TextBlock.metricValue">
-            <Setter Property="FontSize" Value="22" />
+            <Setter Property="FontSize" Value="{StaticResource TypeMetric}" />
             <Setter Property="FontWeight" Value="Bold" />
-            <Setter Property="Foreground" Value="#068F8A" />
+            <Setter Property="Foreground" Value="{DynamicResource TealBrush}" />
             <Setter Property="TextTrimming" Value="CharacterEllipsis" />
         </Style>
 
         <Style Selector="Border.card">
-            <Setter Property="Background" Value="White" />
-            <Setter Property="BorderBrush" Value="#E5EAED" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="14" />
-            <Setter Property="Padding" Value="24" />
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusCard}" />
+            <Setter Property="Padding" Value="{StaticResource PadCard}" />
             <Setter Property="BoxShadow" Value="0 8 24 0 #0A13181D" />
         </Style>
         <Style Selector="Border.softCard">
-            <Setter Property="Background" Value="#F7FAFA" />
-            <Setter Property="BorderBrush" Value="#E3EAEC" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceSoftBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="12" />
-            <Setter Property="Padding" Value="16" />
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusCard}" />
+            <Setter Property="Padding" Value="{StaticResource PadSubcard}" />
         </Style>
         <Style Selector="Border.metric">
-            <Setter Property="Background" Value="#F7FAFA" />
-            <Setter Property="BorderBrush" Value="#E5EAED" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceSoftBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="10" />
-            <Setter Property="Padding" Value="12" />
-        </Style>
-        <Style Selector="Border.achievement">
-            <Setter Property="Background" Value="#E0F5F2" />
-            <Setter Property="BorderBrush" Value="#CBE9E6" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="12" />
-            <Setter Property="Padding" Value="16" />
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusControl}" />
+            <Setter Property="Padding" Value="{StaticResource PadSubcard}" />
         </Style>
         <Style Selector="Border.statusPill">
-            <Setter Property="Background" Value="#E0F5F2" />
-            <Setter Property="CornerRadius" Value="999" />
-            <Setter Property="Padding" Value="12,7" />
+            <Setter Property="Background" Value="{DynamicResource MintBrush}" />
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusPill}" />
+            <Setter Property="Padding" Value="{StaticResource PadPill}" />
         </Style>
 
         <Style Selector="Button">
             <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="CornerRadius" Value="10" />
-            <Setter Property="MinHeight" Value="42" />
-            <Setter Property="Padding" Value="16,8" />
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusControl}" />
+            <Setter Property="MinHeight" Value="{StaticResource HitTarget}" />
+            <Setter Property="Padding" Value="{StaticResource PadButton}" />
             <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="#E5EAED" />
+            <Setter Property="TextElement.Foreground" Value="#13181D" />
+        </Style>
+        <Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#EAF7F5" />
+            <Setter Property="BorderBrush" Value="#B9D8D5" />
+            <Setter Property="TextElement.Foreground" Value="#13181D" />
+        </Style>
+        <Style Selector="Button:pressed">
+            <Setter Property="RenderTransform" Value="none" />
+        </Style>
+        <Style Selector="Button:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#E0F5F2" />
         </Style>
         <Style Selector="Button.primary">
             <Setter Property="Background" Value="#068F8A" />
@@ -110,7 +181,17 @@
             <Setter Property="BorderBrush" Value="#068F8A" />
             <Setter Property="BorderThickness" Value="1" />
         </Style>
-        <Style Selector="Button.primary:pointerover /template/ ContentPresenter">
+        <Style Selector="Button.primary /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#068F8A" />
+            <Setter Property="BorderBrush" Value="#068F8A" />
+            <Setter Property="TextElement.Foreground" Value="White" />
+        </Style>
+        <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#047B77" />
+            <Setter Property="BorderBrush" Value="#047B77" />
+            <Setter Property="TextElement.Foreground" Value="White" />
+        </Style>
+        <Style Selector="Button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
             <Setter Property="Background" Value="#047B77" />
         </Style>
         <Style Selector="Button.secondary">
@@ -119,36 +200,55 @@
             <Setter Property="BorderBrush" Value="#B9D8D5" />
             <Setter Property="BorderThickness" Value="1" />
         </Style>
-        <Style Selector="Button.secondary:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="#EAF7F5" />
+        <Style Selector="Button.secondary /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="#B9D8D5" />
+            <Setter Property="TextElement.Foreground" Value="#056D69" />
         </Style>
-        <Style Selector="Button:focus-visible /template/ ContentPresenter">
+        <Style Selector="Button.secondary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#EAF7F5" />
+            <Setter Property="BorderBrush" Value="#B9D8D5" />
+            <Setter Property="TextElement.Foreground" Value="#056D69" />
+        </Style>
+        <Style Selector="Button:focus-visible /template/ ContentPresenter#PART_ContentPresenter">
             <Setter Property="BorderBrush" Value="#FFB80D" />
-            <Setter Property="BorderThickness" Value="2" />
         </Style>
 
         <Style Selector="Button.nav">
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="HorizontalContentAlignment" Value="Left" />
-            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Background" Value="#FBFCFC" />
             <Setter Property="Foreground" Value="#52616A" />
+            <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusControl}" />
             <Setter Property="Padding" Value="12,8" />
-            <Setter Property="MinHeight" Value="46" />
+            <Setter Property="MinHeight" Value="{StaticResource HitTarget}" />
             <Setter Property="Margin" Value="0,0,0,4" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
-        <Style Selector="Button.nav:pointerover /template/ ContentPresenter">
+        <Style Selector="Button.nav /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#FBFCFC" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="TextElement.Foreground" Value="#52616A" />
+        </Style>
+        <Style Selector="Button.nav:pointerover /template/ ContentPresenter#PART_ContentPresenter">
             <Setter Property="Background" Value="#EEF7F6" />
+            <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="TextElement.Foreground" Value="#056D69" />
         </Style>
         <Style Selector="Button.nav.active">
             <Setter Property="Background" Value="#E0F5F2" />
             <Setter Property="Foreground" Value="#056D69" />
         </Style>
-        <Style Selector="Button.nav.active /template/ ContentPresenter">
+        <Style Selector="Button.nav.active /template/ ContentPresenter#PART_ContentPresenter">
             <Setter Property="Background" Value="#E0F5F2" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="TextElement.Foreground" Value="#056D69" />
+        </Style>
+        <Style Selector="Button.nav.active:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#E0F5F2" />
+            <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="TextElement.Foreground" Value="#056D69" />
         </Style>
 
@@ -161,40 +261,149 @@
             <Setter Property="Foreground" Value="#13181D" />
             <Setter Property="BorderBrush" Value="#DFE6E9" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="12" />
-            <Setter Property="Padding" Value="16" />
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusCard}" />
+            <Setter Property="Padding" Value="{StaticResource PadCard}" />
             <Setter Property="Margin" Value="0,0,16,16" />
         </Style>
-        <Style Selector="Button.lesson:pointerover /template/ ContentPresenter">
+        <Style Selector="Button.lesson /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="#DFE6E9" />
+        </Style>
+        <Style Selector="Button.lesson:pointerover /template/ ContentPresenter#PART_ContentPresenter">
             <Setter Property="Background" Value="#F0FAF9" />
             <Setter Property="BorderBrush" Value="#8CCBC6" />
         </Style>
 
         <Style Selector="ComboBox">
-            <Setter Property="MinHeight" Value="48" />
-            <Setter Property="CornerRadius" Value="10" />
-            <Setter Property="BorderBrush" Value="#CAD4D9" />
+            <Setter Property="MinHeight" Value="{StaticResource HitTarget}" />
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusControl}" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource InputBorderBrush}" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
-            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Padding" Value="{StaticResource PadControl}" />
         </Style>
         <Style Selector="ComboBox /template/ ContentPresenter">
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
+        <Style Selector="ComboBox /template/ TextBlock#PlaceholderTextBlock">
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
         <Style Selector="ComboBoxItem">
+            <Setter Property="Background" Value="Transparent" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="Padding" Value="12,8" />
-            <Setter Property="MinHeight" Value="36" />
+            <Setter Property="MinHeight" Value="{StaticResource HitTarget}" />
+        </Style>
+        <Style Selector="ComboBoxItem /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="ComboBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#EEF7F6" />
+        </Style>
+        <Style Selector="NumericUpDown">
+            <Setter Property="MinHeight" Value="{StaticResource HitTarget}" />
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusControl}" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Padding" Value="{StaticResource PadControl}" />
         </Style>
         <Style Selector="TextBox">
-            <Setter Property="MinHeight" Value="42" />
+            <Setter Property="MinHeight" Value="{StaticResource HitTarget}" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource InputBorderBrush}" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
-            <Setter Property="Padding" Value="12,8" />
-            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="{StaticResource PadControl}" />
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusControl}" />
+        </Style>
+        <Style Selector="TextBox /template/ ScrollViewer#PART_ScrollViewer">
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBox /template/ TextPresenter#PART_TextPresenter">
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBox /template/ TextBlock#PART_Watermark">
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBox[AcceptsReturn=True]">
+            <Setter Property="VerticalContentAlignment" Value="Top" />
+            <Setter Property="Padding" Value="12,10" />
+        </Style>
+        <Style Selector="TextBox[AcceptsReturn=True] /template/ ScrollViewer#PART_ScrollViewer">
+            <Setter Property="VerticalAlignment" Value="Stretch" />
+        </Style>
+        <Style Selector="TextBox[AcceptsReturn=True] /template/ TextPresenter#PART_TextPresenter">
+            <Setter Property="VerticalAlignment" Value="Top" />
+        </Style>
+        <Style Selector="TextBox[AcceptsReturn=True] /template/ TextBlock#PART_Watermark">
+            <Setter Property="VerticalAlignment" Value="Top" />
         </Style>
         <Style Selector="ProgressBar">
             <Setter Property="Foreground" Value="#068F8A" />
             <Setter Property="Background" Value="#E0E5E8" />
-            <Setter Property="CornerRadius" Value="999" />
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusPill}" />
+        </Style>
+        <Style Selector="Button.quizChoice">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </Style>
+        <Style Selector="Button.quizChoice /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.quizChoice:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.quizChoice:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Border.quizOption">
+            <Setter Property="Background" Value="#F7FAFA" />
+            <Setter Property="BorderBrush" Value="#DDE5E8" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusControl}" />
+            <Setter Property="Padding" Value="12,8" />
+        </Style>
+        <Style Selector="Border.quizOption:pointerover">
+            <Setter Property="Background" Value="#EAF7F5" />
+            <Setter Property="BorderBrush" Value="#8CCBC6" />
+        </Style>
+        <Style Selector="Border.quizOption.selected">
+            <Setter Property="Background" Value="#E0F5F2" />
+            <Setter Property="BorderBrush" Value="#068F8A" />
+        </Style>
+        <Style Selector="Border.quizOption.selected:pointerover">
+            <Setter Property="Background" Value="#E0F5F2" />
+            <Setter Property="BorderBrush" Value="#068F8A" />
+        </Style>
+        <Style Selector="Border.quizCheck">
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="#CAD4D9" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Margin" Value="10,0,0,0" />
+        </Style>
+        <Style Selector="Border.quizCheck.selected">
+            <Setter Property="Background" Value="#068F8A" />
+            <Setter Property="BorderBrush" Value="#068F8A" />
+        </Style>
+        <Style Selector="Border.quizCheck Path">
+            <Setter Property="Fill" Value="#9AA6AD" />
+            <Setter Property="Opacity" Value="0.55" />
+        </Style>
+        <Style Selector="Border.quizCheck.selected Path">
+            <Setter Property="Fill" Value="White" />
+            <Setter Property="Opacity" Value="1" />
         </Style>
 
         <Style Selector="TabControl">

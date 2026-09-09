@@ -72,7 +72,7 @@ public sealed class FileSyncService
         var target = await ResolveStudentTargetAsync(studentId, ct);
         if (target is null) return null;
         var name = $"{target.LastName} {target.FirstName}".Trim();
-        return new StudentSaveHome(name, target.Module);
+        return new StudentSaveHome(name, target.Module, target.ModuleFolders);
     }
 
     public static string StudentDesktopFolder(string studentDisplayName, string? module = null)
@@ -82,8 +82,31 @@ public sealed class FileSyncService
             desktop = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
         if (string.IsNullOrWhiteSpace(desktop))
             desktop = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Desktop");
-        var home = Path.Combine(desktop, SanitizeFolderName(studentDisplayName));
-        return string.IsNullOrWhiteSpace(module) ? home : Path.Combine(home, SanitizeFolderName(module));
+        // Module stays on the tutor PC. The student watches a flat desktop folder.
+        _ = module;
+        return Path.Combine(desktop, SanitizeFolderName(studentDisplayName));
+    }
+
+    public static void PromoteLegacyModuleFolder(string studentHome, string? module)
+    {
+        if (string.IsNullOrWhiteSpace(studentHome) || string.IsNullOrWhiteSpace(module)) return;
+        var home = Path.GetFullPath(studentHome);
+        Directory.CreateDirectory(home);
+        var legacy = Path.GetFullPath(Path.Combine(home, SanitizeFolderName(module)));
+        var homePrefix = home.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        if (!Directory.Exists(legacy) || !legacy.StartsWith(homePrefix, StringComparison.OrdinalIgnoreCase)) return;
+
+        foreach (var file in Directory.EnumerateFiles(legacy, "*", SearchOption.AllDirectories))
+        {
+            var relative = Path.GetRelativePath(legacy, file);
+            if (string.IsNullOrWhiteSpace(relative) || relative.Contains("..", StringComparison.Ordinal)) continue;
+            var dest = Path.GetFullPath(Path.Combine(home, relative));
+            if (!dest.StartsWith(homePrefix, StringComparison.OrdinalIgnoreCase)) continue;
+            Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+            if (!File.Exists(dest))
+                File.Move(file, dest);
+        }
+        TryDeleteEmptyDirectories(legacy);
     }
 
     public async Task<SyncPrepareResult> PrepareAsync(SyncPrepareRequest request, CancellationToken ct = default)
@@ -418,7 +441,13 @@ public sealed class FileSyncService
         if (string.IsNullOrWhiteSpace(module)
             || allowed.All(name => !string.Equals(name, module, StringComparison.OrdinalIgnoreCase)))
             module = student.Group?.Module ?? "";
-        return new StudentSyncTarget(student.LastName, student.FirstName, student.Group?.Name ?? "группа", module);
+        var folders = allowed
+            .Concat(string.IsNullOrWhiteSpace(student.Group?.Module) ? [] : [student.Group!.Module])
+            .Concat(string.IsNullOrWhiteSpace(module) ? [] : [module])
+            .Select(SanitizeFolderName)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        return new StudentSyncTarget(student.LastName, student.FirstName, student.Group?.Name ?? "группа", module, folders);
     }
 
     private async Task<StoredPlan> BuildPlanAsync(string clientId, IReadOnlyList<SyncFileFingerprint> localFiles, CancellationToken ct)
@@ -515,5 +544,20 @@ public sealed class FileSyncService
         new(approval.Id, required, approval.Status, approval.Reason, approval.CreatedAt, plan.Upload, plan.Download);
 
     private sealed record StoredPlan(List<string> Upload, List<string> Download, List<string> Conflicts, List<SyncChange> Changes);
-    private sealed record StudentSyncTarget(string LastName, string FirstName, string GroupName, string Module);
+    private sealed record StudentSyncTarget(string LastName, string FirstName, string GroupName, string Module, IReadOnlyList<string> ModuleFolders);
+
+    private static void TryDeleteEmptyDirectories(string root)
+    {
+        if (!Directory.Exists(root)) return;
+        foreach (var child in Directory.EnumerateDirectories(root))
+            TryDeleteEmptyDirectories(child);
+        try
+        {
+            if (!Directory.EnumerateFileSystemEntries(root).Any())
+                Directory.Delete(root);
+        }
+        catch
+        {
+        }
+    }
 }

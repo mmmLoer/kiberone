@@ -52,7 +52,10 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string quizQuestion = string.Empty;
     [ObservableProperty] private string? selectedQuizOption;
     [ObservableProperty] private string quizFeedback = "Выберите один вариант.";
+    [ObservableProperty] private bool quizAllowsMultiple;
+    [ObservableProperty] private string quizHint = "Выберите один вариант.";
     public ObservableCollection<string> QuizOptions { get; } = [];
+    public ObservableCollection<QuizChoiceViewModel> QuizChoices { get; } = [];
     public ObservableCollection<TypingGlyphViewModel> TextGlyphs { get; } = [];
     public ObservableCollection<KeyboardRowViewModel> KeyboardRows { get; } = [];
     public ObservableCollection<StudentChoiceViewModel> Students { get; } = [];
@@ -70,6 +73,7 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string currentStudentGroup = "Группа не выбрана";
     [ObservableProperty] private int currentStudentLevel = 1;
     [ObservableProperty] private int currentStudentKiberons;
+    [ObservableProperty] private int currentStudentXp;
     [ObservableProperty] private int selectedSectionIndex;
     private Guid? quizSessionId;
     private bool applyingLoginGroups;
@@ -77,11 +81,11 @@ public partial class MainViewModel : ViewModelBase
     private string? lastPreferredGroup;
     public Action? UpdateRequested { get; set; }
     public Action? RetryRequested { get; set; }
-    public Action? FocusEnabled { get; set; }
+    public Action<IReadOnlyList<string>>? FocusEnabled { get; set; }
     public Action? FocusDisabled { get; set; }
     public Action? WatchdogEnabled { get; set; }
     public Action? WatchdogDisabled { get; set; }
-    public Action<Guid, int>? QuizAnswerRequested { get; set; }
+    public Action<Guid, IReadOnlyList<int>>? QuizAnswerRequested { get; set; }
     public Action<Guid>? StudentSelected { get; set; }
     public Action<bool>? ScreenLockChanged { get; set; }
 
@@ -184,10 +188,16 @@ public partial class MainViewModel : ViewModelBase
     public string Greeting => $"Привет, {CurrentStudentName}!";
     public string LevelLabel => $"Уровень {CurrentStudentLevel}";
     public string BalanceLabel => $"{CurrentStudentKiberons} ₭";
-    public double LevelProgress => Math.Clamp((CurrentStudentLevel * 83) % 100, 8, 96);
-    public string LevelProgressLabel => $"{(int)LevelProgress * 10} / 1000 XP до нового уровня";
-    public double GoalProgress => Math.Clamp(CurrentStudentKiberons / 14.2, 0, 100);
-    public string GoalRemainder => $"Осталось {Math.Max(0, 1420 - CurrentStudentKiberons)} ₭";
+    public double LevelProgress => Math.Clamp(CurrentStudentXp % 100, 0, 100);
+    public string LevelProgressLabel => CurrentStudentXp <= 0
+        ? "XP появится после занятий"
+        : $"{CurrentStudentXp % 100} / 100 XP до нового уровня";
+
+    partial void OnCurrentStudentXpChanged(int value)
+    {
+        OnPropertyChanged(nameof(LevelProgress));
+        OnPropertyChanged(nameof(LevelProgressLabel));
+    }
     public string LessonMeta => $"{(TargetText.Any(IsCyrillic) ? "Русская раскладка" : "Английская раскладка")} · {TargetText.Length} знаков";
     public bool IsHomeSection => SelectedSectionIndex == 0;
     public bool IsLessonsSection => SelectedSectionIndex is >= 1 and <= 5;
@@ -203,7 +213,7 @@ public partial class MainViewModel : ViewModelBase
         0 => "Твой следующий шаг появится здесь", 1 => "Выбери доступный материал",
         2 => "Пробел запускает урок", 3 => "Одна строка · пробел — старт",
         4 => "Можно передохнуть", 5 => "Урок закончен",
-        6 => "Уровень, кибероны и достижения", _ => "Связь с классом"
+        6 => "Уровень и кибероны", _ => "Связь с классом"
     };
 
     partial void OnSelectedSectionIndexChanged(int value)
@@ -327,12 +337,27 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    private void ToggleQuizChoice(QuizChoiceViewModel? choice)
+    {
+        if (choice is null) return;
+        if (QuizAllowsMultiple)
+        {
+            choice.IsSelected = !choice.IsSelected;
+            return;
+        }
+
+        foreach (var item in QuizChoices)
+            item.IsSelected = item == choice;
+        SelectedQuizOption = choice.Text;
+    }
+
+    [RelayCommand]
     private void SubmitQuiz()
     {
-        if (quizSessionId is null || SelectedQuizOption is null) { QuizFeedback = "Сначала выберите ответ."; return; }
-        var index = QuizOptions.IndexOf(SelectedQuizOption);
-        if (index < 0) return;
-        QuizAnswerRequested?.Invoke(quizSessionId.Value, index);
+        if (quizSessionId is null) { QuizFeedback = "Сначала выберите ответ."; return; }
+        var selected = QuizChoices.Select((choice, index) => (choice.IsSelected, index)).Where(x => x.IsSelected).Select(x => x.index).ToList();
+        if (selected.Count == 0) { QuizFeedback = "Сначала выберите ответ."; return; }
+        QuizAnswerRequested?.Invoke(quizSessionId.Value, selected);
         QuizFeedback = "Ответ отправляется тьютору…";
         IsQuizVisible = false;
     }
@@ -348,13 +373,12 @@ public partial class MainViewModel : ViewModelBase
         CurrentStudentGroup = SelectedStudent.Group;
         CurrentStudentLevel = SelectedStudent.Level;
         CurrentStudentKiberons = SelectedStudent.Kiberons;
+        CurrentStudentXp = SelectedStudent.Xp;
         OnPropertyChanged(nameof(LevelProgress));
         OnPropertyChanged(nameof(Greeting));
         OnPropertyChanged(nameof(LevelLabel));
         OnPropertyChanged(nameof(BalanceLabel));
         OnPropertyChanged(nameof(LevelProgressLabel));
-        OnPropertyChanged(nameof(GoalProgress));
-        OnPropertyChanged(nameof(GoalRemainder));
         LessonName = $"Добро пожаловать, {SelectedStudent.Name}";
     }
 
@@ -500,7 +524,7 @@ public partial class MainViewModel : ViewModelBase
                 IsScreenLocked = false;
                 return CommandExecutionResult.Success;
             case ClassroomCommandKinds.FocusOn:
-                FocusEnabled?.Invoke();
+                FocusEnabled?.Invoke(FocusModeBlocklist.FromPayload(command.Payload));
                 StatusMessage = "Тьютор оставил только нужные окна.";
                 return CommandExecutionResult.Success;
             case ClassroomCommandKinds.FocusOff:
@@ -537,13 +561,21 @@ public partial class MainViewModel : ViewModelBase
                 if (!command.Payload.TryGetProperty("question", out var questionProperty) || !command.Payload.TryGetProperty("options", out var optionsProperty))
                     return new CommandExecutionResult(false, "Викторина заполнена не полностью.");
                 QuizOptions.Clear();
+                QuizChoices.Clear();
                 foreach (var option in optionsProperty.EnumerateArray())
-                    if (option.GetString() is { } optionText) QuizOptions.Add(optionText);
+                {
+                    if (option.GetString() is not { } optionText) continue;
+                    QuizOptions.Add(optionText);
+                    QuizChoices.Add(new QuizChoiceViewModel(optionText));
+                }
                 if (QuizOptions.Count < 2) return new CommandExecutionResult(false, "Недостаточно вариантов ответа.");
                 quizSessionId = sessionId;
                 QuizQuestion = questionProperty.GetString() ?? "Вопрос";
+                QuizAllowsMultiple = command.Payload.TryGetProperty("allow_multiple", out var multipleProperty)
+                    && multipleProperty.ValueKind == System.Text.Json.JsonValueKind.True;
+                QuizHint = QuizAllowsMultiple ? "Отметьте все правильные варианты." : "Выберите один вариант.";
                 SelectedQuizOption = null;
-                QuizFeedback = "Выберите один вариант.";
+                QuizFeedback = QuizHint;
                 IsQuizVisible = true;
                 return CommandExecutionResult.Success;
             case ClassroomCommandKinds.OpenUrl:
@@ -811,6 +843,12 @@ public sealed class TutorLessonCardViewModel(TypingLessonOffer lesson)
     public int MinimumCharacters { get; } = lesson.MinimumCharacters;
 }
 
+public partial class QuizChoiceViewModel(string text) : ObservableObject
+{
+    public string Text { get; } = text;
+    [ObservableProperty] private bool isSelected;
+}
+
 public sealed class StudentChoiceViewModel(StudentSummary student)
 {
     public Guid Id { get; } = student.Id;
@@ -818,6 +856,7 @@ public sealed class StudentChoiceViewModel(StudentSummary student)
     public string Group { get; } = student.GroupName;
     public int Level { get; } = student.Level;
     public int Kiberons { get; } = student.Kiberons;
+    public int Xp { get; } = student.Xp;
     public string Details { get; } = $"{student.GroupName} · уровень {student.Level} · {student.Kiberons} K";
     public override string ToString() => $"{Name} · {student.GroupName}";
 }

@@ -6,6 +6,8 @@ public sealed class QuizSession
     public required string Question { get; set; }
     public string OptionsJson { get; set; } = "[]";
     public int CorrectIndex { get; set; }
+    public string CorrectIndicesJson { get; set; } = "[]";
+    public bool IsMultiple { get; set; }
     public int XpReward { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
@@ -18,6 +20,7 @@ public sealed class QuizAnswer
     public required string ClientId { get; set; }
     public Guid? StudentId { get; set; }
     public int SelectedIndex { get; set; }
+    public string SelectedIndicesJson { get; set; } = "[]";
     public bool IsCorrect { get; set; }
     public int XpAwarded { get; set; }
     public DateTimeOffset AnsweredAt { get; set; } = DateTimeOffset.UtcNow;
@@ -31,10 +34,29 @@ public sealed record StartQuizRequest(
     IReadOnlyList<string> ClientIds,
     int? TimeLimitSeconds = null,
     bool ShuffleAnswers = false,
-    bool ShowFeedback = true);
+    bool ShowFeedback = true,
+    IReadOnlyList<int>? CorrectIndices = null);
 
-public sealed record SubmitQuizAnswerRequest(Guid SessionId, string ClientId, int SelectedIndex);
+public sealed record SubmitQuizAnswerRequest(
+    Guid SessionId,
+    string ClientId,
+    int SelectedIndex,
+    IReadOnlyList<int>? SelectedIndices = null);
 public sealed record QuizResult(Guid SessionId, bool Correct, int XpAwarded, string Message);
+
+public static class QuizAnswerSet
+{
+    public static List<int> Resolve(int fallbackIndex, IReadOnlyList<int>? indices, int optionCount)
+    {
+        IEnumerable<int> source = indices is { Count: > 0 }
+            ? indices
+            : fallbackIndex >= 0 ? [fallbackIndex] : [];
+        return source.Where(i => i >= 0 && i < optionCount).Distinct().OrderBy(i => i).ToList();
+    }
+
+    public static bool Matches(IReadOnlyList<int> selected, IReadOnlyList<int> correct)
+        => selected.Count == correct.Count && selected.SequenceEqual(correct);
+}
 
 public sealed class QuizDocument
 {
@@ -55,4 +77,11 @@ public sealed class QuizDocumentQuestion
     public string? MediaPath { get; set; }
     public List<string> Options { get; set; } = ["", "", "", ""];
     public int CorrectIndex { get; set; }
+    public List<int>? CorrectIndices { get; set; }
+
+    public IReadOnlyList<int> ResolvedCorrectIndices()
+    {
+        var source = CorrectIndices ?? (CorrectIndex >= 0 ? [CorrectIndex] : new List<int>());
+        return source.Where(i => i >= 0 && i < Options.Count).Distinct().OrderBy(i => i).ToList();
+    }
 }

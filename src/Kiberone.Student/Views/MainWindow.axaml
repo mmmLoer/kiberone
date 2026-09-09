@@ -34,12 +34,10 @@
 
         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
           <TextBlock Text="{Binding SectionTitle}"
-                     FontSize="24"
-                     FontWeight="Bold"
+                     Classes="screen"
                      TextTrimming="CharacterEllipsis"/>
           <TextBlock Text="{Binding SectionSubtitle}"
                      Classes="muted"
-                     FontSize="12"
                      TextTrimming="CharacterEllipsis"/>
         </StackPanel>
 
@@ -56,7 +54,7 @@
                        HorizontalAlignment="Right"/>
             <TextBlock Text="{Binding SyncLabel}"
                        Classes="muted"
-                       FontSize="10"
+                       FontSize="11"
                        TextTrimming="CharacterEllipsis"
                        HorizontalAlignment="Right"/>
           </StackPanel>
@@ -83,7 +81,7 @@
                   ToolTip.Tip="Главная">
             <Grid ColumnDefinitions="30,*">
               <Border Width="26" Height="26" Background="#E9F5F4" CornerRadius="8">
-                <TextBlock Text="⌂" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#068F8A" FontSize="15"/>
+                <TextBlock Text="⌂" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#068F8A" FontSize="16"/>
               </Border>
               <TextBlock Grid.Column="1" Text="Главная" VerticalAlignment="Center" Margin="10,0,0,0"/>
             </Grid>
@@ -131,14 +129,14 @@
 
         <Border Grid.Row="2" Classes="softCard" Padding="12">
           <StackPanel Spacing="4">
-            <TextBlock Text="СТАТУС КЛАССА" Classes="eyebrow" FontSize="9"/>
+            <TextBlock Text="СТАТУС КЛАССА" Classes="eyebrow" FontSize="11"/>
             <TextBlock Text="{Binding CurrentStudentGroup}"
                        FontWeight="SemiBold"
                        FontSize="12"
                        TextWrapping="Wrap"/>
             <TextBlock Text="{Binding UpdateLabel}"
                        Classes="muted"
-                       FontSize="10"
+                       FontSize="11"
                        TextWrapping="Wrap"/>
           </StackPanel>
         </Border>
@@ -159,8 +157,8 @@
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Top">
             <Border Classes="card" Margin="0,0,16,0" VerticalAlignment="Top">
-              <StackPanel Spacing="20">
-                <StackPanel Spacing="7">
+              <StackPanel Spacing="16">
+                <StackPanel Spacing="8">
                   <TextBlock Text="СЕГОДНЯ" Classes="eyebrow"/>
                   <TextBlock Text="{Binding Greeting}" Classes="h1"/>
                   <TextBlock Text="Начни с короткой разминки или дождись задания тьютора."
@@ -178,7 +176,7 @@
                       </StackPanel>
                       <TextBlock Grid.Column="1"
                                  Text="{Binding BalanceLabel}"
-                                 FontSize="26"
+                                 FontSize="22"
                                  FontWeight="Bold"
                                  Foreground="#C08400"
                                  VerticalAlignment="Center"/>
@@ -222,19 +220,15 @@
               </StackPanel>
             </Border>
 
-            <StackPanel Grid.Column="1" Spacing="18">
+            <StackPanel Grid.Column="1" Spacing="16">
               <Border Classes="card">
-                <StackPanel Spacing="14">
-                  <Grid ColumnDefinitions="*,Auto">
-                    <TextBlock Text="Моя цель" Classes="h2"/>
-                    <Border Grid.Column="1" Background="#FFF3C9" CornerRadius="999" Padding="9,5" VerticalAlignment="Center">
-                      <TextBlock Text="ЦЕЛЬ" FontSize="9" FontWeight="Bold" Foreground="#8B6500" VerticalAlignment="Center"/>
-                    </Border>
-                  </Grid>
-                  <TextBlock Text="Наушники" FontSize="17" FontWeight="SemiBold"/>
-                  <TextBlock Text="1 420 ₭" FontSize="28" FontWeight="Bold" Foreground="#C08400"/>
-                  <ProgressBar Value="{Binding GoalProgress}" Maximum="100" Height="8" Foreground="#FFB80D"/>
-                  <TextBlock Text="{Binding GoalRemainder}" Foreground="#056D69" FontWeight="SemiBold"/>
+                <StackPanel Spacing="16">
+                  <TextBlock Text="Моя цель" Classes="h2"/>
+                  <TextBlock Text="Пока нет цели накопления" FontSize="16" FontWeight="SemiBold"/>
+                  <TextBlock Text="Награда появится здесь, когда тьютор её назначит."
+                             Classes="muted"
+                             FontSize="13"
+                             TextWrapping="Wrap"/>
                 </StackPanel>
               </Border>
 
@@ -268,12 +262,12 @@
           <StackPanel Margin="24"
                       MaxWidth="1040"
                       HorizontalAlignment="Stretch"
-                      Spacing="22">
+                      Spacing="16">
             <StackPanel Spacing="6">
               <TextBlock Text="Уроки тьютора" Classes="h1"/>
               <TextBlock Text="{Binding TutorLessonsStatus}"
                          Classes="muted"
-                         FontSize="15"
+                         FontSize="16"
                          TextWrapping="Wrap"/>
             </StackPanel>
 
@@ -308,7 +302,7 @@
                         <TextBlock Text="✎" FontSize="16" FontWeight="Bold" Foreground="#068F8A" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                       </Border>
                       <StackPanel Grid.Column="1" Spacing="5" Margin="12,0,0,0">
-                        <TextBlock Text="{Binding Name}" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap" MaxWidth="220"/>
+                        <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" MaxWidth="220"/>
                         <TextBlock Text="{Binding Description}" Classes="muted" FontSize="12" TextWrapping="Wrap" MaxWidth="220"/>
                         <TextBlock Text="{Binding Details}" Foreground="#068F8A" FontSize="11" FontWeight="SemiBold"/>
                       </StackPanel>
@@ -336,8 +330,8 @@
                   Margin="24"
                   HorizontalAlignment="Center"
                   VerticalAlignment="Top">
-            <StackPanel Spacing="22">
-              <StackPanel Spacing="7">
+            <StackPanel Spacing="16">
+              <StackPanel Spacing="8">
                 <TextBlock Text="ГОТОВО К СТАРТУ" Classes="eyebrow"/>
                 <TextBlock Text="{Binding LessonName}" Classes="h1" TextWrapping="Wrap"/>
                 <TextBlock Text="{Binding LessonMeta}" Classes="muted" FontSize="14"/>
@@ -386,7 +380,7 @@
                       Spacing="16">
             <Grid ColumnDefinitions="*,Auto,Auto">
               <StackPanel Spacing="4">
-                <TextBlock Text="{Binding LessonName}" FontSize="24" FontWeight="Bold"/>
+                <TextBlock Text="{Binding LessonName}" FontSize="22" FontWeight="Bold"/>
                 <TextBlock Text="{Binding StatusMessage}" Classes="muted" TextWrapping="Wrap"/>
               </StackPanel>
               <Border Grid.Column="1"
@@ -427,7 +421,7 @@
                 <StackPanel Spacing="3">
                   <TextBlock Text="Прогресс" Classes="muted" FontSize="11"/>
                   <TextBlock Text="{Binding Progress, StringFormat={}{0:0}%}" Classes="metricValue"/>
-                  <TextBlock Text="{Binding GoalLabel}" Classes="muted" FontSize="10" TextWrapping="Wrap"/>
+                  <TextBlock Text="{Binding GoalLabel}" Classes="muted" FontSize="11" TextWrapping="Wrap"/>
                 </StackPanel>
               </Border>
               <Border Grid.Column="3" Classes="metric" Margin="6,0">
@@ -439,7 +433,7 @@
               <Border Grid.Column="4" Classes="metric" Margin="6,0,0,0">
                 <StackPanel Spacing="3">
                   <TextBlock Text="Ошибки" Classes="muted" FontSize="11"/>
-                  <TextBlock Text="{Binding WrongKeys}" FontSize="24" FontWeight="Bold" Foreground="#C9362B"/>
+                  <TextBlock Text="{Binding WrongKeys}" FontSize="22" FontWeight="Bold" Foreground="#C9362B"/>
                 </StackPanel>
               </Border>
             </Grid>
@@ -472,7 +466,7 @@
                         <TextBlock Text="{Binding DisplayCharacter}"
                                    Foreground="{Binding GlyphForeground}"
                                    FontFamily="Cascadia Mono, Consolas"
-                                   FontSize="24"
+                                   FontSize="22"
                                    FontWeight="SemiBold"
                                    TextDecorations="{Binding Decoration}"/>
                       </Border>
@@ -557,7 +551,7 @@
                   Margin="24"
                   HorizontalAlignment="Center"
                   VerticalAlignment="Top">
-            <StackPanel Spacing="18">
+            <StackPanel Spacing="16">
               <Border Width="54" Height="54" CornerRadius="16" Background="#FFF3C9" HorizontalAlignment="Left">
                 <TextBlock Text="Ⅱ" FontSize="22" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#8B6500"/>
               </Border>
@@ -565,7 +559,7 @@
                 <TextBlock Text="Урок на паузе" Classes="h1"/>
                 <TextBlock Text="Результат сохранён. Отдохни и продолжай, когда будешь готов."
                            Classes="muted"
-                           FontSize="15"
+                           FontSize="16"
                            TextWrapping="Wrap"/>
               </StackPanel>
               <Grid ColumnDefinitions="*,*,*">
@@ -601,7 +595,7 @@
                 </Border>
                 <TextBlock Text="Сессия завершена" Classes="h1" TextWrapping="Wrap"/>
                 <TextBlock Text="Результат готов к синхронизации с Tutor." Classes="muted" TextWrapping="Wrap"/>
-                <TextBlock Text="{Binding Cpm, StringFormat={}{0:0} зн/мин}" Foreground="#068F8A" FontSize="34" FontWeight="Bold" Margin="0,12,0,0"/>
+                <TextBlock Text="{Binding Cpm, StringFormat={}{0:0} зн/мин}" Foreground="#068F8A" FontSize="22" FontWeight="Bold" Margin="0,12,0,0"/>
                 <TextBlock Text="{Binding Accuracy, StringFormat={}{0:0}% точность}" Foreground="#1F8E5B" FontSize="18" FontWeight="Bold"/>
                 <TextBlock Text="{Binding CorrectKeys, StringFormat={}{0} знаков}" FontSize="18" FontWeight="SemiBold"/>
                 <Button Content="Выбрать новый урок" Command="{Binding NavigateCommand}" CommandParameter="1" Classes="primary" Margin="0,8,0,0"/>
@@ -609,28 +603,12 @@
             </Border>
 
             <Border Grid.Column="1" Classes="card">
-              <StackPanel Spacing="14">
+              <StackPanel Spacing="10">
                 <TextBlock Text="Лидеры занятия" Classes="h2"/>
-                <TextBlock Text="Рейтинг показывает сильную сторону каждого ученика." Classes="muted" FontSize="12"/>
-                <Border Background="#FFF7DB" BorderBrush="#F4DA84" BorderThickness="1" CornerRadius="11" Padding="16">
-                  <Grid ColumnDefinitions="32,*,Auto">
-                    <TextBlock Text="1" FontSize="18" FontWeight="Bold" Foreground="#8B6500" VerticalAlignment="Center"/>
-                    <StackPanel Grid.Column="1"><TextBlock Text="Петрова Софья" FontWeight="SemiBold"/><TextBlock Text="Точность" Classes="muted" FontSize="11"/></StackPanel>
-                    <TextBlock Grid.Column="2" Text="Лидер" Foreground="#8B6500" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                  </Grid>
-                </Border>
-                <Border Classes="softCard" Padding="16">
-                  <Grid ColumnDefinitions="32,*">
-                    <TextBlock Text="2" FontSize="18" FontWeight="Bold" Foreground="#6B7880" VerticalAlignment="Center"/>
-                    <StackPanel Grid.Column="1"><TextBlock Text="Иванов Артём" FontWeight="SemiBold"/><TextBlock Text="Скорость" Classes="muted" FontSize="11"/></StackPanel>
-                  </Grid>
-                </Border>
-                <Border Classes="softCard" Padding="16">
-                  <Grid ColumnDefinitions="32,*">
-                    <TextBlock Text="3" FontSize="18" FontWeight="Bold" Foreground="#6B7880" VerticalAlignment="Center"/>
-                    <StackPanel Grid.Column="1"><TextBlock Text="Смирнов Лев" FontWeight="SemiBold"/><TextBlock Text="Объём" Classes="muted" FontSize="11"/></StackPanel>
-                  </Grid>
-                </Border>
+                <TextBlock Text="Пока нет рейтинга — список появится, когда тьютор откроет итоги класса."
+                           Classes="muted"
+                           FontSize="13"
+                           TextWrapping="Wrap"/>
               </StackPanel>
             </Border>
           </Grid>
@@ -643,7 +621,7 @@
           <StackPanel Margin="24"
                       MaxWidth="1080"
                       HorizontalAlignment="Stretch"
-                      Spacing="20">
+                      Spacing="16">
             <Border Classes="card">
               <Grid ColumnDefinitions="Auto,*,Auto">
                 <Border Width="64" Height="64" Background="#E0F5F2" CornerRadius="20">
@@ -656,55 +634,20 @@
                 </StackPanel>
                 <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">
                   <TextBlock Text="БАЛАНС" Classes="eyebrow" Foreground="#8B6500" HorizontalAlignment="Right"/>
-                  <TextBlock Text="{Binding BalanceLabel}" FontSize="30" FontWeight="Bold" Foreground="#C08400"/>
+                  <TextBlock Text="{Binding BalanceLabel}" FontSize="22" FontWeight="Bold" Foreground="#C08400"/>
                 </StackPanel>
               </Grid>
             </Border>
 
-            <TextBlock Text="Мои достижения" Classes="h2"/>
-            <Grid ColumnDefinitions="*,*,*">
-              <Border Classes="achievement" Margin="0,0,8,0">
-                <StackPanel Spacing="7">
-                  <TextBlock Text="✓" FontSize="20" FontWeight="Bold" Foreground="#068F8A"/>
-                  <TextBlock Text="Точный старт" FontWeight="SemiBold"/>
-                  <TextBlock Text="Первый урок без спешки" Classes="muted" FontSize="12" TextWrapping="Wrap"/>
-                </StackPanel>
-              </Border>
-              <Border Grid.Column="1" Classes="achievement" Margin="8,0">
-                <StackPanel Spacing="7">
-                  <TextBlock Text="◉" FontSize="20" FontWeight="Bold" Foreground="#068F8A"/>
-                  <TextBlock Text="Фокус" FontWeight="SemiBold"/>
-                  <TextBlock Text="Работа без отвлечений" Classes="muted" FontSize="12" TextWrapping="Wrap"/>
-                </StackPanel>
-              </Border>
-              <Border Grid.Column="2" Classes="achievement" Margin="8,0,0,0">
-                <StackPanel Spacing="7">
-                  <TextBlock Text="↗" FontSize="20" FontWeight="Bold" Foreground="#068F8A"/>
-                  <TextBlock Text="Синхронизация" FontWeight="SemiBold"/>
-                  <TextBlock Text="Проект сохранён в Tutor" Classes="muted" FontSize="12" TextWrapping="Wrap"/>
-                </StackPanel>
-              </Border>
-            </Grid>
-
-            <TextBlock Text="Цели накопления" Classes="h2" Margin="0,5,0,0"/>
-            <Grid ColumnDefinitions="*,*">
-              <Border Background="#FFF7DB" BorderBrush="#F4DA84" BorderThickness="1" CornerRadius="14" Padding="22" Margin="0,0,9,0">
-                <StackPanel Spacing="11">
-                  <TextBlock Text="ТЕКУЩАЯ ЦЕЛЬ" Classes="eyebrow" Foreground="#8B6500"/>
-                  <TextBlock Text="Наушники · 1 420 ₭" FontWeight="SemiBold" FontSize="17"/>
-                  <TextBlock Text="{Binding GoalRemainder}" Foreground="#056D69"/>
-                  <ProgressBar Value="{Binding GoalProgress}" Maximum="100" Height="8" Foreground="#FFB80D"/>
-                </StackPanel>
-              </Border>
-              <Border Grid.Column="1" Classes="card" Padding="22" Margin="9,0,0,0">
-                <StackPanel Spacing="11">
-                  <TextBlock Text="СЛЕДУЮЩАЯ ЦЕЛЬ" Classes="eyebrow" Foreground="#6B7880"/>
-                  <TextBlock Text="Рюкзак · 1 600 ₭" FontWeight="SemiBold" FontSize="17"/>
-                  <TextBlock Text="Можно выбрать после наушников" Classes="muted"/>
-                  <ProgressBar Value="{Binding CurrentStudentKiberons}" Maximum="1600" Height="8" Foreground="#FFB80D"/>
-                </StackPanel>
-              </Border>
-            </Grid>
+            <TextBlock Text="Цели накопления" Classes="h2"/>
+            <Border Classes="card" Padding="22">
+              <StackPanel Spacing="8">
+                <TextBlock Text="Пока нет наград" FontWeight="Bold" FontSize="16"/>
+                <TextBlock Text="Каталог целей пока не приходит на этот компьютер. Баланс киберонов — в шапке профиля."
+                           Classes="muted"
+                           TextWrapping="Wrap"/>
+              </StackPanel>
+            </Border>
           </StackPanel>
         </ScrollViewer>
       </TabItem>
@@ -713,7 +656,7 @@
       <TabItem Header="Техническое состояние">
         <ScrollViewer>
           <StackPanel Margin="24"
-                      Spacing="18"
+                      Spacing="16"
                       MaxWidth="780"
                       HorizontalAlignment="Center">
             <Border Classes="card">
@@ -817,14 +760,27 @@
               VerticalAlignment="Center">
         <StackPanel Spacing="16">
           <TextBlock Text="ВИКТОРИНА" Classes="eyebrow"/>
-          <TextBlock Text="{Binding QuizQuestion}" FontSize="24" FontWeight="Bold" TextWrapping="Wrap"/>
-          <TextBlock Text="Выбери один вариант ответа." Classes="muted"/>
-          <ListBox ItemsSource="{Binding QuizOptions}"
-                   SelectedItem="{Binding SelectedQuizOption}"
-                   MinHeight="120"
-                   BorderBrush="#DDE5E8"
-                   BorderThickness="1"
-                   CornerRadius="10"/>
+          <TextBlock Text="{Binding QuizQuestion}" FontSize="22" FontWeight="Bold" TextWrapping="Wrap"/>
+          <TextBlock Text="{Binding QuizHint}" Classes="muted"/>
+          <ItemsControl ItemsSource="{Binding QuizChoices}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:QuizChoiceViewModel">
+                <Button Command="{Binding #StudentRoot.DataContext.ToggleQuizChoiceCommand}"
+                        CommandParameter="{Binding}"
+                        Classes="quizChoice">
+                  <Border Classes="quizOption" Classes.selected="{Binding IsSelected}">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Text="{Binding Text}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                      <Border Grid.Column="1" Classes="quizCheck" Classes.selected="{Binding IsSelected}">
+                        <Path Width="14" Height="14" Stretch="Uniform" IsHitTestVisible="False"
+                              Data="M 1.2,7.2 L 5.2,11.4 L 13.4,2.4 L 11.8,1 L 5.2,8.4 L 2.6,5.8 Z" />
+                      </Border>
+                    </Grid>
+                  </Border>
+                </Button>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
           <TextBlock Text="{Binding QuizFeedback}" Foreground="#056D69"/>
           <Button Content="Отправить ответ" Command="{Binding SubmitQuizCommand}" Classes="primary"/>
         </StackPanel>
@@ -842,13 +798,13 @@
               Width="620"
               HorizontalAlignment="Center"
               VerticalAlignment="Center">
-        <StackPanel Spacing="18">
+        <StackPanel Spacing="16">
           <Border Width="46" Height="46" Background="#E0F5F2" CornerRadius="14" HorizontalAlignment="Left">
             <TextBlock Text="↗" Foreground="#068F8A" FontSize="20" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
           </Border>
           <TextBlock Text="Сообщение от тьютора" Classes="h2"/>
           <TextBlock Text="{Binding NotificationText}"
-                     FontSize="21"
+                     FontSize="22"
                      FontWeight="SemiBold"
                      TextWrapping="Wrap"/>
           <Button Content="Понятно" Command="{Binding DismissNotificationCommand}" Classes="primary"/>
@@ -874,18 +830,18 @@
               VerticalAlignment="Center">
         <Grid ColumnDefinitions="270,*">
           <Border Background="#068F8A" Padding="28">
-            <StackPanel Spacing="20">
+            <StackPanel Spacing="16">
               <StackPanel Orientation="Horizontal" Spacing="4">
                 <StackPanel Orientation="Horizontal" Spacing="0">
-                  <TextBlock Text="K" FontSize="21" FontWeight="Bold" Foreground="{StaticResource BrandKBrush}" />
-                  <TextBlock Text="1" FontSize="21" FontWeight="Bold" Foreground="{StaticResource Brand1Brush}" />
-                  <TextBlock Text="B" FontSize="21" FontWeight="Bold" Foreground="{StaticResource BrandBBrush}" />
-                  <TextBlock Text="E" FontSize="21" FontWeight="Bold" Foreground="{StaticResource BrandEBrush}" />
-                  <TextBlock Text="R" FontSize="21" FontWeight="Bold" Foreground="{StaticResource BrandRBrush}" />
+                  <TextBlock Text="K" FontSize="22" FontWeight="Bold" Foreground="{StaticResource BrandKBrush}" />
+                  <TextBlock Text="1" FontSize="22" FontWeight="Bold" Foreground="{StaticResource Brand1Brush}" />
+                  <TextBlock Text="B" FontSize="22" FontWeight="Bold" Foreground="{StaticResource BrandBBrush}" />
+                  <TextBlock Text="E" FontSize="22" FontWeight="Bold" Foreground="{StaticResource BrandEBrush}" />
+                  <TextBlock Text="R" FontSize="22" FontWeight="Bold" Foreground="{StaticResource BrandRBrush}" />
                 </StackPanel>
-                <TextBlock Text="ONE" Foreground="#FFCF47" FontSize="21" FontWeight="Bold"/>
+                <TextBlock Text="ONE" Foreground="#FFCF47" FontSize="22" FontWeight="Bold"/>
               </StackPanel>
-              <TextBlock Text="Твоё место в классе" Foreground="White" FontSize="26" FontWeight="Bold" TextWrapping="Wrap"/>
+              <TextBlock Text="Твоё место в классе" Foreground="White" FontSize="22" FontWeight="Bold" TextWrapping="Wrap"/>
               <TextBlock Text="Выбери себя один раз — прогресс, награды и уроки будут сохраняться автоматически."
                          Foreground="#D5F0ED"
                          FontSize="14"
@@ -893,14 +849,14 @@
                          LineHeight="21"/>
               <Border Background="#24FFFFFF" CornerRadius="12" Padding="14" Margin="0,10,0,0">
                 <StackPanel Spacing="5">
-                  <TextBlock Text="КЛАСС" Foreground="#BCE5E1" FontSize="9" FontWeight="Bold" LetterSpacing="1"/>
+                  <TextBlock Text="КЛАСС" Foreground="#BCE5E1" FontSize="11" FontWeight="Bold" LetterSpacing="1"/>
                   <TextBlock Text="{Binding ConnectionLabel}" Foreground="White" FontWeight="SemiBold" TextWrapping="Wrap"/>
                 </StackPanel>
               </Border>
             </StackPanel>
           </Border>
 
-          <StackPanel Grid.Column="1" Margin="32" Spacing="14" VerticalAlignment="Center">
+          <StackPanel Grid.Column="1" Margin="32" Spacing="16" VerticalAlignment="Center">
             <StackPanel Spacing="5">
               <TextBlock Text="Добро пожаловать" Classes="h1"/>
               <TextBlock Text="Группа уже выбрана для урока. Можно сменить, если пришли на отработку." Classes="muted"/>
@@ -952,14 +908,14 @@
             ZIndex="1300">
       <StackPanel HorizontalAlignment="Center"
                   VerticalAlignment="Center"
-                  Spacing="18"
+                  Spacing="16"
                   MaxWidth="620">
         <Border Width="64" Height="64" CornerRadius="20" Background="#26FFFFFF" HorizontalAlignment="Center">
           <TextBlock Text="■" Foreground="#FFD52E" FontSize="22" HorizontalAlignment="Center" VerticalAlignment="Center"/>
         </Border>
         <TextBlock Text="ЭКРАН ЗАБЛОКИРОВАН"
                    Foreground="#FFD52E"
-                   FontSize="30"
+                   FontSize="22"
                    FontWeight="Bold"
                    HorizontalAlignment="Center"/>
         <TextBlock Text="{Binding LockMessage}"

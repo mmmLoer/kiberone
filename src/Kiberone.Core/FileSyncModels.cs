@@ -27,7 +27,7 @@ public sealed record DeleteFileRequest(string ClientId, string Path);
 public sealed record RestoreVersionRequest(string ClientId, string Path, string VersionId);
 public sealed record SyncedFileInfo(string Path, long Size, DateTimeOffset ModifiedAt, string Sha256);
 public sealed record FileVersionInfo(string Id, string Path, long Size, string Sha256, DateTimeOffset CreatedAt, string Label);
-public sealed record StudentSaveHome(string DisplayName, string Module);
+public sealed record StudentSaveHome(string DisplayName, string Module, IReadOnlyList<string> ModuleFolders);
 
 public sealed class SyncApproval
 {

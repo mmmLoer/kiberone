@@ -55,16 +55,12 @@ public partial class App : Avalonia.Application
             agent.ApplyElevatedUpdate = (source, target) => vpn!.TryApplyStudentUpdate(source, target);
             focusMode = new FocusModeManager();
             watchdog = new WatchdogManager();
-            focusMode.GameWindowsClosed += _ => agent.QueueClientEvent("games_addict");
             viewModel.FocusEnabled = focusMode.Start;
             viewModel.FocusDisabled = focusMode.Stop;
             viewModel.WatchdogEnabled = watchdog.Start;
             viewModel.WatchdogDisabled = watchdog.Stop;
             if (watchdog.ConsumeRestartSentinel())
-            {
-                agent.QueueClientEvent("watchdog_survivor");
                 watchdog.Start();
-            }
             agent.ScreenProvider = ScreenCapture.CaptureJpeg;
             agent.FocusModeStateProvider = () => focusMode.IsActive;
             agent.WatchdogStateProvider = () => watchdog.IsActive;

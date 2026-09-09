@@ -20,6 +20,9 @@ public sealed class StudentFileSyncClient
     private string cachePath;
     private Dictionary<string, CachedFile> accepted = new(StringComparer.OrdinalIgnoreCase);
     private PendingBatch? pending;
+    private readonly HashSet<string> ignoredModuleFolders = new(StringComparer.OrdinalIgnoreCase);
+    private string? activeModule;
+    private bool replaceFromServer;
 
     public StudentFileSyncClient(string clientId, string watchFolder)
     {
@@ -47,6 +50,33 @@ public sealed class StudentFileSyncClient
         pending = null;
     }
 
+    public void SetIgnoredFolders(IReadOnlyList<string>? names)
+    {
+        if (names is null) return;
+        ignoredModuleFolders.Clear();
+        foreach (var name in names)
+        {
+            if (string.IsNullOrWhiteSpace(name)) continue;
+            ignoredModuleFolders.Add(FileSyncService.SanitizeFolderName(name));
+        }
+        if (!string.IsNullOrWhiteSpace(activeModule))
+            ignoredModuleFolders.Add(FileSyncService.SanitizeFolderName(activeModule));
+    }
+
+    public bool SetActiveModule(string? module)
+    {
+        var next = string.IsNullOrWhiteSpace(module) ? null : module.Trim();
+        if (string.Equals(activeModule, next, StringComparison.OrdinalIgnoreCase)) return false;
+        var switched = activeModule is not null;
+        activeModule = next;
+        pending = null;
+        if (!string.IsNullOrWhiteSpace(next))
+            ignoredModuleFolders.Add(FileSyncService.SanitizeFolderName(next));
+        if (switched)
+            replaceFromServer = true;
+        return true;
+    }
+
     public async Task SyncOnceAsync(HttpClient http, CancellationToken ct = default)
     {
         if (StudentId is null)
@@ -57,11 +87,14 @@ public sealed class StudentFileSyncClient
 
         if (pending is null)
         {
-            var local = await ScanHashedAsync(ct);
+            var replacing = replaceFromServer;
+            var local = replacing
+                ? new Dictionary<string, CachedFile>(StringComparer.OrdinalIgnoreCase)
+                : await ScanHashedAsync(ct);
             var fingerprints = local.Select(x => new SyncFileFingerprint(x.Key, x.Value.Size, x.Value.Sha256)).ToList();
-            var changes = BuildChanges(accepted, local);
+            var changes = replacing ? [] : BuildChanges(accepted, local);
             using var response = await http.PostAsJsonAsync("/sync/prepare", new SyncPrepareRequest(
-                clientId, changes, accepted.Count > 0, local.Count == 0, 5, StudentId, fingerprints), JsonOptions, ct);
+                clientId, changes, !replacing && accepted.Count > 0, local.Count == 0, 5, StudentId, fingerprints), JsonOptions, ct);
             response.EnsureSuccessStatusCode();
             var prepared = await response.Content.ReadFromJsonAsync<SyncPrepareResult>(JsonOptions, ct)
                 ?? throw new JsonException("Сервер не вернул состояние синхронизации.");
@@ -119,6 +152,11 @@ public sealed class StudentFileSyncClient
 
         using var completeResponse = await http.PostAsJsonAsync("/sync/complete", new SyncCompleteRequest(clientId), JsonOptions, ct);
         completeResponse.EnsureSuccessStatusCode();
+        if (replaceFromServer)
+        {
+            PruneLocalFilesNotIn(batch.Prepared.DownloadPaths ?? []);
+            replaceFromServer = false;
+        }
         accepted = await ScanHashedAsync(ct);
         SaveCache();
         pending = null;
@@ -137,7 +175,12 @@ public sealed class StudentFileSyncClient
             try
             {
                 foreach (var child in Directory.EnumerateDirectories(directory))
-                    if (!ExcludedDirectories.Contains(Path.GetFileName(child))) pendingDirectories.Push(child);
+                {
+                    var name = Path.GetFileName(child);
+                    if (ExcludedDirectories.Contains(name)) continue;
+                    if (IsIgnoredModuleFolder(directory, name)) continue;
+                    pendingDirectories.Push(child);
+                }
                 foreach (var file in Directory.EnumerateFiles(directory))
                 {
                     if (ExcludedFiles.Contains(Path.GetFileName(file))) continue;
@@ -173,6 +216,41 @@ public sealed class StudentFileSyncClient
             changes.Add(new SyncChange(path, SyncChangeKind.Deleted, 0));
         return changes.OrderBy(x => x.Path, StringComparer.OrdinalIgnoreCase).ToList();
     }
+
+    private void PruneLocalFilesNotIn(IReadOnlyList<string> keep)
+    {
+        var keepSet = new HashSet<string>(keep.Select(path => path.Replace('\\', '/').Trim('/')), StringComparer.OrdinalIgnoreCase);
+        if (!Directory.Exists(watchFolder)) return;
+        var pendingDirectories = new Stack<string>();
+        pendingDirectories.Push(watchFolder);
+        while (pendingDirectories.Count > 0)
+        {
+            var directory = pendingDirectories.Pop();
+            try
+            {
+                foreach (var child in Directory.EnumerateDirectories(directory))
+                {
+                    var name = Path.GetFileName(child);
+                    if (ExcludedDirectories.Contains(name) || IsIgnoredModuleFolder(directory, name)) continue;
+                    pendingDirectories.Push(child);
+                }
+                foreach (var file in Directory.EnumerateFiles(directory))
+                {
+                    if (ExcludedFiles.Contains(Path.GetFileName(file))) continue;
+                    var relative = Path.GetRelativePath(watchFolder, file).Replace('\\', '/');
+                    if (keepSet.Contains(relative)) continue;
+                    try { File.Delete(file); }
+                    catch { }
+                }
+            }
+            catch (UnauthorizedAccessException) { }
+            catch (DirectoryNotFoundException) { }
+        }
+    }
+
+    private bool IsIgnoredModuleFolder(string parentDirectory, string name) =>
+        string.Equals(Path.GetFullPath(parentDirectory), watchFolder, StringComparison.OrdinalIgnoreCase)
+        && ignoredModuleFolders.Contains(name);
 
     private string ResolveLocal(string relativePath)
     {

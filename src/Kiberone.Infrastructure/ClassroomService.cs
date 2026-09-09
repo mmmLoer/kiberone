@@ -126,7 +126,6 @@ public sealed class ClassroomService(DbContextOptions<ClassroomDbContext> option
         db.StoreOrders.RemoveRange(orders);
         db.Grades.RemoveRange(await db.Grades.Where(x => x.StudentId == id).ToListAsync(ct));
         db.ClassroomSessions.RemoveRange(await db.ClassroomSessions.Where(x => x.StudentId == id).ToListAsync(ct));
-        db.StudentAchievements.RemoveRange(await db.StudentAchievements.Where(x => x.StudentId == id).ToListAsync(ct));
         db.KiberonTransactions.RemoveRange(await db.KiberonTransactions.Where(x => x.StudentId == id).ToListAsync(ct));
         var quizAnswers = await db.QuizAnswers.Where(x => x.StudentId == id).ToListAsync(ct);
         db.QuizAnswers.RemoveRange(quizAnswers);
@@ -142,10 +141,9 @@ public sealed class ClassroomService(DbContextOptions<ClassroomDbContext> option
         var student = await db.Students.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, ct);
         if (student is null) return null;
         var grades = (await db.Grades.AsNoTracking().Where(x => x.StudentId == id).ToListAsync(ct)).OrderByDescending(x => x.CreatedAt).ToList();
-        var achievements = (await db.StudentAchievements.AsNoTracking().Where(x => x.StudentId == id).ToListAsync(ct)).OrderByDescending(x => x.AwardedAt).ToList();
         var history = (await db.KiberonTransactions.AsNoTracking().Where(x => x.StudentId == id).ToListAsync(ct)).OrderByDescending(x => x.CreatedAt).Take(200).ToList();
         var orders = (await db.StoreOrders.AsNoTracking().Where(x => x.StudentId == id).ToListAsync(ct)).OrderByDescending(x => x.CreatedAt).ToList();
-        return new StudentProfile(student, grades, achievements, history, orders);
+        return new StudentProfile(student, grades, history, orders);
     }
 
     public async Task<bool> DeleteGroupAsync(Guid id, CancellationToken ct = default)
@@ -173,8 +171,7 @@ public sealed class ClassroomService(DbContextOptions<ClassroomDbContext> option
         var totalXp = await db.Students.AsNoTracking().Where(x => x.GroupId == groupId).SumAsync(x => x.Xp, ct);
         var totalKiberons = await db.Students.AsNoTracking().Where(x => x.GroupId == groupId).SumAsync(x => x.Kiberons, ct);
         var sessions = await db.ClassroomSessions.AsNoTracking().CountAsync(x => studentIds.Contains(x.StudentId), ct);
-        var achievements = await db.StudentAchievements.AsNoTracking().CountAsync(x => studentIds.Contains(x.StudentId), ct);
-        return new GroupStatistics(group.Id, group.Name, studentIds.Count, grades.Count == 0 ? 0 : Math.Round(grades.Average(), 2), totalXp, totalKiberons, sessions, achievements);
+        return new GroupStatistics(group.Id, group.Name, studentIds.Count, grades.Count == 0 ? 0 : Math.Round(grades.Average(), 2), totalXp, totalKiberons, sessions);
     }
 
     public async Task<StudentStatistics?> GetStudentStatisticsAsync(Guid studentId, CancellationToken ct = default)
@@ -184,10 +181,9 @@ public sealed class ClassroomService(DbContextOptions<ClassroomDbContext> option
         if (student is null) return null;
         var grades = await db.Grades.AsNoTracking().Where(x => x.StudentId == studentId).Select(x => x.Value).ToListAsync(ct);
         var sessions = await db.ClassroomSessions.AsNoTracking().CountAsync(x => x.StudentId == studentId, ct);
-        var achievements = await db.StudentAchievements.AsNoTracking().CountAsync(x => x.StudentId == studentId, ct);
         var purchases = await db.StoreOrders.AsNoTracking().CountAsync(x => x.StudentId == studentId, ct);
         return new StudentStatistics(student.Id, student.DisplayName, student.Group?.Name ?? string.Empty, student.Level, student.Xp, student.Kiberons,
-            grades.Count == 0 ? 0 : Math.Round(grades.Average(), 2), grades.Count, sessions, achievements, purchases);
+            grades.Count == 0 ? 0 : Math.Round(grades.Average(), 2), grades.Count, sessions, purchases);
     }
 
     public async Task<Grade> AddGradeAsync(GradeDraft draft, CancellationToken ct = default)
@@ -209,65 +205,6 @@ public sealed class ClassroomService(DbContextOptions<ClassroomDbContext> option
         db.ClassroomSessions.Add(session);
         await db.SaveChangesAsync(ct);
         return session;
-    }
-
-    public async Task<IReadOnlyList<Achievement>> ListAchievementsAsync(CancellationToken ct = default)
-    {
-        await using var db = new ClassroomDbContext(options);
-        return await db.Achievements.AsNoTracking().Where(x => x.IsActive && !x.Code.StartsWith("sys_")).OrderBy(x => x.Name).ToListAsync(ct);
-    }
-
-    public async Task<Achievement> CreateAchievementAsync(AchievementDraft draft, CancellationToken ct = default)
-    {
-        var code = Required(draft.Code, "Код достижения", 64).ToLowerInvariant();
-        if (draft.XpReward < 0 || draft.KiberonReward < 0) throw new LessonValidationException(["Награда не может быть отрицательной."]);
-        await using var db = new ClassroomDbContext(options);
-        if (await db.Achievements.AnyAsync(x => x.Code == code, ct)) throw new InvalidOperationException("Код достижения уже используется.");
-        var achievement = new Achievement { Code = code, Name = Required(draft.Name, "Название достижения", 120), Description = Trim(draft.Description, 1000), Icon = Trim(draft.Icon, 64), XpReward = draft.XpReward, KiberonReward = draft.KiberonReward };
-        db.Achievements.Add(achievement);
-        await db.SaveChangesAsync(ct);
-        return achievement;
-    }
-
-    public async Task<StudentAchievement> AwardAchievementAsync(AwardAchievementRequest request, CancellationToken ct = default)
-    {
-        await using var db = new ClassroomDbContext(options);
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
-        var student = await db.Students.SingleOrDefaultAsync(x => x.Id == request.StudentId, ct) ?? throw new KeyNotFoundException("Ученик не найден.");
-        var achievement = await db.Achievements.SingleOrDefaultAsync(x => x.Id == request.AchievementId && x.IsActive, ct) ?? throw new KeyNotFoundException("Достижение не найдено.");
-        var existing = await db.StudentAchievements.SingleOrDefaultAsync(x => x.StudentId == request.StudentId && x.AchievementId == request.AchievementId, ct);
-        if (existing is not null) return existing;
-        var award = new StudentAchievement { StudentId = student.Id, AchievementId = achievement.Id, Note = Trim(request.Note, 500) };
-        student.Xp = checked(student.Xp + achievement.XpReward);
-        if (achievement.KiberonReward > 0) AddKiberons(db, student, achievement.KiberonReward, KiberonTransactionKind.Award, $"Достижение: {achievement.Name}", award.Id);
-        db.StudentAchievements.Add(award);
-        await db.SaveChangesAsync(ct);
-        await transaction.CommitAsync(ct);
-        return award;
-    }
-
-    public async Task<StudentAchievement> TriggerSystemAchievementAsync(Guid studentId, string eventName, CancellationToken ct = default)
-    {
-        var definition = eventName switch
-        {
-            "games_addict" => ("sys_game_addict", "Игроман", "Фокус-режим закрыл три игровых окна.", "gamepad", 25),
-            "watchdog_survivor" => ("sys_watchdog_survivor", "Неудержимый", "Student был восстановлен watchdog.", "shield", 25),
-            _ => throw new LessonValidationException(["Неизвестное системное событие."])
-        };
-        Guid achievementId;
-        await using (var db = new ClassroomDbContext(options))
-        {
-            if (!await db.Students.AnyAsync(x => x.Id == studentId, ct)) throw new KeyNotFoundException("Ученик не найден.");
-            var achievement = await db.Achievements.SingleOrDefaultAsync(x => x.Code == definition.Item1, ct);
-            if (achievement is null)
-            {
-                achievement = new Achievement { Code = definition.Item1, Name = definition.Item2, Description = definition.Item3, Icon = definition.Item4, XpReward = definition.Item5 };
-                db.Achievements.Add(achievement);
-                await db.SaveChangesAsync(ct);
-            }
-            achievementId = achievement.Id;
-        }
-        return await AwardAchievementAsync(new AwardAchievementRequest(studentId, achievementId, definition.Item3), ct);
     }
 
     public async Task<KiberonTransaction> AdjustKiberonsAsync(AdjustKiberonsRequest request, CancellationToken ct = default)
@@ -574,7 +511,6 @@ public sealed class ClassroomService(DbContextOptions<ClassroomDbContext> option
             db.StoreOrders.RemoveRange(await db.StoreOrders.Where(x => x.StudentId == student.Id).ToListAsync(ct));
             db.Grades.RemoveRange(await db.Grades.Where(x => x.StudentId == student.Id).ToListAsync(ct));
             db.ClassroomSessions.RemoveRange(await db.ClassroomSessions.Where(x => x.StudentId == student.Id).ToListAsync(ct));
-            db.StudentAchievements.RemoveRange(await db.StudentAchievements.Where(x => x.StudentId == student.Id).ToListAsync(ct));
             db.KiberonTransactions.RemoveRange(await db.KiberonTransactions.Where(x => x.StudentId == student.Id).ToListAsync(ct));
             db.QuizAnswers.RemoveRange(await db.QuizAnswers.Where(x => x.StudentId == student.Id).ToListAsync(ct));
         }
@@ -658,7 +594,6 @@ public sealed class ClassroomService(DbContextOptions<ClassroomDbContext> option
             db.StoreOrders.RemoveRange(await db.StoreOrders.Where(x => x.StudentId == student.Id).ToListAsync(ct));
             db.Grades.RemoveRange(await db.Grades.Where(x => x.StudentId == student.Id).ToListAsync(ct));
             db.ClassroomSessions.RemoveRange(await db.ClassroomSessions.Where(x => x.StudentId == student.Id).ToListAsync(ct));
-            db.StudentAchievements.RemoveRange(await db.StudentAchievements.Where(x => x.StudentId == student.Id).ToListAsync(ct));
             db.KiberonTransactions.RemoveRange(await db.KiberonTransactions.Where(x => x.StudentId == student.Id).ToListAsync(ct));
             db.QuizAnswers.RemoveRange(await db.QuizAnswers.Where(x => x.StudentId == student.Id).ToListAsync(ct));
         }

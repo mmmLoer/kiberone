@@ -36,7 +36,6 @@ public sealed class StudentAgent : IAsyncDisposable
     private bool updateRequested;
     private string? stagedUpdatePath;
     private Guid? studentId;
-    private readonly ConcurrentQueue<string> clientEvents = new();
     private readonly ConcurrentQueue<SubmitQuizAnswerRequest> quizAnswers = new();
     private readonly ConcurrentDictionary<Guid, byte> handledCommands = [];
     private Task? loopTask;
@@ -86,8 +85,12 @@ public sealed class StudentAgent : IAsyncDisposable
         UpdateStateChanged?.Invoke(availableUpdate is null ? "Ожидаем информацию об обновлении…" : "Скачиваем обновление…");
     }
 
-    public void QueueClientEvent(string eventName) => clientEvents.Enqueue(eventName);
-    public void SubmitQuizAnswer(Guid sessionId, int selectedIndex) => quizAnswers.Enqueue(new SubmitQuizAnswerRequest(sessionId, clientId, selectedIndex));
+    public void SubmitQuizAnswer(Guid sessionId, int selectedIndex) => SubmitQuizAnswer(sessionId, [selectedIndex]);
+    public void SubmitQuizAnswer(Guid sessionId, IReadOnlyList<int> selectedIndices)
+    {
+        var first = selectedIndices.Count > 0 ? selectedIndices[0] : -1;
+        quizAnswers.Enqueue(new SubmitQuizAnswerRequest(sessionId, clientId, first, selectedIndices.ToArray()));
+    }
     public void AssignStudent(Guid id)
     {
         studentId = id;
@@ -192,7 +195,6 @@ public sealed class StudentAgent : IAsyncDisposable
                     socketTask = await EnsureCommandSocketAsync(beacon, http, socketTask, cancellationToken);
                     if (Volatile.Read(ref commandSocketLive) == 0)
                         await PollCommandsAsync(http, cancellationToken);
-                    await FlushClientEventsAsync(http, cancellationToken);
                     await FlushQuizAnswersAsync(http, cancellationToken);
                     if (DateTimeOffset.UtcNow >= nextSyncAt)
                     {
@@ -293,11 +295,11 @@ public sealed class StudentAgent : IAsyncDisposable
                 PreferredGroupChanged?.Invoke(PreferredGroupName);
             }
             var previousFolder = fileSync.WatchFolder;
-            if (!string.IsNullOrWhiteSpace(settings.SaveStudentName))
-                fileSync.SetWorkspace(FileSyncService.StudentDesktopFolder(settings.SaveStudentName, settings.SaveModule));
-            else if (!string.IsNullOrWhiteSpace(settings.SaveModule))
-                fileSync.SetWorkspace(Path.Combine(watchFolder, FileSyncService.SanitizeFolderName(settings.SaveModule)));
-            if (!string.Equals(previousFolder, fileSync.WatchFolder, StringComparison.OrdinalIgnoreCase))
+            var workspaceChanged = ApplyStudentWorkspace(
+                settings.SaveStudentName,
+                settings.SaveModule,
+                settings.SaveIgnoreFolders);
+            if (workspaceChanged || !string.Equals(previousFolder, fileSync.WatchFolder, StringComparison.OrdinalIgnoreCase))
                 nextSyncAt = DateTimeOffset.MinValue;
             if (settings.StudentUpdate is not null)
             {
@@ -451,10 +453,19 @@ public sealed class StudentAgent : IAsyncDisposable
         command.Payload.TryGetProperty("student_name", out var nameElement);
         var module = moduleElement.ValueKind == JsonValueKind.String ? moduleElement.GetString() : null;
         var name = nameElement.ValueKind == JsonValueKind.String ? nameElement.GetString() : null;
+        ApplyStudentWorkspace(name, module);
+    }
+
+    private bool ApplyStudentWorkspace(string? name, string? module, IReadOnlyList<string>? ignoreFolders = null)
+    {
         if (!string.IsNullOrWhiteSpace(name))
-            fileSync.SetWorkspace(FileSyncService.StudentDesktopFolder(name, module));
-        else if (!string.IsNullOrWhiteSpace(module))
-            fileSync.SetWorkspace(Path.Combine(watchFolder, FileSyncService.SanitizeFolderName(module)));
+        {
+            var home = FileSyncService.StudentDesktopFolder(name);
+            FileSyncService.PromoteLegacyModuleFolder(home, module);
+            fileSync.SetWorkspace(home);
+        }
+        fileSync.SetIgnoredFolders(ignoreFolders);
+        return fileSync.SetActiveModule(module);
     }
 
     private void TrimHandledCommands()
@@ -524,16 +535,6 @@ public sealed class StudentAgent : IAsyncDisposable
         // and the Tutor looks up the screen under a different hash.
         using var response = await http.PostAsync("/screen", content, cancellationToken);
         response.EnsureSuccessStatusCode();
-    }
-
-    private async Task FlushClientEventsAsync(HttpClient http, CancellationToken cancellationToken)
-    {
-        while (clientEvents.TryPeek(out var eventName))
-        {
-            using var response = await http.PostAsJsonAsync("/events/trigger", new ClientEventRequest(clientId, eventName), JsonOptions, cancellationToken);
-            response.EnsureSuccessStatusCode();
-            _ = clientEvents.TryDequeue(out _);
-        }
     }
 
     private async Task FlushQuizAnswersAsync(HttpClient http, CancellationToken cancellationToken)

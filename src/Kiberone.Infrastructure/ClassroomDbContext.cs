@@ -15,8 +15,6 @@ public sealed class ClassroomDbContext(DbContextOptions<ClassroomDbContext> opti
     public DbSet<TypingSession> TypingSessions => Set<TypingSession>();
     public DbSet<TypingParticipant> TypingParticipants => Set<TypingParticipant>();
     public DbSet<TypingTelemetrySample> TypingTelemetry => Set<TypingTelemetrySample>();
-    public DbSet<Achievement> Achievements => Set<Achievement>();
-    public DbSet<StudentAchievement> StudentAchievements => Set<StudentAchievement>();
     public DbSet<KiberonTransaction> KiberonTransactions => Set<KiberonTransaction>();
     public DbSet<StoreItem> StoreItems => Set<StoreItem>();
     public DbSet<StoreOrder> StoreOrders => Set<StoreOrder>();
@@ -116,26 +114,6 @@ public sealed class ClassroomDbContext(DbContextOptions<ClassroomDbContext> opti
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(24);
             entity.HasIndex(x => new { x.ParticipantId, x.CapturedAt });
-        });
-        modelBuilder.Entity<Achievement>(entity =>
-        {
-            entity.ToTable("achievements", table =>
-            {
-                table.HasCheckConstraint("CK_achievements_xp", "XpReward >= 0");
-                table.HasCheckConstraint("CK_achievements_kiberons", "KiberonReward >= 0");
-            });
-            entity.HasKey(x => x.Id);
-            entity.HasIndex(x => x.Code).IsUnique();
-            entity.Property(x => x.Code).HasMaxLength(64);
-            entity.Property(x => x.Name).HasMaxLength(120);
-        });
-        modelBuilder.Entity<StudentAchievement>(entity =>
-        {
-            entity.ToTable("student_achievements");
-            entity.HasKey(x => x.Id);
-            entity.HasIndex(x => new { x.StudentId, x.AchievementId }).IsUnique();
-            entity.HasOne<Student>().WithMany().HasForeignKey(x => x.StudentId).OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne<Achievement>().WithMany().HasForeignKey(x => x.AchievementId).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<KiberonTransaction>(entity =>
         {

@@ -1,22 +1,24 @@
 using System.Runtime.InteropServices;
 using System.Text;
+using Kiberone.Core;
 
 namespace Kiberone.Student;
 
 internal sealed class FocusModeManager : IAsyncDisposable
 {
-    private static readonly string[] BlockedTitles = ["roblox", "poki", "yandex games", "яндекс игры", "minecraft", "steam"];
     private const uint WmClose = 0x0010;
     private readonly CancellationTokenSource lifetime = new();
     private Task? loop;
     private int closedCount;
     private bool thresholdReported;
+    private string[] blockedTitles = FocusModeBlocklist.Defaults;
 
     public bool IsActive { get; private set; }
     public event Action<int>? GameWindowsClosed;
 
-    public void Start()
+    public void Start(IReadOnlyList<string>? titles = null)
     {
+        blockedTitles = FocusModeBlocklist.Resolve(titles);
         IsActive = true;
         loop ??= RunAsync(lifetime.Token);
     }
@@ -34,6 +36,7 @@ internal sealed class FocusModeManager : IAsyncDisposable
 
     private void CloseBlockedWindows()
     {
+        var blocked = blockedTitles;
         EnumWindows((window, _) =>
         {
             if (!IsWindowVisible(window)) return true;
@@ -41,7 +44,7 @@ internal sealed class FocusModeManager : IAsyncDisposable
             if (length <= 0) return true;
             var title = new StringBuilder(length + 1);
             _ = GetWindowText(window, title, title.Capacity);
-            if (!BlockedTitles.Any(blocked => title.ToString().Contains(blocked, StringComparison.OrdinalIgnoreCase))) return true;
+            if (!blocked.Any(item => title.ToString().Contains(item, StringComparison.OrdinalIgnoreCase))) return true;
             if (PostMessage(window, WmClose, IntPtr.Zero, IntPtr.Zero))
             {
                 closedCount++;

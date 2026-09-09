@@ -22,23 +22,6 @@ public sealed class ClassroomServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Achievement_IsAwardedOnlyOnce_WithSingleReward()
-    {
-        var achievement = await service.CreateAchievementAsync(new AchievementDraft("first_win", "Первая победа", "", "cup", 75, 12));
-
-        var first = await service.AwardAchievementAsync(new AwardAchievementRequest(studentId, achievement.Id, "Турнир"));
-        var second = await service.AwardAchievementAsync(new AwardAchievementRequest(studentId, achievement.Id, "Повтор"));
-
-        Assert.Equal(first.Id, second.Id);
-        await using var db = new ClassroomDbContext(options);
-        var student = await db.Students.SingleAsync(x => x.Id == studentId);
-        Assert.Equal(75, student.Xp);
-        Assert.Equal(12, student.Kiberons);
-        Assert.Single(await db.StudentAchievements.ToListAsync());
-        Assert.Single(await db.KiberonTransactions.ToListAsync());
-    }
-
-    [Fact]
     public async Task Balance_CannotBecomeNegative()
     {
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -91,19 +74,6 @@ public sealed class ClassroomServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task SystemAchievement_IsSecretAndIdempotent()
-    {
-        var first = await service.TriggerSystemAchievementAsync(studentId, "games_addict");
-        var second = await service.TriggerSystemAchievementAsync(studentId, "games_addict");
-
-        Assert.Equal(first.Id, second.Id);
-        Assert.Empty(await service.ListAchievementsAsync());
-        await using var db = new ClassroomDbContext(options);
-        Assert.Equal(25, await db.Students.Where(x => x.Id == studentId).Select(x => x.Xp).SingleAsync());
-        Assert.Single(await db.StudentAchievements.ToListAsync());
-    }
-
-    [Fact]
     public async Task Statistics_AggregateGradesSessionsAndProgress()
     {
         await service.AddGradeAsync(new GradeDraft(studentId, null, 4, "Хорошо"));
@@ -133,8 +103,6 @@ public sealed class ClassroomServiceTests : IAsyncLifetime
             service.AddGradeAsync(new GradeDraft(studentId, null, 6, "")));
         await Assert.ThrowsAsync<LessonValidationException>(() =>
             service.AdjustKiberonsAsync(new AdjustKiberonsRequest(studentId, 0, "ноль")));
-        await Assert.ThrowsAsync<LessonValidationException>(() =>
-            service.TriggerSystemAchievementAsync(studentId, "unknown_event"));
 
         var item = await service.CreateStoreItemAsync(new StoreItemDraft("pen", "Ручка", "", 40, 1, false));
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -175,7 +143,6 @@ public sealed class ClassroomDatabaseSeedTests : IAsyncLifetime
         Assert.Empty(await db.Groups.ToListAsync());
         Assert.Empty(await db.Students.ToListAsync());
         Assert.Equal(3, await db.TypingLessons.CountAsync());
-        Assert.Equal(3, await db.Achievements.CountAsync());
         Assert.Equal(3, await db.StoreItems.CountAsync());
     }
 

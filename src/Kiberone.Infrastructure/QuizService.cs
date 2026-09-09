@@ -10,33 +10,36 @@ public sealed class QuizService(DbContextOptions<ClassroomDbContext> options, Cl
     {
         var question = request.Question.Trim();
         var answers = request.Options.Select(x => x.Trim()).Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
+        var correctIndices = QuizAnswerSet.Resolve(request.CorrectIndex, request.CorrectIndices, answers.Count);
         var errors = new List<string>();
         if (question.Length is < 3 or > 500) errors.Add("Вопрос должен содержать от 3 до 500 символов.");
         if (answers.Count is < 2 or > 6) errors.Add("Укажите от 2 до 6 вариантов ответа.");
-        if (request.CorrectIndex < 0 || request.CorrectIndex >= answers.Count) errors.Add("Некорректный номер правильного ответа.");
+        if (correctIndices.Count == 0) errors.Add("Отметьте хотя бы один правильный ответ.");
         if (request.XpReward is < 0 or > 1000) errors.Add("Награда должна быть от 0 до 1000 XP.");
         if (request.ClientIds.Count == 0) errors.Add("Выберите хотя бы один компьютер.");
         if (errors.Count > 0) throw new LessonValidationException(errors);
 
         var launchOptions = answers.ToList();
-        var correctIndex = request.CorrectIndex;
         if (request.ShuffleAnswers)
         {
-            var correctText = launchOptions[correctIndex];
-            for (var i = launchOptions.Count - 1; i > 0; i--)
+            var pairs = launchOptions.Select((text, index) => (text, isCorrect: correctIndices.Contains(index))).ToList();
+            for (var i = pairs.Count - 1; i > 0; i--)
             {
                 var j = Random.Shared.Next(i + 1);
-                (launchOptions[i], launchOptions[j]) = (launchOptions[j], launchOptions[i]);
+                (pairs[i], pairs[j]) = (pairs[j], pairs[i]);
             }
 
-            correctIndex = launchOptions.IndexOf(correctText);
+            launchOptions = pairs.Select(x => x.text).ToList();
+            correctIndices = pairs.Select((x, index) => (x, index)).Where(x => x.x.isCorrect).Select(x => x.index).ToList();
         }
 
         var session = new QuizSession
         {
             Question = question,
             OptionsJson = JsonSerializer.Serialize(launchOptions),
-            CorrectIndex = correctIndex,
+            CorrectIndex = correctIndices[0],
+            CorrectIndicesJson = JsonSerializer.Serialize(correctIndices),
+            IsMultiple = correctIndices.Count > 1,
             XpReward = request.XpReward
         };
         await using (var db = new ClassroomDbContext(options))
@@ -52,7 +55,8 @@ public sealed class QuizService(DbContextOptions<ClassroomDbContext> options, Cl
             options = launchOptions,
             xp_reward = request.XpReward,
             time_limit_seconds = request.TimeLimitSeconds,
-            show_feedback = request.ShowFeedback
+            show_feedback = request.ShowFeedback,
+            allow_multiple = session.IsMultiple
         });
         commands.Enqueue(new EnqueueCommandRequest(request.ClientIds, ClassroomCommandKinds.QuizStart, payload, 600));
         return session;
@@ -66,16 +70,30 @@ public sealed class QuizService(DbContextOptions<ClassroomDbContext> options, Cl
         if (existing is not null) return new QuizResult(existing.SessionId, existing.IsCorrect, existing.XpAwarded, "Ответ уже был принят.");
         var session = await db.QuizSessions.SingleOrDefaultAsync(x => x.Id == request.SessionId && x.IsActive, ct) ?? throw new KeyNotFoundException("Активная викторина не найдена.");
         var optionsList = JsonSerializer.Deserialize<List<string>>(session.OptionsJson) ?? [];
-        if (request.SelectedIndex < 0 || request.SelectedIndex >= optionsList.Count) throw new LessonValidationException(["Некорректный вариант ответа."]);
+        var storedCorrect = JsonSerializer.Deserialize<List<int>>(session.CorrectIndicesJson);
+        var correctIndices = QuizAnswerSet.Resolve(session.CorrectIndex, storedCorrect is { Count: > 0 } ? storedCorrect : null, optionsList.Count);
+        var rawSelected = request.SelectedIndices is { Count: > 0 } ? request.SelectedIndices : [request.SelectedIndex];
+        if (rawSelected.Count == 0 || rawSelected.Any(i => i < 0 || i >= optionsList.Count))
+            throw new LessonValidationException(["Некорректный вариант ответа."]);
+        var selectedIndices = rawSelected.Distinct().OrderBy(i => i).ToList();
         var studentId = clients.GetAll().FirstOrDefault(x => x.ClientId == request.ClientId)?.StudentId;
-        var correct = request.SelectedIndex == session.CorrectIndex;
+        var correct = QuizAnswerSet.Matches(selectedIndices, correctIndices);
         var xp = correct && studentId is not null ? session.XpReward : 0;
         if (xp > 0)
         {
             var student = await db.Students.SingleOrDefaultAsync(x => x.Id == studentId, ct);
             if (student is not null) student.Xp = checked(student.Xp + xp);
         }
-        var answer = new QuizAnswer { SessionId = session.Id, ClientId = request.ClientId, StudentId = studentId, SelectedIndex = request.SelectedIndex, IsCorrect = correct, XpAwarded = xp };
+        var answer = new QuizAnswer
+        {
+            SessionId = session.Id,
+            ClientId = request.ClientId,
+            StudentId = studentId,
+            SelectedIndex = selectedIndices[0],
+            SelectedIndicesJson = JsonSerializer.Serialize(selectedIndices),
+            IsCorrect = correct,
+            XpAwarded = xp
+        };
         db.QuizAnswers.Add(answer);
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);

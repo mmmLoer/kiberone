@@ -22,7 +22,6 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     public ObservableCollection<StudentCardViewModel> ClassRosterStudents { get; } = [];
     public ObservableCollection<RosterFilterOption> RosterGroupFilters { get; } = [];
     public ObservableCollection<ClassNoticeViewModel> ClassNotices { get; } = [];
-    public ObservableCollection<AchievementCardViewModel> Achievements { get; } = [];
     public ObservableCollection<StoreItemCardViewModel> StoreItems { get; } = [];
     public ObservableCollection<SyncApprovalCardViewModel> SyncApprovals { get; } = [];
     public ObservableCollection<SyncClientCardViewModel> SyncClients { get; } = [];
@@ -76,17 +75,11 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [ObservableProperty] private bool showClassScreens;
     [ObservableProperty] private bool showTypingStatistics;
     [ObservableProperty] private StudentCardViewModel? selectedStudent;
-    [ObservableProperty] private AchievementCardViewModel? selectedAchievement;
     [ObservableProperty] private StoreItemCardViewModel? selectedStoreItem;
-    [ObservableProperty] private string achievementCode = string.Empty;
-    [ObservableProperty] private string achievementName = string.Empty;
-    [ObservableProperty] private int achievementXp = 25;
-    [ObservableProperty] private int achievementKiberons = 5;
     [ObservableProperty] private string storeSku = string.Empty;
     [ObservableProperty] private string storeItemName = string.Empty;
     [ObservableProperty] private int storePrice = 10;
     [ObservableProperty] private int storeStock = 1;
-    [ObservableProperty] private bool isClassAwardPickerOpen;
     [ObservableProperty] private SyncApprovalCardViewModel? selectedSyncApproval;
     [ObservableProperty] private SyncClientCardViewModel? selectedSyncClient;
     [ObservableProperty] private SyncedFileCardViewModel? selectedSyncedFile;
@@ -137,6 +130,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [ObservableProperty] private string settingsStatus = "Настройки действуют только на этом Tutor.";
     [ObservableProperty] private string vpnConfigsFolder = string.Empty;
     [ObservableProperty] private string studentSavesFolder = DefaultStudentSavesFolder();
+    [ObservableProperty] private string focusBlocklist = string.Empty;
     [ObservableProperty] private string vpnLocationName = VpnRegionCatalog.AutoName;
     [ObservableProperty] private string? setupVpnLocationName = VpnRegionCatalog.AutoName;
     [ObservableProperty] private string vpnDistributionStatus = "Конфиги берутся с VPN-сервера по локации класса (15 слотов на путь).";
@@ -181,8 +175,6 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     public IReadOnlyList<string> RosterPresenceFilters { get; } = ["Все", "Онлайн", "Оффлайн"];
     public bool HasClassRosterStudents => ClassRosterStudents.Count > 0;
     public bool HasNoClassRosterStudents => !HasClassRosterStudents;
-    public bool HasAchievements => Achievements.Count > 0;
-    public bool HasNoAchievements => !HasAchievements;
     public bool HasClassNotices => ClassNotices.Count > 0;
     public bool HasPendingSyncApprovals => SyncApprovals.Count > 0;
     public bool HasNoPendingSyncApprovals => !HasPendingSyncApprovals;
@@ -259,6 +251,14 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     public string WatchdogLabel => IsWatchdogOn ? "Приложение нельзя закрыть. Нажмите, чтобы выключить." : "Не давать закрыть приложение ученика.";
     public string VpnToggleLabel => IsVpnOn ? "VPN включён. Нажмите, чтобы отключить." : "Включить VPN на всех ПК.";
     public string ThemeToggleLabel => IsDarkTheme ? "Светлая тема" : "Тёмная тема";
+    public string OnlineStudentsTitle => FormatStudentCount(ConnectedClientCount);
+    public bool HasOnlineStudents => ConnectedClientCount > 0;
+    public bool NeedsAttention => HasError || NeedsLocationSetup;
+    public bool IsSystemOk => !NeedsAttention;
+    public string SystemStatusTip =>
+        HasError && !string.IsNullOrWhiteSpace(StatusMessage) ? StatusMessage
+        : NeedsLocationSetup ? "Сначала выберите локацию."
+        : StatusMessage;
     public string StudentFormTitle => IsEditingStudent ? "Редактировать ученика" : "Новый ученик";
     public string StudentFormActionLabel => IsEditingStudent ? "Сохранить изменения" : "Добавить ученика";
     public bool HasAuditEvents => AuditEvents.Count > 0;
@@ -328,6 +328,8 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         RefreshRolloutStatus();
         _ = RefreshPendingApprovalsAsync();
         OnPropertyChanged(nameof(SectionSubtitle));
+        OnPropertyChanged(nameof(OnlineStudentsTitle));
+        OnPropertyChanged(nameof(HasOnlineStudents));
     }
 
     private void ApplyPresence(IReadOnlyList<ClassroomClientSnapshot> snapshots)
@@ -466,23 +468,23 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     public string SectionTitle => SelectedSectionIndex switch
     {
         0 => "Класс сейчас", 1 => "Уроки печати", 2 => "Ученики и группы",
-        3 => "Достижения", 4 => "Сохранения", 5 => "Экраны",
+        3 => "Настройки", 4 => "Сохранения", 5 => "Экраны",
         6 => "Пульт класса", 7 => "Урок печати", 8 => "Итоги урока",
-        9 => "Викторины", 10 => "Статистика", 11 => "Настройки",
-        12 => "Софт класса", 13 => "Восстановление файлов", 14 => "Цели",
-        15 => "Настройки", 16 => "Достижения", 17 => "Журнал", _ => "Статистика"
+        9 => "Викторины",         10 => "Класс сейчас", 11 => "Настройки",
+        12 => "Софт класса", 13 => "Сохранения", 14 => "Настройки",
+        15 => "Настройки", 16 => "Настройки", 17 => "Журнал", _ => "Статистика"
     };
     public string SectionSubtitle => SelectedSectionIndex switch
     {
         0 => ConnectedClientLabel, 1 => "Каталог · отправка и редактирование",
-        2 => "Сначала группа, затем модули или ученики", 3 => "Каталог достижений класса",
+        2 => "Сначала группа, затем модули или ученики", 3 => "Локация, программа и этот компьютер",
         4 => "Работы учеников и восстановление", 5 => "Экраны компьютеров класса",
         6 => "Блокировка, окна и сохранения", 7 => "Урок печати для класса",
         8 => "Итоги появятся в уведомлениях", 9 => "Вопросы и запуск для класса",
-        10 => "Прогресс группы", 11 => "Локация, программа и этот компьютер",
-        12 => "Пакет программ и обои на все компьютеры", 13 => "Вернуть файл к сохранённой копии",
-        14 => "Накопления учеников", 15 => "Параметры этого класса",
-        16 => "Награды за успехи", 17 => "Что происходило в классе", _ => "Прогресс учеников и групп"
+        10 => ConnectedClientLabel, 11 => "Локация, программа и этот компьютер",
+        12 => "Пакет программ и обои на все компьютеры", 13 => "Работы учеников и восстановление",
+        14 => "Локация, программа и этот компьютер", 15 => "Локация, программа и этот компьютер",
+        16 => "Локация, программа и этот компьютер", 17 => "Что происходило в классе", _ => "Прогресс учеников и групп"
     };
 
     partial void OnSelectedSectionIndexChanged(int value)
@@ -503,13 +505,20 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             return;
         }
 
-        SelectedSectionIndex = Math.Clamp(parsed, 0, 18);
+        SelectedSectionIndex = parsed switch
+        {
+            3 or 14 or 16 => 11,
+            10 => 1,
+            13 => 4,
+            15 => 11,
+            _ => Math.Clamp(parsed, 0, 18)
+        };
         HasError = false;
     }
 
     [RelayCommand] private void LockAll() => SendClassCommand(ClassroomCommandKinds.LockScreen, new { message = ClassroomMessage });
     [RelayCommand] private void UnlockAll() => SendClassCommand(ClassroomCommandKinds.UnlockScreen, new { });
-    [RelayCommand] private void FocusAllOn() => SendClassCommand(ClassroomCommandKinds.FocusOn, new { });
+    [RelayCommand] private void FocusAllOn() => SendClassCommand(ClassroomCommandKinds.FocusOn, FocusOnPayload());
     [RelayCommand] private void FocusAllOff() => SendClassCommand(ClassroomCommandKinds.FocusOff, new { });
     [RelayCommand] private void WatchdogAllOn() => SendClassCommand(ClassroomCommandKinds.WatchdogOn, new { });
     [RelayCommand] private void WatchdogAllOff() => SendClassCommand(ClassroomCommandKinds.WatchdogOff, new { });
@@ -697,6 +706,36 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     {
         if (value) SetupStep = 0;
         NotifySetupSteps();
+        NotifySystemStatus();
+    }
+
+    partial void OnHasErrorChanged(bool value) => NotifySystemStatus();
+
+    partial void OnStatusMessageChanged(string value) => OnPropertyChanged(nameof(SystemStatusTip));
+
+    partial void OnConnectedClientCountChanged(int value)
+    {
+        OnPropertyChanged(nameof(OnlineStudentsTitle));
+        OnPropertyChanged(nameof(HasOnlineStudents));
+    }
+
+    private void NotifySystemStatus()
+    {
+        OnPropertyChanged(nameof(NeedsAttention));
+        OnPropertyChanged(nameof(IsSystemOk));
+        OnPropertyChanged(nameof(SystemStatusTip));
+    }
+
+    private object FocusOnPayload() => new { blocked_titles = FocusModeBlocklist.Parse(FocusBlocklist) };
+
+    private static string FormatStudentCount(int count)
+    {
+        var n = Math.Abs(count) % 100;
+        var n1 = n % 10;
+        if (n is >= 11 and <= 14) return $"{count} учеников";
+        if (n1 == 1) return $"{count} ученик";
+        if (n1 is >= 2 and <= 4) return $"{count} ученика";
+        return $"{count} учеников";
     }
 
     partial void OnSetupStepChanged(int value) => NotifySetupSteps();
@@ -1384,7 +1423,6 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [RelayCommand]
     private void CloseClassPanel()
     {
-        IsClassAwardPickerOpen = false;
         IsClassPanelOpen = false;
     }
 
@@ -1409,7 +1447,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [RelayCommand] private void StudentUnlock(StudentCardViewModel? student) => SendStudentCommand(student, ClassroomCommandKinds.UnlockScreen, new { });
     [RelayCommand] private void StudentWatchdogOn(StudentCardViewModel? student) => SendStudentCommand(student, ClassroomCommandKinds.WatchdogOn, new { });
     [RelayCommand] private void StudentWatchdogOff(StudentCardViewModel? student) => SendStudentCommand(student, ClassroomCommandKinds.WatchdogOff, new { });
-    [RelayCommand] private void StudentFocusOn(StudentCardViewModel? student) => SendStudentCommand(student, ClassroomCommandKinds.FocusOn, new { });
+    [RelayCommand] private void StudentFocusOn(StudentCardViewModel? student) => SendStudentCommand(student, ClassroomCommandKinds.FocusOn, FocusOnPayload());
     [RelayCommand] private void StudentFocusOff(StudentCardViewModel? student) => SendStudentCommand(student, ClassroomCommandKinds.FocusOff, new { });
     [RelayCommand] private void StudentSync(StudentCardViewModel? student) => SendStudentCommand(student, ClassroomCommandKinds.SyncNow, new { });
     [RelayCommand] private void StudentMessage(StudentCardViewModel? student) => SendStudentCommand(student, ClassroomCommandKinds.Message, new { text = ClassroomMessage });
@@ -1456,7 +1494,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [RelayCommand] private void PcUnlock(ScreenPreviewCardViewModel? pc) => SendPcCommand(pc, ClassroomCommandKinds.UnlockScreen, new { });
     [RelayCommand] private void PcWatchdogOn(ScreenPreviewCardViewModel? pc) => SendPcCommand(pc, ClassroomCommandKinds.WatchdogOn, new { });
     [RelayCommand] private void PcWatchdogOff(ScreenPreviewCardViewModel? pc) => SendPcCommand(pc, ClassroomCommandKinds.WatchdogOff, new { });
-    [RelayCommand] private void PcFocusOn(ScreenPreviewCardViewModel? pc) => SendPcCommand(pc, ClassroomCommandKinds.FocusOn, new { });
+    [RelayCommand] private void PcFocusOn(ScreenPreviewCardViewModel? pc) => SendPcCommand(pc, ClassroomCommandKinds.FocusOn, FocusOnPayload());
     [RelayCommand] private void PcFocusOff(ScreenPreviewCardViewModel? pc) => SendPcCommand(pc, ClassroomCommandKinds.FocusOff, new { });
     [RelayCommand] private void PcSync(ScreenPreviewCardViewModel? pc) => SendPcCommand(pc, ClassroomCommandKinds.SyncNow, new { });
     [RelayCommand] private void PcMessage(ScreenPreviewCardViewModel? pc) => SendPcCommand(pc, ClassroomCommandKinds.Message, new { text = ClassroomMessage });
@@ -1722,7 +1760,8 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             HubUrl.Trim(),
             !NeedsLocationSetup,
             StudentSavesFolder.Trim(),
-            VpnRegionCatalog.IsAuto(VpnLocationName) ? "auto" : VpnRegionCatalog.Resolve(VpnLocationName).Id);
+            VpnRegionCatalog.IsAuto(VpnLocationName) ? "auto" : VpnRegionCatalog.Resolve(VpnLocationName).Id,
+            FocusBlocklist);
         var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KIBERone", "Tutor");
         Directory.CreateDirectory(directory);
         File.WriteAllText(Path.Combine(directory, "settings.json"), JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
@@ -1765,6 +1804,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             }
             if (!string.IsNullOrWhiteSpace(saved.StudentSavesFolder))
                 StudentSavesFolder = saved.StudentSavesFolder;
+            FocusBlocklist = saved.FocusBlocklist ?? string.Empty;
             fileSync.SetRosterRoot(StudentSavesFolder);
             IsDarkTheme = saved.PreferDarkTheme;
             pendingActiveClassGroupId = saved.ActiveClassGroupId;
@@ -1803,27 +1843,26 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             }
 
             var rawOptions = SelectedQuizQuestion.Options.ToList();
-            var trimmedCorrect = -1;
+            var trimmedCorrect = new List<int>();
             var trimmed = new List<string>();
             for (var i = 0; i < rawOptions.Count; i++)
             {
                 var text = rawOptions[i].Text.Trim();
                 if (string.IsNullOrWhiteSpace(text)) continue;
-                if (rawOptions[i].IsCorrect) trimmedCorrect = trimmed.Count;
+                if (rawOptions[i].IsCorrect) trimmedCorrect.Add(trimmed.Count);
                 trimmed.Add(text);
             }
-
-            if (trimmedCorrect < 0 && trimmed.Count > 0) trimmedCorrect = 0;
 
             var session = await quizzes.StartAsync(new StartQuizRequest(
                 SelectedQuizQuestion.Text,
                 trimmed,
-                trimmedCorrect,
+                trimmedCorrect.FirstOrDefault(),
                 QuizXpReward,
                 ["__all__"],
                 QuizTimePerQuestion,
                 QuizShuffleAnswers,
-                QuizShowFeedback));
+                QuizShowFeedback,
+                trimmedCorrect));
             QuizStatus = $"Вопрос запущен · {session.Id.ToString("N")[..8]} · вариантов: {trimmed.Count} · {QuizTimePerQuestion} с.";
             StatusMessage = QuizStatus;
             HasError = false;
@@ -2122,7 +2161,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         if (SelectedGroup is null) { ShowSelectionError("Выберите группу."); return; }
         var stats = await classroom.GetGroupStatisticsAsync(SelectedGroup.Id);
         GroupStatisticsText = stats is null ? "Группа не найдена." :
-            $"{stats.GroupName}\nУченики: {stats.StudentCount}\nСредняя оценка: {stats.AverageGrade:0.##}\nВсего XP: {stats.TotalXp:N0}\nКибероны: {stats.TotalKiberons:N0}\nПосещения: {stats.SessionCount}\nДостижения: {stats.AchievementCount}";
+            $"{stats.GroupName}\nУченики: {stats.StudentCount}\nСредняя оценка: {stats.AverageGrade:0.##}\nВсего XP: {stats.TotalXp:N0}\nКибероны: {stats.TotalKiberons:N0}\nПосещения: {stats.SessionCount}";
         await RefreshTypingChartsAsync();
     }
 
@@ -2132,7 +2171,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         if (SelectedStudent is null) { ShowSelectionError("Выберите ученика."); return; }
         var stats = await classroom.GetStudentStatisticsAsync(SelectedStudent.Id);
         StudentStatisticsText = stats is null ? "Ученик не найден." :
-            $"{stats.DisplayName}\nГруппа: {stats.GroupName}\nУровень: {stats.Level} · {stats.Xp} XP\nБаланс: {stats.Kiberons} K\nСредняя оценка: {stats.AverageGrade:0.##} ({stats.GradeCount})\nПосещения: {stats.SessionCount}\nДостижения: {stats.AchievementCount}\nПокупки: {stats.PurchaseCount}";
+            $"{stats.DisplayName}\nГруппа: {stats.GroupName}\nУровень: {stats.Level} · {stats.Xp} XP\nБаланс: {stats.Kiberons} K\nСредняя оценка: {stats.AverageGrade:0.##} ({stats.GradeCount})\nПосещения: {stats.SessionCount}\nПокупки: {stats.PurchaseCount}";
         await RefreshTypingChartsAsync();
     }
 
@@ -2779,60 +2818,6 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     }
 
     [RelayCommand]
-    private Task CreateAchievementAsync() => RunActionAsync(async () =>
-    {
-        var created = await classroom.CreateAchievementAsync(new AchievementDraft(AchievementCode, AchievementName, string.Empty, "star", AchievementXp, AchievementKiberons));
-        AchievementCode = AchievementName = string.Empty;
-        StatusMessage = $"Достижение «{created.Name}» создано.";
-    });
-
-    [RelayCommand]
-    private void ShowClassAwardPicker()
-    {
-        if (SelectedClassStudents.Count == 0)
-        {
-            ShowSelectionError("Выберите ученика на «Класс сейчас».");
-            return;
-        }
-
-        IsClassPanelOpen = true;
-        IsClassAwardPickerOpen = true;
-    }
-
-    [RelayCommand]
-    private void CloseClassAwardPicker() => IsClassAwardPickerOpen = false;
-
-    [RelayCommand]
-    private async Task AwardClassAchievementAsync(AchievementCardViewModel? achievement)
-    {
-        achievement ??= SelectedAchievement;
-        var targets = SelectedClassStudents;
-        if (targets.Count == 0)
-        {
-            ShowSelectionError("Выберите ученика на «Класс сейчас».");
-            return;
-        }
-
-        if (achievement is null)
-        {
-            ShowSelectionError("Выберите достижение.");
-            return;
-        }
-
-        var selectedIds = targets.Select(x => x.Id).ToHashSet();
-        await RunActionAsync(async () =>
-        {
-            foreach (var student in targets)
-                await classroom.AwardAchievementAsync(new AwardAchievementRequest(student.Id, achievement.Id, "Выдано тьютором"));
-            StatusMessage = targets.Count == 1
-                ? $"Награда «{achievement.Name}» выдана ученику {targets[0].Name}."
-                : $"Награда «{achievement.Name}» выдана {targets.Count} ученикам.";
-            IsClassAwardPickerOpen = false;
-        });
-        RestoreClassSelection(selectedIds);
-    }
-
-    [RelayCommand]
     private async Task AddClassKiberonsAsync()
     {
         var targets = SelectedClassStudents;
@@ -3035,10 +3020,6 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         RebuildClassNotices();
         MarkSelectedStudent();
         RefreshWinners();
-        var selectedAchievementId = SelectedAchievement?.Id;
-        Achievements.Clear();
-        foreach (var achievement in await classroom.ListAchievementsAsync()) Achievements.Add(new AchievementCardViewModel(achievement));
-        SelectedAchievement = Achievements.FirstOrDefault(x => x.Id == selectedAchievementId) ?? Achievements.FirstOrDefault();
         var selectedItemId = SelectedStoreItem?.Id;
         StoreItems.Clear();
         foreach (var item in await classroom.ListStoreItemsAsync(true)) StoreItems.Add(new StoreItemCardViewModel(item));
@@ -3325,8 +3306,6 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         OnPropertyChanged(nameof(HasNoFilteredStudents));
         OnPropertyChanged(nameof(HasClassRosterStudents));
         OnPropertyChanged(nameof(HasNoClassRosterStudents));
-        OnPropertyChanged(nameof(HasAchievements));
-        OnPropertyChanged(nameof(HasNoAchievements));
         OnPropertyChanged(nameof(HasClassNotices));
         NotifyPendingSyncState();
         OnPropertyChanged(nameof(HasSelectedClassStudent));
@@ -3666,7 +3645,8 @@ public sealed record TutorLocalSettings(
     string HubUrl = "",
     bool LocationSetupCompleted = false,
     string StudentSavesFolder = "",
-    string VpnRegionId = "");
+    string VpnRegionId = "",
+    string FocusBlocklist = "");
 
 public partial class QuizQuestionEditorViewModel : ObservableObject
 {
@@ -3685,7 +3665,7 @@ public partial class QuizQuestionEditorViewModel : ObservableObject
         var question = new QuizQuestionEditorViewModel();
         question.SetNumber(number);
         question.Text = $"Вопрос {number}";
-        foreach (var letter in new[] { "A", "B", "C", "D" })
+        foreach (var letter in new[] { "A", "B" })
             question.Options.Add(new QuizOptionEditorViewModel(question, letter, string.Empty, letter == "A"));
         question.RefreshPreview();
         return question;
@@ -3701,10 +3681,11 @@ public partial class QuizQuestionEditorViewModel : ObservableObject
         };
         question.SetNumber(number);
         var options = source.Options.Count == 0 ? new List<string> { "", "" } : source.Options;
+        var correct = source.ResolvedCorrectIndices().ToHashSet();
         for (var i = 0; i < options.Count; i++)
         {
             var letter = ((char)('A' + i)).ToString();
-            question.Options.Add(new QuizOptionEditorViewModel(question, letter, options[i], i == source.CorrectIndex));
+            question.Options.Add(new QuizOptionEditorViewModel(question, letter, options[i], correct.Contains(i)));
         }
 
         question.RefreshPreview();
@@ -3720,23 +3701,21 @@ public partial class QuizQuestionEditorViewModel : ObservableObject
         Options.Add(new QuizOptionEditorViewModel(this, letter, string.Empty, false));
     }
 
-    public void MarkCorrect(QuizOptionEditorViewModel option)
-    {
-        foreach (var item in Options)
-            item.IsCorrect = item == option;
-    }
+    public void ToggleCorrect(QuizOptionEditorViewModel option)
+        => option.IsCorrect = !option.IsCorrect;
 
     public QuizDocumentQuestion ToDocumentQuestion()
     {
         var filled = Options.Where(x => !string.IsNullOrWhiteSpace(x.Text)).ToList();
-        var correct = filled.FindIndex(x => x.IsCorrect);
+        var correct = filled.Select((x, i) => (x, i)).Where(t => t.x.IsCorrect).Select(t => t.i).ToList();
         return new QuizDocumentQuestion
         {
             Id = Id,
             Text = Text.Trim(),
             MediaPath = string.IsNullOrWhiteSpace(MediaPath) ? null : MediaPath,
             Options = filled.Select(x => x.Text.Trim()).ToList(),
-            CorrectIndex = correct < 0 ? 0 : correct
+            CorrectIndex = correct.Count > 0 ? correct[0] : 0,
+            CorrectIndices = correct
         };
     }
 
@@ -3772,7 +3751,7 @@ public partial class QuizOptionEditorViewModel : ObservableObject
     public bool IsIncorrect => !IsCorrect;
 
     [RelayCommand]
-    private void MarkCorrect() => owner.MarkCorrect(this);
+    private void ToggleCorrect() => owner.ToggleCorrect(this);
 
     partial void OnIsCorrectChanged(bool value) => OnPropertyChanged(nameof(IsIncorrect));
 }
@@ -3782,16 +3761,6 @@ public sealed class WinnerCardViewModel(int place, string name, string group, in
     public string Place { get; } = place switch { 1 => "1 место", 2 => "2 место", _ => "3 место" };
     public string Name { get; } = name;
     public string Details { get; } = $"{group} · {xp:N0} XP";
-}
-
-public sealed class AchievementCardViewModel(Achievement achievement)
-{
-    public Guid Id { get; } = achievement.Id;
-    public string Code { get; } = achievement.Code;
-    public string Name { get; } = achievement.Name;
-    public string Reward { get; } = $"+{achievement.XpReward} XP · +{achievement.KiberonReward} K";
-    public string Details { get; } = $"{achievement.Code} · +{achievement.XpReward} XP · +{achievement.KiberonReward} K";
-    public override string ToString() => Name;
 }
 
 public sealed class StoreItemCardViewModel(StoreItem item)

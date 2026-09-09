@@ -159,9 +159,36 @@ public sealed class FileSyncServiceTests : IAsyncLifetime
         var home = await service.ResolveStudentHomeAsync(student.Id);
         Assert.Equal("Иванов Артём", home?.DisplayName);
         Assert.Equal("Python", home?.Module);
-        var desktop = FileSyncService.StudentDesktopFolder(home!.DisplayName, home.Module);
+        Assert.Contains("Python", home!.ModuleFolders);
+        var desktop = FileSyncService.StudentDesktopFolder(home.DisplayName, home.Module);
         Assert.Contains("Иванов Артём", desktop);
-        Assert.EndsWith("Python", desktop);
+        Assert.DoesNotContain(Path.DirectorySeparatorChar + "Python", desktop);
+        Assert.Equal("Иванов Артём", Path.GetFileName(desktop));
+    }
+
+    [Fact]
+    public void StudentDesktopFolder_DoesNotCreateModuleSubfolder()
+    {
+        var desktop = FileSyncService.StudentDesktopFolder("Иванов Артём", "1 модуль");
+        Assert.Equal("Иванов Артём", Path.GetFileName(desktop));
+        Assert.DoesNotContain("1 модуль", desktop);
+    }
+
+    [Fact]
+    public void PromoteLegacyModuleFolder_MovesFilesIntoStudentHome()
+    {
+        var home = Path.Combine(testRoot, "desktop", "Иванов Артём");
+        var legacy = Path.Combine(home, "Python");
+        Directory.CreateDirectory(legacy);
+        File.WriteAllText(Path.Combine(legacy, "save.dat"), "урок 1");
+        Directory.CreateDirectory(Path.Combine(legacy, "src"));
+        File.WriteAllText(Path.Combine(legacy, "src", "main.py"), "print(1)");
+
+        FileSyncService.PromoteLegacyModuleFolder(home, "Python");
+
+        Assert.True(File.Exists(Path.Combine(home, "save.dat")));
+        Assert.True(File.Exists(Path.Combine(home, "src", "main.py")));
+        Assert.False(Directory.Exists(legacy));
     }
 
     [Fact]

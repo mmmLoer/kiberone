@@ -4,7 +4,7 @@ namespace Kiberone.Core;
 
 public static class BuildInfo
 {
-    public const string Version = "0.10.23";
+    public const string Version = "0.10.34";
 }
 
 public sealed record HeartbeatRequest(
@@ -43,7 +43,8 @@ public sealed record HeartbeatResponse(
     StudentUpdateInfo? StudentUpdate,
     string? PreferredGroupName = null,
     string? SaveModule = null,
-    string? SaveStudentName = null);
+    string? SaveStudentName = null,
+    IReadOnlyList<string>? SaveIgnoreFolders = null);
 
 public sealed record StudentUpdateInfo(string Version, string Sha256, long Size);
 
@@ -125,4 +126,39 @@ public static class ClassroomCommandKinds
     };
 }
 
-public sealed record ClientEventRequest(string ClientId, string Event);
+public static class FocusModeBlocklist
+{
+    public static readonly string[] Defaults =
+        ["roblox", "poki", "yandex games", "яндекс игры", "minecraft", "steam"];
+
+    public static string[] Parse(string? text) =>
+        (text ?? string.Empty).Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+    public static string[] FromPayload(JsonElement payload)
+    {
+        if (!payload.TryGetProperty("blocked_titles", out var value))
+            return [];
+
+        if (value.ValueKind == JsonValueKind.String)
+            return Parse(value.GetString());
+
+        if (value.ValueKind != JsonValueKind.Array)
+            return [];
+
+        return value.EnumerateArray()
+            .Select(item => item.ValueKind == JsonValueKind.String ? item.GetString() : null)
+            .Where(title => !string.IsNullOrWhiteSpace(title))
+            .Select(title => title!.Trim())
+            .ToArray();
+    }
+
+    public static string[] Resolve(IEnumerable<string>? titles)
+    {
+        var cleaned = titles?
+            .Select(title => title?.Trim())
+            .Where(title => !string.IsNullOrEmpty(title))
+            .Select(title => title!)
+            .ToArray() ?? [];
+        return cleaned.Length > 0 ? cleaned : Defaults;
+    }
+}
