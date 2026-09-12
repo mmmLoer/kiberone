@@ -428,11 +428,10 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
-        var lesson = lessonKey switch
-        {
-            "python" => ("Python · циклы", TypingLessonCatalog.Defaults[1].Text, TypingLessonCatalog.Defaults[1].MinimumCharacters),
-            _ => ("Разминка", TypingLessonCatalog.Defaults[0].Text, 80)
-        };
+        var fallback = lessonKey == "python" && TypingLessonCatalog.Defaults.Count > 1
+            ? TypingLessonCatalog.Defaults[1]
+            : TypingLessonCatalog.Defaults[0];
+        var lesson = (fallback.Name, fallback.Text, fallback.MinimumCharacters);
         LessonName = lesson.Item1;
         ResetLesson(lesson.Item2, lesson.Item3);
         OpenTypingTrainer();
@@ -665,8 +664,10 @@ public partial class MainViewModel : ViewModelBase
         if (string.IsNullOrEmpty(TargetText))
             return;
 
-        // One active line only, with a short sliding window of characters.
-        const int maxVisibleChars = 42;
+        // One active line. Keep the current glyph on-screen from the first letter —
+        // a centered 42-char strip used to clip the start of the line.
+        const int maxVisibleChars = 22;
+        const int lookbehind = 2;
         var caret = Math.Clamp(TypedText.Length, 0, TargetText.Length);
         var (lineStart, lineEnd) = GetCurrentLineRange(TargetText, Math.Min(caret, Math.Max(0, TargetText.Length - 1)));
         if (lineEnd <= lineStart)
@@ -674,14 +675,9 @@ public partial class MainViewModel : ViewModelBase
 
         var caretInLine = Math.Clamp(caret - lineStart, 0, lineEnd - lineStart);
         var lineLength = lineEnd - lineStart;
-        var visibleStartInLine = 0;
-        var visibleEndInLine = lineLength;
-        if (lineLength > maxVisibleChars)
-        {
-            visibleStartInLine = Math.Max(0, caretInLine - maxVisibleChars / 3);
-            visibleEndInLine = Math.Min(lineLength, visibleStartInLine + maxVisibleChars);
-            visibleStartInLine = Math.Max(0, visibleEndInLine - maxVisibleChars);
-        }
+        var visibleStartInLine = Math.Max(0, caretInLine - lookbehind);
+        var visibleEndInLine = Math.Min(lineLength, visibleStartInLine + maxVisibleChars);
+        visibleStartInLine = Math.Max(0, visibleEndInLine - maxVisibleChars);
 
         var start = lineStart + visibleStartInLine;
         var end = lineStart + visibleEndInLine;
@@ -775,9 +771,9 @@ public enum TypingGlyphState { Pending, Current, Correct, Wrong }
 
 public sealed class TypingGlyphViewModel(char character, TypingGlyphState state)
 {
-    public string DisplayCharacter { get; } = char.IsWhiteSpace(character) ? "·" : character.ToString();
-    public bool IsWhitespace { get; } = char.IsWhiteSpace(character);
-    public double GlyphMinWidth => IsWhitespace ? 18 : 14;
+    public string DisplayCharacter { get; } = character == ' ' ? " " : character.ToString();
+    public bool IsWhitespace { get; } = character == ' ';
+    public double GlyphMinWidth => IsWhitespace ? 36 : 28;
     public string GlyphForeground => state switch
     {
         TypingGlyphState.Correct => "#087F5B",
@@ -808,7 +804,8 @@ public sealed class KeyboardKeyViewModel
     {
         Label = label;
         IsExpected = isExpected;
-        Width = label switch { "ПРОБЕЛ" => 240, "Backspace" or "Caps" or "Enter" => 78, "Shift" => 96, "Tab" => 68, _ => 42 };
+        Width = label switch { "ПРОБЕЛ" or "SPACE" => 360, "Backspace" or "Caps" or "Enter" => 108, "Shift" => 132, "Tab" => 92, "Ctrl" or "Alt" => 72, _ => 58 };
+        Height = label is "ПРОБЕЛ" or "SPACE" ? 62 : 56;
         Background = isExpected ? "#FFD52E" : FingerColor(label);
         BorderBrush = isExpected ? "#13181D" : "#CAD3D8";
     }
@@ -816,6 +813,7 @@ public sealed class KeyboardKeyViewModel
     public string Label { get; }
     public bool IsExpected { get; }
     public double Width { get; }
+    public double Height { get; }
     public string Background { get; }
     public string BorderBrush { get; }
     private static string FingerColor(string key) => key.Length != 1 ? "#EDF1F3" : key[0] switch

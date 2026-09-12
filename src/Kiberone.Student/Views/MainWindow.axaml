@@ -374,10 +374,9 @@
       <!-- Stamina-style typing trainer -->
       <TabItem Header="Урок печати">
         <ScrollViewer HorizontalScrollBarVisibility="Auto">
-          <StackPanel Margin="24"
-                      MaxWidth="1160"
+          <StackPanel Margin="16"
                       HorizontalAlignment="Stretch"
-                      Spacing="16">
+                      Spacing="14">
             <Grid ColumnDefinitions="*,Auto,Auto">
               <StackPanel Spacing="4">
                 <TextBlock Text="{Binding LessonName}" FontSize="22" FontWeight="Bold"/>
@@ -438,36 +437,39 @@
               </Border>
             </Grid>
 
-            <Border Classes="card" Padding="22" MinHeight="120">
-              <StackPanel Spacing="16">
+            <Border Classes="card" Padding="20,18" MinHeight="160">
+              <StackPanel Spacing="18">
                 <TextBlock Text="{Binding LastInputFeedback}"
                            Foreground="#056D69"
                            FontWeight="SemiBold"
-                           FontSize="12"
-                           HorizontalAlignment="Center"
+                           FontSize="14"
+                           HorizontalAlignment="Left"
                            TextWrapping="Wrap"
-                           TextAlignment="Center"/>
+                           TextAlignment="Left"/>
 
-                <ItemsControl ItemsSource="{Binding TextGlyphs}" HorizontalAlignment="Center">
+                <ItemsControl ItemsSource="{Binding TextGlyphs}" HorizontalAlignment="Left">
                   <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
-                      <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"/>
+                      <StackPanel Orientation="Horizontal" HorizontalAlignment="Left"/>
                     </ItemsPanelTemplate>
                   </ItemsControl.ItemsPanel>
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:TypingGlyphViewModel">
                       <Border Background="{Binding GlyphBackground}"
-                              CornerRadius="5"
-                              Padding="3,4"
-                              Margin="1"
+                              CornerRadius="8"
+                              Padding="6,8"
+                              Margin="2"
                               MinWidth="{Binding GlyphMinWidth}"
+                              MinHeight="56"
                               BorderBrush="{Binding GlyphBorderBrush}"
                               BorderThickness="{Binding GlyphBorderThickness}">
                         <TextBlock Text="{Binding DisplayCharacter}"
                                    Foreground="{Binding GlyphForeground}"
                                    FontFamily="Cascadia Mono, Consolas"
-                                   FontSize="22"
-                                   FontWeight="SemiBold"
+                                   FontSize="36"
+                                   FontWeight="Bold"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
                                    TextDecorations="{Binding Decoration}"/>
                       </Border>
                     </DataTemplate>
@@ -494,12 +496,12 @@
                     BorderBrush="#CBE9E6"
                     BorderThickness="1"
                     CornerRadius="14"
-                    Padding="14"
-                    HorizontalAlignment="Center">
+                    Padding="16"
+                    HorizontalAlignment="Stretch">
               <ItemsControl ItemsSource="{Binding KeyboardRows}">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:KeyboardRowViewModel">
-                    <Border Margin="0,0,0,4">
+                    <Border Margin="0,0,0,6">
                       <ItemsControl ItemsSource="{Binding Keys}" HorizontalAlignment="Center">
                         <ItemsControl.ItemsPanel>
                           <ItemsPanelTemplate>
@@ -509,18 +511,18 @@
                         <ItemsControl.ItemTemplate>
                           <DataTemplate x:DataType="vm:KeyboardKeyViewModel">
                             <Border Width="{Binding Width}"
-                                    Height="38"
+                                    Height="{Binding Height}"
                                     Background="{Binding Background}"
                                     BorderBrush="{Binding BorderBrush}"
                                     BorderThickness="1"
-                                    CornerRadius="6"
-                                    Margin="2"
+                                    CornerRadius="8"
+                                    Margin="3"
                                     BoxShadow="0 2 0 0 #B7C3C8">
                               <TextBlock Text="{Binding Label}"
                                          HorizontalAlignment="Center"
                                          VerticalAlignment="Center"
-                                         FontSize="11"
-                                         FontWeight="SemiBold"/>
+                                         FontSize="16"
+                                         FontWeight="Bold"/>
                             </Border>
                           </DataTemplate>
                         </ItemsControl.ItemTemplate>

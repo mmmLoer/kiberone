@@ -94,18 +94,22 @@ public sealed class TypingLessonService(DbContextOptions<ClassroomDbContext> opt
         lesson.Lifecycle = request.Lifecycle;
         lesson.Version++;
         lesson.UpdatedAt = DateTimeOffset.UtcNow;
-        db.TypingLessonSteps.RemoveRange(lesson.Steps);
-        lesson.Steps = request.Steps.Select((step, index) => new TypingLessonStep
+        await db.SaveChangesAsync(cancellationToken);
+
+        await db.TypingLessonSteps.Where(step => step.LessonId == lesson.Id).ExecuteDeleteAsync(cancellationToken);
+        db.ChangeTracker.Clear();
+        db.TypingLessonSteps.AddRange(request.Steps.Select((step, index) => new TypingLessonStep
         {
-            LessonId = lesson.Id,
+            LessonId = id,
             Order = index,
             Title = step.Title.Trim(),
             Text = step.Text,
             TargetCpm = step.TargetCpm,
             TargetAccuracy = step.TargetAccuracy
-        }).ToList();
+        }));
         await db.SaveChangesAsync(cancellationToken);
-        return lesson;
+        return await db.TypingLessons.AsNoTracking().Include(x => x.Steps)
+            .SingleAsync(x => x.Id == id, cancellationToken);
     }
 
     public async Task<TypingSession> StartSessionAsync(StartTypingSessionRequest request, CancellationToken cancellationToken = default)

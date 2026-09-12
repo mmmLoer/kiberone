@@ -103,16 +103,32 @@ public sealed class TypingLessonServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task DefaultLessons_CannotBeUpdated()
+    public async Task StarterLessons_AreNotLockedPresets()
     {
         await ClassroomDatabase.SeedDefaultsAsync(options);
         var service = new TypingLessonService(options);
-        var defaults = await service.ListLessonsAsync();
-        var preset = Assert.Single(defaults.Where(x => TypingLessonCatalog.IsDefaultName(x.Name)).Take(1));
+        var lessons = await service.ListLessonsAsync();
+        Assert.Equal(3, lessons.Count);
+        Assert.Contains(lessons, x => x.Name == "Дурак и молния — без знаков");
+        Assert.Contains(lessons, x => x.Name == "Дурак и молния — как в тексте");
+        Assert.Contains(lessons, x => x.Name == "Fool and Lightning");
+        Assert.All(lessons, lesson => Assert.False(TypingLessonCatalog.IsDefaultName(lesson.Name)));
+    }
 
-        await Assert.ThrowsAsync<LessonValidationException>(() => service.UpdateLessonAsync(preset.Id, new UpdateLessonRequest(
+    [Fact]
+    public async Task StarterLessons_CanBeUpdatedByTutor()
+    {
+        await ClassroomDatabase.SeedDefaultsAsync(options);
+        var service = new TypingLessonService(options);
+        var lessons = await service.ListLessonsAsync();
+        var preset = Assert.Single(lessons.Where(x => x.Name == "Дурак и молния — без знаков"));
+
+        var updated = await service.UpdateLessonAsync(preset.Id, new UpdateLessonRequest(
             preset.Name, "changed", LessonContentKind.Custom, "ru-RU", 50, 10, LessonLifecycle.Published,
-            [new LessonStepDraft("Текст", "новый текст")])));
+            [new LessonStepDraft("Текст", "новый текст")]));
+
+        Assert.NotNull(updated);
+        Assert.Equal("новый текст", TypingLessonCatalog.GetLessonText(updated!));
     }
 
     public async Task DisposeAsync()

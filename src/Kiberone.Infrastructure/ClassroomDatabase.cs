@@ -46,7 +46,7 @@ public static class ClassroomDatabase
         }
         else
         {
-            await UpgradeShortDefaultLessonsAsync(db, cancellationToken);
+            await ReplaceObsoleteLessonsAsync(db, cancellationToken);
         }
 
         if (!await db.StoreItems.AnyAsync(cancellationToken))
@@ -61,15 +61,9 @@ public static class ClassroomDatabase
         await transaction.CommitAsync(cancellationToken);
     }
 
-    private static async Task UpgradeShortDefaultLessonsAsync(ClassroomDbContext db, CancellationToken cancellationToken)
+    private static async Task ReplaceObsoleteLessonsAsync(ClassroomDbContext db, CancellationToken cancellationToken)
     {
-        string[] obsoleteNames =
-        [
-            "Разминка: домашний ряд",
-            "Python: цикл for",
-            "Предложения: школа и код"
-        ];
-        foreach (var obsolete in obsoleteNames)
+        foreach (var obsolete in TypingLessonCatalog.ObsoleteDefaultNames)
         {
             var old = await db.TypingLessons.FirstOrDefaultAsync(x => x.Name == obsolete, cancellationToken);
             if (old is null) continue;
@@ -79,41 +73,9 @@ public static class ClassroomDatabase
 
         foreach (var seed in TypingLessonCatalog.Defaults)
         {
-            var existing = await db.TypingLessons
-                .FirstOrDefaultAsync(x => x.Name == seed.Name, cancellationToken);
-            if (existing is null)
-            {
+            var exists = await db.TypingLessons.AnyAsync(x => x.Name == seed.Name, cancellationToken);
+            if (!exists)
                 db.TypingLessons.Add(ToTemplate(seed));
-                continue;
-            }
-
-            var currentLength = await db.TypingLessonSteps
-                .Where(step => step.LessonId == existing.Id)
-                .SumAsync(step => (int?)step.Text.Length, cancellationToken) ?? 0;
-            var stepCount = await db.TypingLessonSteps.CountAsync(step => step.LessonId == existing.Id, cancellationToken);
-            if (currentLength == seed.Text.Length && existing.MinimumCharacters == seed.MinimumCharacters && stepCount == 1)
-                continue;
-
-            // Bypass the change tracker for deletes — tracked RemoveRange after SQL delete
-            // causes DbUpdateConcurrencyException (0 rows affected) on SQLite.
-            await db.TypingLessonSteps
-                .Where(step => step.LessonId == existing.Id)
-                .ExecuteDeleteAsync(cancellationToken);
-
-            existing.Description = seed.Description;
-            existing.ContentKind = seed.ContentKind;
-            existing.KeyboardLayout = seed.KeyboardLayout;
-            existing.MinimumCharacters = seed.MinimumCharacters;
-            existing.DurationMinutes = seed.DurationMinutes;
-            existing.Version += 1;
-            existing.UpdatedAt = DateTimeOffset.UtcNow;
-            db.TypingLessonSteps.Add(new TypingLessonStep
-            {
-                LessonId = existing.Id,
-                Order = 0,
-                Title = "Текст",
-                Text = seed.Text
-            });
         }
     }
 

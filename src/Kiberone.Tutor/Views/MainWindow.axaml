@@ -543,22 +543,35 @@
               </StackPanel>
             </ScrollViewer>
 
-            <Grid Grid.Row="2" ColumnDefinitions="*,*,*" Margin="22,16,22,20">
-              <Button Content="Отмена" Command="{Binding CloseLessonEditorCommand}" Classes="ghost" HorizontalAlignment="Stretch" Margin="0,0,6,0" />
-              <Button Grid.Column="1"
-                      Content="{Binding LessonEditorActionLabel}"
-                      Command="{Binding CreateLessonCommand}"
-                      IsEnabled="{Binding !IsBusy}"
-                      HorizontalAlignment="Stretch"
-                      Margin="6,0,6,0" />
-              <Button Grid.Column="2"
-                      Content="Сохранить и отправить"
-                      Command="{Binding SaveAndLaunchLessonCommand}"
-                      IsEnabled="{Binding !IsBusy}"
-                      Classes="primary"
-                      HorizontalAlignment="Stretch"
-                      Margin="6,0,0,0" />
-            </Grid>
+            <StackPanel Grid.Row="2" Margin="22,16,22,20" Spacing="12">
+              <Border Background="#FFE8E5"
+                      BorderBrush="#F0B6B0"
+                      BorderThickness="1"
+                      CornerRadius="10"
+                      Padding="12,10"
+                      IsVisible="{Binding HasError}">
+                <TextBlock Text="{Binding StatusMessage}"
+                           Foreground="#A82E27"
+                           FontWeight="SemiBold"
+                           TextWrapping="Wrap"/>
+              </Border>
+              <Grid ColumnDefinitions="*,*,*">
+                <Button Content="Отмена" Command="{Binding CloseLessonEditorCommand}" Classes="ghost" HorizontalAlignment="Stretch" Margin="0,0,6,0" />
+                <Button Grid.Column="1"
+                        Content="{Binding LessonEditorActionLabel}"
+                        Command="{Binding CreateLessonCommand}"
+                        IsEnabled="{Binding !IsBusy}"
+                        HorizontalAlignment="Stretch"
+                        Margin="6,0,6,0" />
+                <Button Grid.Column="2"
+                        Content="Сохранить и отправить"
+                        Command="{Binding SaveAndLaunchLessonCommand}"
+                        IsEnabled="{Binding !IsBusy}"
+                        Classes="primary"
+                        HorizontalAlignment="Stretch"
+                        Margin="6,0,0,0" />
+              </Grid>
+            </StackPanel>
           </Grid>
         </Border>
       </Grid>
