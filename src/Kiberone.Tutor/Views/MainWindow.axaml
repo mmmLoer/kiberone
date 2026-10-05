@@ -294,16 +294,20 @@
                                   <TextBlock Text="{Binding LastUpdateLabel}" Classes="muted" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                                   <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding HasActiveModes}">
                                     <Border Classes="modeIcon" IsVisible="{Binding IsScreenLocked}" ToolTip.Tip="Экран заблокирован">
-                                      <TextBlock Text="🔒" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                      <PathIcon Width="14" Height="14" Foreground="{DynamicResource TealBrush}"
+                                                Data="M12,17 A2,2 0 1 0 12,13 A2,2 0 0 0 12,17 M18,8 H17 V6 A5,5 0 0 0 7,6 V8 H6 A2,2 0 0 0 4,10 V20 A2,2 0 0 0 6,22 H18 A2,2 0 0 0 20,20 V10 A2,2 0 0 0 18,8 M12,3 A3,3 0 0 1 15,6 V8 H9 V6 A3,3 0 0 1 12,3 M18,20 H6 V10 H18 Z" />
                                     </Border>
                                     <Border Classes="modeIcon" IsVisible="{Binding IsWatchdogOn}" ToolTip.Tip="Нельзя закрыть приложение">
-                                      <TextBlock Text="🐕" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                      <PathIcon Width="14" Height="14" Foreground="{DynamicResource TealBrush}"
+                                                Data="M12,1 L3,5 V11 C3,16.55 6.84,21.74 12,23 C17.16,21.74 21,16.55 21,11 V5 Z M10,17 L6,13 L7.41,11.59 L10,14.17 L16.59,7.58 L18,9 Z" />
                                     </Border>
                                     <Border Classes="modeIcon" IsVisible="{Binding IsFocusOn}" ToolTip.Tip="Фокус включён">
-                                      <TextBlock Text="◎" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource TealBrush}" />
+                                      <PathIcon Width="15" Height="15" Foreground="{DynamicResource TealBrush}"
+                                                Data="M3,7 V3 H7 V1 H3 A2,2 0 0 0 1,3 V7 Z M17,1 V3 H21 V7 H23 V3 A2,2 0 0 0 21,1 Z M21,17 V21 H17 V23 H21 A2,2 0 0 0 23,21 V17 Z M7,21 H3 V17 H1 V21 A2,2 0 0 0 3,23 H7 Z M12,7 A5,5 0 1 0 12,17 A5,5 0 0 0 12,7 M12,9 A3,3 0 1 1 12,15 A3,3 0 0 1 12,9" />
                                     </Border>
                                     <Border Classes="modeIcon" IsVisible="{Binding IsVpnOn}" ToolTip.Tip="VPN">
-                                      <TextBlock Text="🛡" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                      <PathIcon Width="14" Height="14" Foreground="{DynamicResource TealBrush}"
+                                                Data="M12,2 A10,10 0 1 0 12,22 A10,10 0 0 0 12,2 M4.07,9 H7.02 A15.65,15.65 0 0 0 7,12 C7,13.03 7.1,14.03 7.29,15 H4.07 A8.02,8.02 0 0 1 4.07,9 M5.08,17 H7.87 C8.35,18.63 9.08,20.03 10,20.93 A8.03,8.03 0 0 1 5.08,17 M7.87,7 H5.08 A8.03,8.03 0 0 1 10,3.07 C9.08,3.97 8.35,5.37 7.87,7 M12,4.04 C13.24,5.24 14.15,7.01 14.58,9 H9.42 C9.85,7.01 10.76,5.24 12,4.04 M9,12 C9,11.66 9.01,11.33 9.04,11 H14.96 C14.99,11.33 15,11.66 15,12 C15,13.03 14.9,14.03 14.71,15 H9.29 C9.1,14.03 9,13.03 9,12 M12,19.96 C10.76,18.76 9.85,16.99 9.42,15 H14.58 C14.15,16.99 13.24,18.76 12,19.96 M14,20.93 C14.92,20.03 15.65,18.63 16.13,17 H18.92 A8.03,8.03 0 0 1 14,20.93 M16.71,15 C16.9,14.03 17,13.03 17,12 C17,11.66 16.99,11.33 16.96,11 H19.93 A8.02,8.02 0 0 1 19.93,15 Z M16.13,7 C15.65,5.37 14.92,3.97 14,3.07 A8.03,8.03 0 0 1 18.92,7 Z" />
                                     </Border>
                                   </StackPanel>
                                 </StackPanel>
@@ -411,7 +415,7 @@
             <Grid ColumnDefinitions="*,Auto">
               <StackPanel Spacing="6" Margin="0,0,16,0">
                 <TextBlock Text="Каталог уроков" Classes="h2" />
-                <TextBlock Text="«Отправить» запускает урок классу. Встроенные пресеты только для запуска — свои можно править."
+                <TextBlock Text="«Отправить» запускает урок классу. Любой урок можно открыть и изменить."
                            Classes="muted"
                            TextWrapping="Wrap" />
               </StackPanel>
@@ -718,7 +722,7 @@
                   <TextBox Text="{Binding GroupTopics}" Watermark="Темы" />
                   <Button Content="Создать группу" Command="{Binding CreateGroupCommand}" Classes="accent" HorizontalAlignment="Stretch" />
                 </StackPanel>
-                <Button Content="Удалить выбранную группу" Command="{Binding DeleteGroupCommand}" Classes="danger" HorizontalAlignment="Stretch" IsVisible="{Binding ShowGroupsWorkspace}" />
+                <Button Content="Удалить выбранную группу" Command="{Binding DeleteGroupCommand}" Classes="danger" HorizontalAlignment="Left" Padding="12,6" MinHeight="32" IsVisible="{Binding ShowGroupsWorkspace}" />
               </StackPanel>
             </Grid>
           </Border>
@@ -1007,11 +1011,12 @@
             </StackPanel>
 
             <UniformGrid Columns="3">
-              <Button Command="{Binding ToggleScreensLockCommand}" Classes="toggleCard" Classes.on="{Binding IsScreensLocked}">
+              <Button Command="{Binding ToggleScreensLockCommand}" Classes="toggleCard" Classes.on="{Binding IsScreensLocked}" AutomationProperties.Name="Переключить блокировку экранов">
                 <StackPanel Spacing="8">
                   <Grid ColumnDefinitions="*,Auto">
                     <Border Classes="toggleIcon">
-                      <TextBlock Text="🔒" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                      <PathIcon Width="22" Height="22" Foreground="{DynamicResource TealBrush}"
+                                Data="M12,17 A2,2 0 1 0 12,13 A2,2 0 0 0 12,17 M18,8 H17 V6 A5,5 0 0 0 7,6 V8 H6 A2,2 0 0 0 4,10 V20 A2,2 0 0 0 6,22 H18 A2,2 0 0 0 20,20 V10 A2,2 0 0 0 18,8 M12,3 A3,3 0 0 1 15,6 V8 H9 V6 A3,3 0 0 1 12,3 M18,20 H6 V10 H18 Z" />
                     </Border>
                     <Border Grid.Column="1" Classes="pill" VerticalAlignment="Top" IsVisible="{Binding IsScreensLocked}">
                       <TextBlock Text="ВКЛ" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource TealBrush}" />
@@ -1022,11 +1027,12 @@
                 </StackPanel>
               </Button>
 
-              <Button Command="{Binding ToggleFocusModeCommand}" Classes="toggleCard" Classes.on="{Binding IsFocusModeOn}">
+              <Button Command="{Binding ToggleFocusModeCommand}" Classes="toggleCard" Classes.on="{Binding IsFocusModeOn}" AutomationProperties.Name="Переключить режим фокуса">
                 <StackPanel Spacing="8">
                   <Grid ColumnDefinitions="*,Auto">
                     <Border Classes="toggleIcon">
-                      <TextBlock Text="◎" FontSize="22" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource TealBrush}" />
+                      <PathIcon Width="22" Height="22" Foreground="{DynamicResource TealBrush}"
+                                Data="M3,7 V3 H7 V1 H3 A2,2 0 0 0 1,3 V7 Z M17,1 V3 H21 V7 H23 V3 A2,2 0 0 0 21,1 Z M21,17 V21 H17 V23 H21 A2,2 0 0 0 23,21 V17 Z M7,21 H3 V17 H1 V21 A2,2 0 0 0 3,23 H7 Z M12,7 A5,5 0 1 0 12,17 A5,5 0 0 0 12,7 M12,9 A3,3 0 1 1 12,15 A3,3 0 0 1 12,9" />
                     </Border>
                     <Border Grid.Column="1" Classes="pill" VerticalAlignment="Top" IsVisible="{Binding IsFocusModeOn}">
                       <TextBlock Text="ВКЛ" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource TealBrush}" />
@@ -1037,11 +1043,12 @@
                 </StackPanel>
               </Button>
 
-              <Button Command="{Binding ToggleWatchdogCommand}" Classes="toggleCard" Classes.on="{Binding IsWatchdogOn}">
+              <Button Command="{Binding ToggleWatchdogCommand}" Classes="toggleCard" Classes.on="{Binding IsWatchdogOn}" AutomationProperties.Name="Переключить запрет закрытия приложения">
                 <StackPanel Spacing="8">
                   <Grid ColumnDefinitions="*,Auto">
                     <Border Classes="toggleIcon">
-                      <TextBlock Text="🐕" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                      <PathIcon Width="22" Height="22" Foreground="{DynamicResource TealBrush}"
+                                Data="M12,1 L3,5 V11 C3,16.55 6.84,21.74 12,23 C17.16,21.74 21,16.55 21,11 V5 Z M10,17 L6,13 L7.41,11.59 L10,14.17 L16.59,7.58 L18,9 Z" />
                     </Border>
                     <Border Grid.Column="1" Classes="pill" VerticalAlignment="Top" IsVisible="{Binding IsWatchdogOn}">
                       <TextBlock Text="ВКЛ" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource TealBrush}" />
@@ -1052,11 +1059,12 @@
                 </StackPanel>
               </Button>
 
-              <Button Command="{Binding ToggleVpnCommand}" Classes="toggleCard" Classes.on="{Binding IsVpnOn}">
+              <Button Command="{Binding ToggleVpnCommand}" Classes="toggleCard" Classes.on="{Binding IsVpnOn}" AutomationProperties.Name="Переключить VPN">
                 <StackPanel Spacing="8">
                   <Grid ColumnDefinitions="*,Auto">
                     <Border Classes="toggleIcon">
-                      <TextBlock Text="🛡" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                      <PathIcon Width="22" Height="22" Foreground="{DynamicResource TealBrush}"
+                                Data="M12,2 A10,10 0 1 0 12,22 A10,10 0 0 0 12,2 M4.07,9 H7.02 A15.65,15.65 0 0 0 7,12 C7,13.03 7.1,14.03 7.29,15 H4.07 A8.02,8.02 0 0 1 4.07,9 M5.08,17 H7.87 C8.35,18.63 9.08,20.03 10,20.93 A8.03,8.03 0 0 1 5.08,17 M7.87,7 H5.08 A8.03,8.03 0 0 1 10,3.07 C9.08,3.97 8.35,5.37 7.87,7 M12,4.04 C13.24,5.24 14.15,7.01 14.58,9 H9.42 C9.85,7.01 10.76,5.24 12,4.04 M9,12 C9,11.66 9.01,11.33 9.04,11 H14.96 C14.99,11.33 15,11.66 15,12 C15,13.03 14.9,14.03 14.71,15 H9.29 C9.1,14.03 9,13.03 9,12 M12,19.96 C10.76,18.76 9.85,16.99 9.42,15 H14.58 C14.15,16.99 13.24,18.76 12,19.96 M14,20.93 C14.92,20.03 15.65,18.63 16.13,17 H18.92 A8.03,8.03 0 0 1 14,20.93 M16.71,15 C16.9,14.03 17,13.03 17,12 C17,11.66 16.99,11.33 16.96,11 H19.93 A8.02,8.02 0 0 1 19.93,15 Z M16.13,7 C15.65,5.37 14.92,3.97 14,3.07 A8.03,8.03 0 0 1 18.92,7 Z" />
                     </Border>
                     <Border Grid.Column="1" Classes="pill" VerticalAlignment="Top" IsVisible="{Binding IsVpnOn}">
                       <TextBlock Text="ВКЛ" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource TealBrush}" />
@@ -1067,20 +1075,22 @@
                 </StackPanel>
               </Button>
 
-              <Button Command="{Binding SyncAllNowCommand}" Classes="toggleCard">
+              <Button Command="{Binding SyncAllNowCommand}" Classes="toggleCard" AutomationProperties.Name="Обновить сохранения на всех компьютерах">
                 <StackPanel Spacing="8">
                   <Border Classes="toggleIcon">
-                    <TextBlock Text="↻" FontSize="22" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource TealBrush}" />
+                    <PathIcon Width="22" Height="22" Foreground="{DynamicResource TealBrush}"
+                              Data="M17.65,6.35 A8,8 0 1 0 19.73,15 H17.65 A6,6 0 1 1 12,4 C13.66,4 15.14,4.69 16.22,5.78 L13,9 H21 V1 Z" />
                   </Border>
                   <TextBlock Text="Сохранения" FontWeight="Bold" FontSize="16" />
                   <TextBlock Text="Обновить работы учеников на всех компьютерах." Classes="muted" FontSize="12" TextWrapping="Wrap" />
                 </StackPanel>
               </Button>
 
-              <Button Command="{Binding NavigateCommand}" CommandParameter="9" Classes="toggleCard">
+              <Button Command="{Binding NavigateCommand}" CommandParameter="9" Classes="toggleCard" AutomationProperties.Name="Открыть викторины">
                 <StackPanel Spacing="8">
                   <Border Classes="toggleIcon">
-                    <TextBlock Text="?" FontSize="22" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource TealBrush}" />
+                    <PathIcon Width="22" Height="22" Foreground="{DynamicResource TealBrush}"
+                              Data="M12,2 A10,10 0 1 0 12,22 A10,10 0 0 0 12,2 M12,17 A1.25,1.25 0 1 1 12,19.5 A1.25,1.25 0 0 1 12,17 M12,6 C14.21,6 16,7.57 16,9.5 C16,11.09 15.03,12.05 13.87,12.86 C12.82,13.59 12.5,14.03 12.5,15 H10.5 C10.5,12.97 11.42,12.15 12.72,11.25 C13.66,10.6 14,10.2 14,9.5 C14,8.67 13.1,8 12,8 C10.9,8 10,8.67 10,9.5 H8 C8,7.57 9.79,6 12,6" />
                   </Border>
                   <TextBlock Text="Викторины" FontWeight="Bold" FontSize="16" />
                   <TextBlock Text="Составить вопросы и запустить для класса." Classes="muted" FontSize="12" TextWrapping="Wrap" />
@@ -1184,7 +1194,7 @@
                             <Border Width="32" Height="32" CornerRadius="8" Background="{DynamicResource MintBrush}" Margin="0,0,10,0" VerticalAlignment="Center">
                               <TextBlock Text="{Binding Letter}" FontWeight="Bold" Foreground="{DynamicResource TealBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Border>
-                            <TextBox Text="{Binding Text}" Watermark="Вариант ответа" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="1" Text="{Binding Text}" Watermark="Вариант ответа" VerticalAlignment="Center" HorizontalAlignment="Stretch" />
                             <Button Grid.Column="2" Command="{Binding ToggleCorrectCommand}" Classes="checkMark"
                                     Classes.primary="{Binding IsCorrect}" Classes.ghost="{Binding IsIncorrect}"
                                     ToolTip.Tip="Отметить как правильный">
@@ -1316,13 +1326,13 @@
       </TabItem>
       <TabItem Header="Софт класса">
         <Grid ColumnDefinitions="*,*" Margin="16,12">
-          <Border Classes="card dense" Margin="0,0,8,0">
-            <Grid RowDefinitions="Auto,*,Auto">
+          <Border Classes="card dense" Margin="0,0,8,0" VerticalAlignment="Top">
+            <Grid RowDefinitions="Auto,Auto,Auto">
               <StackPanel Spacing="8">
                 <TextBlock Text="Стартовый пакет" Classes="h2"/>
                 <TextBlock Text="Папки копируются на рабочий стол ученика. Установщики .exe и .msi запускаются сами." Classes="muted" TextWrapping="Wrap"/>
               </StackPanel>
-              <Grid Grid.Row="1" Margin="0,8,0,8">
+              <Grid Grid.Row="1" Margin="0,8,0,12" MinHeight="72" MaxHeight="300">
                 <ListBox Classes="dense" ItemsSource="{Binding StarterPackItems}" SelectedItem="{Binding SelectedStarterAsset}" IsVisible="{Binding HasStarterPackItems}">
                   <ListBox.ItemTemplate>
                     <DataTemplate x:DataType="vm:StarterAssetCardViewModel">
@@ -1333,7 +1343,7 @@
                     </DataTemplate>
                   </ListBox.ItemTemplate>
                 </ListBox>
-                <TextBlock Text="Пока пусто — добавьте установщики или папки урока." Classes="muted" TextWrapping="Wrap" VerticalAlignment="Center" IsVisible="{Binding HasNoStarterPackItems}"/>
+                <TextBlock Text="Пока пусто — добавьте установщики или папки урока." Classes="muted" TextWrapping="Wrap" VerticalAlignment="Top" Margin="0,8" IsVisible="{Binding HasNoStarterPackItems}"/>
               </Grid>
               <StackPanel Grid.Row="2" Spacing="6">
                 <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto">
@@ -1346,7 +1356,7 @@
               </StackPanel>
             </Grid>
           </Border>
-          <Border Grid.Column="1" Classes="card dense" Margin="8,0,0,0">
+          <Border Grid.Column="1" Classes="card dense" Margin="8,0,0,0" VerticalAlignment="Top">
             <StackPanel Spacing="8">
               <TextBlock Text="Обои класса" Classes="h2"/>
               <TextBlock Text="Картинка ставится рабочим столом на всех компьютерах учеников." Classes="muted" TextWrapping="Wrap"/>

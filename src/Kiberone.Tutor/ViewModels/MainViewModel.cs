@@ -2914,7 +2914,14 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         StatusMessage = $"Версий файла: {FileVersions.Count}.";
     }
 
-    [RelayCommand]
+    private bool CanRestoreVersion() =>
+        SelectedSyncClient is not null && SelectedSyncedFile is not null && SelectedFileVersion is not null;
+
+    partial void OnSelectedSyncClientChanged(SyncClientCardViewModel? value) => RestoreVersionCommand.NotifyCanExecuteChanged();
+    partial void OnSelectedSyncedFileChanged(SyncedFileCardViewModel? value) => RestoreVersionCommand.NotifyCanExecuteChanged();
+    partial void OnSelectedFileVersionChanged(FileVersionCardViewModel? value) => RestoreVersionCommand.NotifyCanExecuteChanged();
+
+    [RelayCommand(CanExecute = nameof(CanRestoreVersion))]
     private async Task RestoreVersionAsync()
     {
         if (SelectedSyncClient is null || SelectedSyncedFile is null || SelectedFileVersion is null) { ShowSelectionError("Выберите версию для восстановления."); return; }
