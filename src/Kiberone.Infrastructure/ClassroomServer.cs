@@ -29,6 +29,7 @@ public sealed class ClassroomLiveState
     public string? LocationName { get; set; }
     public bool ShowAllLocations { get; set; }
     public int SyncSeconds { get; set; } = 300;
+    public Func<Guid, CancellationToken, Task<StudentMailAccount>>? MailAccountProvider { get; set; }
 }
 
 public sealed class ClassroomServer(
@@ -140,10 +141,28 @@ public sealed class ClassroomServer(
                 LiveState.PreferredGroupName,
                 home?.Module,
                 home?.DisplayName,
-                home?.ModuleFolders));
+                home?.ModuleFolders,
+                request.StudentId is Guid accessStudentId ? await classroom.GetStudentAccessPolicyAsync(accessStudentId, ct) : ClassroomAccessPolicy.Empty));
         });
         application.MapGet("/clients", (HttpContext context) =>
             IsTutor(context) ? Results.Ok(clients.GetAll()) : Results.Unauthorized());
+        application.MapGet("/mail/account", async (HttpContext context, CancellationToken ct) =>
+        {
+            var clientId = NormalizeClientIdHeader(context.Request.Headers["X-Client-Id"].ToString());
+            var client = clients.GetAll().FirstOrDefault(x => string.Equals(x.ClientId, clientId, StringComparison.OrdinalIgnoreCase));
+            if (client?.StudentId is not Guid id) return Results.Unauthorized();
+            if (LiveState.MailAccountProvider is null) return Results.Json(new { error = "Почта ещё не настроена тьютором." }, statusCode: 503);
+            try { return Results.Ok(await LiveState.MailAccountProvider(id, ct)); }
+            catch (InvalidOperationException error) { return Results.Json(new { error = error.Message }, statusCode: 503); }
+            catch (HttpRequestException) { return Results.Json(new { error = "Почтовый сервер недоступен или отклонил запрос. Проверьте адрес и пароль локации у тьютора." }, statusCode: 502); }
+        });
+        application.MapPost("/apps/inventory", (HttpContext context, [FromBody] ApplicationInventoryRequest request) =>
+        {
+            var id = NormalizeClientIdHeader(context.Request.Headers["X-Client-Id"].ToString());
+            if (string.IsNullOrWhiteSpace(id) || !string.Equals(id, request.ClientId, StringComparison.OrdinalIgnoreCase)) return Results.Unauthorized();
+            clients.SetApplicationInventory(id, request.Applications);
+            return Results.Ok();
+        });
         application.MapGet("/commands", (string client_id) => Results.Ok(commands.GetPending(client_id)));
         application.MapPost("/command", (HttpContext context, [FromBody] EnqueueCommandRequest request) =>
             IsTutor(context) ? Results.Ok(commands.Enqueue(request)) : Results.Unauthorized());
@@ -160,6 +179,14 @@ public sealed class ClassroomServer(
             Results.Ok(await lessons.ListCatalogAsync(ct)));
         application.MapGet("/typing/lessons/{id:guid}", async (Guid id, CancellationToken ct) =>
             await lessons.GetLessonAsync(id, ct) is { } lesson ? Results.Ok(lesson) : Results.NotFound());
+        application.MapPost("/typing/attempts", async (HttpContext context, [FromBody] SubmitTypingAttemptRequest request, CancellationToken ct) =>
+        {
+            var clientId = NormalizeClientIdHeader(context.Request.Headers["X-Client-Id"].ToString());
+            var bound = clients.GetAll().FirstOrDefault(x => string.Equals(x.ClientId, clientId, StringComparison.OrdinalIgnoreCase));
+            if (string.IsNullOrWhiteSpace(clientId) || bound?.StudentId != request.StudentId)
+                return Results.Json(new { error = "Ученик не привязан к этому ПК." }, statusCode: 403);
+            return Results.Ok(await lessons.RecordAttemptAsync(request, ct));
+        });
         application.MapPost("/typing/lessons", async (HttpContext context, [FromBody] CreateLessonRequest request, CancellationToken ct) =>
         {
             if (!IsTutor(context)) return Results.Unauthorized();
@@ -278,6 +305,10 @@ public sealed class ClassroomServer(
             IsTutor(context) ? Results.Ok(await fileSync.ListVersionsAsync(client_id, path, ct)) : Results.Unauthorized());
         application.MapPost("/versions/restore", async (HttpContext context, [FromBody] RestoreVersionRequest request, CancellationToken ct) =>
             IsTutor(context) ? Results.Ok(await fileSync.RestoreVersionAsync(request, ct)) : Results.Unauthorized());
+        application.MapGet("/projects/snapshots", async (HttpContext context, string client_id, CancellationToken ct) =>
+            IsTutor(context) ? Results.Ok(await fileSync.ListProjectSnapshotsAsync(client_id, ct)) : Results.Unauthorized());
+        application.MapPost("/projects/snapshots/restore", async (HttpContext context, [FromBody] RestoreProjectSnapshotRequest request, CancellationToken ct) =>
+            IsTutor(context) ? Results.Ok(await fileSync.RestoreProjectSnapshotAsync(request, ct)) : Results.Unauthorized());
         application.MapGet("/update/student", () => assets.GetStudentRelease() is { } release ? Results.Ok(release) : Results.NotFound());
         application.MapGet("/update/student/file", () => assets.OpenStudentUpdate() is { } stream
             ? Results.File(stream, "application/octet-stream", "KIBERoneStudent.exe", enableRangeProcessing: true)

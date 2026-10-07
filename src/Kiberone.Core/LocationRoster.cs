@@ -12,7 +12,10 @@ public sealed record LocationGroupSnapshot(
     string Module,
     string Topics,
     string Location,
-    IReadOnlyList<LocationModuleSnapshot> Modules);
+    IReadOnlyList<LocationModuleSnapshot> Modules,
+    string FocusBlockedTitles = "",
+    string FocusAllowedApps = "",
+    string AccessPolicyJson = "");
 
 public sealed record LocationModuleSnapshot(
     Guid Id,

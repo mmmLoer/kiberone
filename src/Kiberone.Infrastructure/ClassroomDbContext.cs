@@ -20,6 +20,8 @@ public sealed class ClassroomDbContext(DbContextOptions<ClassroomDbContext> opti
     public DbSet<StoreOrder> StoreOrders => Set<StoreOrder>();
     public DbSet<SyncApproval> SyncApprovals => Set<SyncApproval>();
     public DbSet<SyncedFileVersion> SyncedFileVersions => Set<SyncedFileVersion>();
+    public DbSet<SyncedProjectSnapshot> SyncedProjectSnapshots => Set<SyncedProjectSnapshot>();
+    public DbSet<SyncRestoreIntent> SyncRestoreIntents => Set<SyncRestoreIntent>();
     public DbSet<QuizSession> QuizSessions => Set<QuizSession>();
     public DbSet<QuizAnswer> QuizAnswers => Set<QuizAnswer>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
@@ -156,6 +158,18 @@ public sealed class ClassroomDbContext(DbContextOptions<ClassroomDbContext> opti
             entity.ToTable("synced_file_versions");
             entity.HasKey(x => x.Id);
             entity.HasIndex(x => new { x.ClientId, x.RelativePath, x.CreatedAt });
+        });
+        modelBuilder.Entity<SyncedProjectSnapshot>(entity =>
+        {
+            entity.ToTable("synced_project_snapshots");
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.ClientId, x.RootPath, x.CreatedAt });
+        });
+        modelBuilder.Entity<SyncRestoreIntent>(entity =>
+        {
+            entity.ToTable("sync_restore_intents");
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.ClientId, x.RootPath, x.RelativePath }).IsUnique();
         });
         modelBuilder.Entity<QuizSession>(entity =>
         {

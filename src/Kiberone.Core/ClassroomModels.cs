@@ -7,6 +7,9 @@ public sealed class ClassroomGroup
     public string Module { get; set; } = string.Empty;
     public string Topics { get; set; } = string.Empty;
     public string Location { get; set; } = string.Empty;
+    public string FocusBlockedTitles { get; set; } = string.Empty;
+    public string FocusAllowedApps { get; set; } = string.Empty;
+    public string AccessPolicyJson { get; set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public List<Student> Students { get; set; } = [];
     public List<GroupProgramModule> ProgramModules { get; set; } = [];

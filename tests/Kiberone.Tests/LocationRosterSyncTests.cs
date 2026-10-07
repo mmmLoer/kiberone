@@ -5,11 +5,102 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.EntityFrameworkCore;
 
 namespace Kiberone.Tests;
 
 public sealed class LocationRosterSyncTests
 {
+    [Fact]
+    public async Task Focus_rules_follow_group_through_roster_export_and_import()
+    {
+        var firstPath = Path.Combine(Path.GetTempPath(), $"kiberone-focus-source-{Guid.NewGuid():N}.db");
+        var secondPath = Path.Combine(Path.GetTempPath(), $"kiberone-focus-target-{Guid.NewGuid():N}.db");
+        try
+        {
+            var first = ClassroomDatabase.CreateOptions(firstPath);
+            var second = ClassroomDatabase.CreateOptions(secondPath);
+            await ClassroomDatabase.InitializeAsync(first);
+            await ClassroomDatabase.InitializeAsync(second);
+            var source = new ClassroomService(first);
+            var group = await source.CreateGroupAsync(new GroupDraft("Python 01", "Python", "", "ШБ"));
+            await source.UpdateGroupFocusPolicyAsync(group.Id, "Яндекс Игры; Roblox", "chrome.exe; code.exe");
+            var snapshot = await source.ExportLocationRosterAsync("ШБ");
+            await new ClassroomService(second).ReplaceLocationRosterAsync(snapshot);
+            var received = Assert.Single(await new ClassroomService(second).ListGroupsAsync("ШБ"));
+            Assert.Equal("Яндекс Игры; Roblox", received.FocusBlockedTitles);
+            Assert.Equal("chrome.exe; code.exe", received.FocusAllowedApps);
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            File.Delete(firstPath);
+            File.Delete(secondPath);
+        }
+    }
+
+    [Fact]
+    public async Task DownloadingRoster_AdoptsServerGroupIdForEmptyLocalGroup()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"kiberone-roster-group-{Guid.NewGuid():N}.db");
+        var options = ClassroomDatabase.CreateOptions(path);
+        await ClassroomDatabase.InitializeAsync(options);
+        var classroom = new ClassroomService(options);
+        var local = await classroom.CreateGroupAsync(new GroupDraft("Мл3Сб10", "Figma", "", "ШБ"));
+        var remoteId = Guid.NewGuid();
+        var snapshot = new LocationRosterSnapshot(
+            "ШБ", DateTimeOffset.UtcNow,
+            [new LocationGroupSnapshot(remoteId, local.Name, "Python", "", "ШБ", [])],
+            [new LocationStudentSnapshot(Guid.NewGuid(), "Иванов", "Артём", 12, null, remoteId, "", "", "", 0, 0)]);
+
+        await classroom.ReplaceLocationRosterAsync(snapshot);
+
+        await using (var verify = new ClassroomDbContext(options))
+        {
+            Assert.Equal(remoteId, (await verify.Groups.SingleAsync()).Id);
+            Assert.Equal(remoteId, (await verify.Students.SingleAsync()).GroupId);
+        }
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        File.Delete(path);
+    }
+
+    [Fact]
+    public async Task DownloadingSameRoster_PreservesTypingHistory()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"kiberone-roster-history-{Guid.NewGuid():N}.db");
+        var options = ClassroomDatabase.CreateOptions(path);
+        await ClassroomDatabase.InitializeAsync(options);
+        var classroom = new ClassroomService(options);
+        var group = await classroom.CreateGroupAsync(new GroupDraft("Мл3Сб10", "Figma", "", "ШБ"));
+        var student = await classroom.CreateStudentAsync(new StudentDraft("Иванов", "Артём", 12, group.Id, "", "", ""));
+        await using (var db = new ClassroomDbContext(options))
+        {
+            var lesson = new TypingLessonTemplate { Name = "Проверка истории" };
+            db.TypingLessons.Add(lesson);
+            db.TypingSessions.Add(new TypingSession
+            {
+                Lesson = lesson,
+                GroupId = group.Id,
+                Participants = [new TypingParticipant { StudentId = student.Id }]
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var snapshot = await classroom.ExportLocationRosterAsync("ШБ");
+        var changed = snapshot with { Students = [snapshot.Students[0] with { Kiberons = 15 }] };
+        await classroom.ReplaceLocationRosterAsync(changed);
+        await classroom.ReplaceLocationRosterAsync(changed);
+
+        await using (var verify = new ClassroomDbContext(options))
+        {
+            Assert.Single(await verify.Students.ToListAsync());
+            Assert.Equal(15, await verify.Students.Where(x => x.Id == student.Id).Select(x => x.Kiberons).SingleAsync());
+            Assert.Single(await verify.TypingParticipants.Where(x => x.StudentId == student.Id).ToListAsync());
+        }
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        File.Delete(path);
+    }
+
     [Fact]
     public async Task ExportReplace_KeepsOtherLocationsIntact()
     {

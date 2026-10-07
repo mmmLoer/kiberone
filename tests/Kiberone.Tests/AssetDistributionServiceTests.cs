@@ -27,13 +27,16 @@ public sealed class AssetDistributionServiceTests : IDisposable
         var manifest = new
         {
             version = "9.1.0", filename = "KIBERoneStudent.exe", size = bytes.LongLength,
-            sha256 = Convert.ToHexString(SHA256.HashData(bytes)), published_at = DateTimeOffset.UtcNow
+            sha256 = Convert.ToHexString(SHA256.HashData(bytes)), published_at = DateTimeOffset.UtcNow,
+            signature = "Gh2/yvyfllQPb+uw3Vs6kYE7l3VYaQIEStWY7JebgE6gQvF+CpoQ38GPZxhWiTe7gVVbI2JJCrgZ96+Ibq7wgjTGHhXqYEC7jgUx5TEaevb7aV0pBvECNWwgSQ1MsHw9DMImp1zYYadEWrKVtn9sMqInx2A486VHKEW46BL46KCIKAIuyRkGAZ1AJe1iZ6jANAJcXWE7XmogQm76lxH+t/re+C8bvC90rt/bU9J0sUjQIk3ZBAJP60l+XTXqfmXsncdNHmBxBqc93nWNy1JINodcRVWHaqwiP6Z9TTiR2+qVtuLRKw/3jkQ1ABe7y+iefq0hr82d4xRmkL4acBZDLFlc9BA9uLjAR65nIjITCA+AZOhJM2MqlQCXL0o700Nc2FFiLGimtWSOeMUvwMpSC0fXybUV1nRfV/8McyHjfQJ7D+v94Qw15zEzc4Zv+1ztaMw1WaTxBfgfw+TQir/qOxyM5qIBsCXVIY1J98fTY01oXi7kel5oQEEhsS8pRbER"
         };
         File.WriteAllText(Path.Combine(root, "app", "updates", "student_manifest.json"), JsonSerializer.Serialize(manifest));
 
         Assert.Equal("9.1.0", service.GetStudentRelease()?.Version);
         Assert.NotNull(service.GetUpdateFor("9.0.0"));
         Assert.Null(service.GetUpdateFor("9.1.0"));
+        Assert.False(StudentUpdateSignature.Verify("9.1.1", bytes.LongLength, manifest.sha256, manifest.signature));
+        Assert.False(StudentUpdateSignature.Verify("9.1.0", bytes.LongLength, null!, manifest.signature));
     }
 
     [Fact]

@@ -23,6 +23,7 @@ public sealed class StudentFileSyncClient
     private readonly HashSet<string> ignoredModuleFolders = new(StringComparer.OrdinalIgnoreCase);
     private string? activeModule;
     private bool replaceFromServer;
+    private string? lastSyncedModule;
 
     public StudentFileSyncClient(string clientId, string watchFolder)
     {
@@ -33,6 +34,7 @@ public sealed class StudentFileSyncClient
         Directory.CreateDirectory(stateDirectory);
         cachePath = CachePathFor(this.watchFolder);
         accepted = LoadCache();
+        lastSyncedModule = LoadLastSyncedModule();
     }
 
     public Guid? StudentId { get; set; }
@@ -47,6 +49,7 @@ public sealed class StudentFileSyncClient
         Directory.CreateDirectory(watchFolder);
         cachePath = CachePathFor(watchFolder);
         accepted = LoadCache();
+        lastSyncedModule = LoadLastSyncedModule();
         pending = null;
     }
 
@@ -67,14 +70,43 @@ public sealed class StudentFileSyncClient
     {
         var next = string.IsNullOrWhiteSpace(module) ? null : module.Trim();
         if (string.Equals(activeModule, next, StringComparison.OrdinalIgnoreCase)) return false;
-        var switched = activeModule is not null;
+        var previous = activeModule ?? lastSyncedModule;
+        var switched = previous is not null;
         activeModule = next;
         pending = null;
         if (!string.IsNullOrWhiteSpace(next))
             ignoredModuleFolders.Add(FileSyncService.SanitizeFolderName(next));
-        if (switched)
+        if (switched && !string.Equals(previous, next, StringComparison.OrdinalIgnoreCase))
             replaceFromServer = true;
         return true;
+    }
+
+    public void EndSession() { StudentId = null; pending = null; }
+    public void RestoreForNewStudent() { pending = null; replaceFromServer = true; }
+    public async Task<string?> SaveSessionCheckpointAsync(Guid owner, string? backupRoot = null, CancellationToken ct = default)
+    {
+        if (StudentId != owner) throw new InvalidOperationException("Ученик уже изменился.");
+        var snapshot = await ScanHashedAsync(ct, forceHash: true);
+        var changes = BuildChanges(accepted, snapshot);
+        if (changes.Count == 0) return null;
+        var root = backupRoot ?? Path.Combine(stateDirectory, "session-backups");
+        var directory = Path.Combine(root, owner.ToString("N"), DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N"));
+        var staging = directory + ".tmp";
+        Directory.CreateDirectory(staging);
+        foreach (var change in changes.Where(c => snapshot.ContainsKey(c.Path)))
+        {
+            var source = ResolveLocal(change.Path);
+            var destination = Path.Combine(staging, "files", change.Path.Replace('/', Path.DirectorySeparatorChar));
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            await using (var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, true))
+            await using (var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, true))
+                await input.CopyToAsync(output, ct);
+            if (await HashFileAsync(destination, ct) != snapshot[change.Path].Sha256)
+                throw new IOException("Файл изменился во время сохранения. Повторите смену ученика.");
+        }
+        await File.WriteAllTextAsync(Path.Combine(staging, "session.json"), JsonSerializer.Serialize(new { StudentId = owner, Workspace = watchFolder, Module = activeModule, Changes = changes }), ct);
+        Directory.Move(staging, directory);
+        return directory;
     }
 
     public async Task SyncOnceAsync(HttpClient http, CancellationToken ct = default)
@@ -102,7 +134,7 @@ public sealed class StudentFileSyncClient
             var pendingCount = (prepared.UploadPaths?.Count ?? 0) + (prepared.DownloadPaths?.Count ?? 0);
             if (prepared.Status == SyncApprovalStatus.Pending)
             {
-                Raise("Удаление файлов — ждём решение тьютора", pendingCount);
+                Raise("Сохранения ждут решения тьютора", pendingCount);
                 return;
             }
         }
@@ -121,6 +153,10 @@ public sealed class StudentFileSyncClient
 
         var batch = pending;
         if (batch is null) return;
+        if (replaceFromServer)
+            await BackupLocalFilesAsync((await ScanHashedAsync(ct)).Keys, ct);
+        else if (batch.Prepared.RestoreFromServer)
+            await BackupLocalFilesAsync((batch.Prepared.DownloadPaths ?? []).Concat(batch.Prepared.DeleteLocalPaths ?? []), ct);
         foreach (var path in batch.Prepared.UploadPaths ?? [])
         {
             ct.ThrowIfCancellationRequested();
@@ -142,12 +178,24 @@ public sealed class StudentFileSyncClient
         {
             ct.ThrowIfCancellationRequested();
             using var download = await http.GetAsync($"/download?client_id={Uri.EscapeDataString(clientId)}&path={Uri.EscapeDataString(path)}", ct);
-            if (!download.IsSuccessStatusCode) continue;
+            download.EnsureSuccessStatusCode();
             var localPath = ResolveLocal(path);
             Directory.CreateDirectory(Path.GetDirectoryName(localPath)!);
             await using var input = await download.Content.ReadAsStreamAsync(ct);
-            await using var output = new FileStream(localPath, FileMode.Create, FileAccess.Write, FileShare.None);
-            await input.CopyToAsync(output, ct);
+            var temporary = localPath + ".sync-" + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                await using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                    await input.CopyToAsync(output, ct);
+                File.Move(temporary, localPath, true);
+            }
+            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        }
+
+        foreach (var path in batch.Prepared.DeleteLocalPaths ?? [])
+        {
+            var localPath = ResolveLocal(path);
+            if (File.Exists(localPath)) File.Delete(localPath);
         }
 
         using var completeResponse = await http.PostAsJsonAsync("/sync/complete", new SyncCompleteRequest(clientId), JsonOptions, ct);
@@ -159,11 +207,12 @@ public sealed class StudentFileSyncClient
         }
         accepted = await ScanHashedAsync(ct);
         SaveCache();
+        if (activeModule is not null) SaveLastSyncedModule(activeModule);
         pending = null;
         Raise("Сохранения синхронизированы", 0);
     }
 
-    private async Task<Dictionary<string, CachedFile>> ScanHashedAsync(CancellationToken ct)
+    private async Task<Dictionary<string, CachedFile>> ScanHashedAsync(CancellationToken ct, bool forceHash = false)
     {
         var result = new Dictionary<string, CachedFile>(StringComparer.OrdinalIgnoreCase);
         if (!Directory.Exists(watchFolder)) return result;
@@ -186,7 +235,7 @@ public sealed class StudentFileSyncClient
                     if (ExcludedFiles.Contains(Path.GetFileName(file))) continue;
                     var info = new FileInfo(file);
                     var relative = Path.GetRelativePath(watchFolder, file).Replace('\\', '/');
-                    if (accepted.TryGetValue(relative, out var cached)
+                    if (!forceHash && accepted.TryGetValue(relative, out var cached)
                         && cached.ModifiedTicks == info.LastWriteTimeUtc.Ticks
                         && cached.Size == info.Length
                         && !string.IsNullOrEmpty(cached.Sha256))
@@ -197,8 +246,8 @@ public sealed class StudentFileSyncClient
                     result[relative] = new CachedFile(info.LastWriteTimeUtc.Ticks, info.Length, await HashFileAsync(file, ct));
                 }
             }
-            catch (UnauthorizedAccessException) { }
-            catch (DirectoryNotFoundException) { }
+            catch (UnauthorizedAccessException) when (!forceHash) { }
+            catch (DirectoryNotFoundException) when (!forceHash) { }
         }
         return result;
     }
@@ -279,6 +328,39 @@ public sealed class StudentFileSyncClient
         var temporary = cachePath + ".tmp";
         File.WriteAllText(temporary, JsonSerializer.Serialize(accepted, JsonOptions));
         File.Move(temporary, cachePath, true);
+    }
+
+    private string ModulePath => cachePath + ".module";
+    private string? LoadLastSyncedModule()
+    {
+        try { return File.Exists(ModulePath) ? File.ReadAllText(ModulePath) : null; }
+        catch { return null; }
+    }
+    private void SaveLastSyncedModule(string module)
+    {
+        File.WriteAllText(ModulePath + ".tmp", module);
+        File.Move(ModulePath + ".tmp", ModulePath, true);
+        lastSyncedModule = module;
+    }
+
+    private async Task BackupLocalFilesAsync(IEnumerable<string> paths, CancellationToken ct)
+    {
+        var existing = paths.Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(path => (Path: path, Source: ResolveLocal(path)))
+            .Where(x => File.Exists(x.Source)).ToList();
+        if (existing.Count == 0) return;
+        var backupRoot = Path.Combine(stateDirectory, "sync-backups", SafeKey(clientId + ":" + watchFolder), DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss-fffffff"));
+        foreach (var (path, source) in existing)
+        {
+            ct.ThrowIfCancellationRequested();
+            var destination = Path.GetFullPath(Path.Combine(backupRoot, path.Replace('/', Path.DirectorySeparatorChar)));
+            var prefix = backupRoot.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            if (!destination.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("Некорректный путь резервной копии.");
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            await using var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 81920, true);
+            await using var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, true);
+            await input.CopyToAsync(output, ct);
+        }
     }
 
     private void Raise(string status, int changes) => StateChanged?.Invoke(new StudentSyncState(status, changes, DateTimeOffset.UtcNow));

@@ -20,7 +20,9 @@ public sealed record SyncPrepareResult(
     string Reason,
     DateTimeOffset CreatedAt,
     IReadOnlyList<string>? UploadPaths = null,
-    IReadOnlyList<string>? DownloadPaths = null);
+    IReadOnlyList<string>? DownloadPaths = null,
+    IReadOnlyList<string>? DeleteLocalPaths = null,
+    bool RestoreFromServer = false);
 public sealed record SyncDecisionRequest(bool Approved, string? Action = null);
 public sealed record SyncCompleteRequest(string ClientId);
 public sealed record DeleteFileRequest(string ClientId, string Path);
@@ -28,6 +30,8 @@ public sealed record RestoreVersionRequest(string ClientId, string Path, string 
 public sealed record SyncedFileInfo(string Path, long Size, DateTimeOffset ModifiedAt, string Sha256);
 public sealed record FileVersionInfo(string Id, string Path, long Size, string Sha256, DateTimeOffset CreatedAt, string Label);
 public sealed record StudentSaveHome(string DisplayName, string Module, IReadOnlyList<string> ModuleFolders);
+public sealed record ProjectSnapshotInfo(string Id, DateTimeOffset CreatedAt, string Label, int FileCount, long TotalBytes);
+public sealed record RestoreProjectSnapshotRequest(string ClientId, string SnapshotId);
 
 public sealed class SyncApproval
 {
@@ -51,4 +55,25 @@ public sealed class SyncedFileVersion
     public long Size { get; set; }
     public string Label { get; set; } = "Изменение";
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public sealed class SyncedProjectSnapshot
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public required string ClientId { get; set; }
+    public required string RootPath { get; set; }
+    public string ManifestJson { get; set; } = "[]";
+    public string Label { get; set; } = "Автосохранение";
+    public int FileCount { get; set; }
+    public long TotalBytes { get; set; }
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public sealed class SyncRestoreIntent
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public required string ClientId { get; set; }
+    public required string RootPath { get; set; }
+    public required string RelativePath { get; set; }
+    public bool DeleteLocal { get; set; }
 }

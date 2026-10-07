@@ -112,6 +112,10 @@ public static class ClassroomDatabase
             ,"""CREATE INDEX IF NOT EXISTS IX_sync_approvals_ClientId_CreatedAt ON sync_approvals (ClientId, CreatedAt);"""
             ,"""CREATE TABLE IF NOT EXISTS synced_file_versions (Id TEXT NOT NULL PRIMARY KEY, ClientId TEXT NOT NULL, RelativePath TEXT NOT NULL, StoragePath TEXT NOT NULL, Sha256 TEXT NOT NULL, Size INTEGER NOT NULL, Label TEXT NOT NULL, CreatedAt TEXT NOT NULL);"""
             ,"""CREATE INDEX IF NOT EXISTS IX_synced_file_versions_ClientId_RelativePath_CreatedAt ON synced_file_versions (ClientId, RelativePath, CreatedAt);"""
+            ,"""CREATE TABLE IF NOT EXISTS synced_project_snapshots (Id TEXT NOT NULL PRIMARY KEY, ClientId TEXT NOT NULL, RootPath TEXT NOT NULL, ManifestJson TEXT NOT NULL, Label TEXT NOT NULL, FileCount INTEGER NOT NULL, TotalBytes INTEGER NOT NULL, CreatedAt TEXT NOT NULL);"""
+            ,"""CREATE INDEX IF NOT EXISTS IX_synced_project_snapshots_ClientId_RootPath_CreatedAt ON synced_project_snapshots (ClientId, RootPath, CreatedAt);"""
+            ,"""CREATE TABLE IF NOT EXISTS sync_restore_intents (Id TEXT NOT NULL PRIMARY KEY, ClientId TEXT NOT NULL, RootPath TEXT NOT NULL, RelativePath TEXT NOT NULL, DeleteLocal INTEGER NOT NULL);"""
+            ,"""CREATE UNIQUE INDEX IF NOT EXISTS IX_sync_restore_intents_ClientId_RootPath_RelativePath ON sync_restore_intents (ClientId, RootPath, RelativePath);"""
             ,"""CREATE TABLE IF NOT EXISTS quiz_sessions (Id TEXT NOT NULL PRIMARY KEY, Question TEXT NOT NULL, OptionsJson TEXT NOT NULL, CorrectIndex INTEGER NOT NULL, CorrectIndicesJson TEXT NOT NULL DEFAULT '[]', IsMultiple INTEGER NOT NULL DEFAULT 0, XpReward INTEGER NOT NULL, IsActive INTEGER NOT NULL, CreatedAt TEXT NOT NULL);"""
             ,"""CREATE TABLE IF NOT EXISTS quiz_answers (Id TEXT NOT NULL PRIMARY KEY, SessionId TEXT NOT NULL, ClientId TEXT NOT NULL, StudentId TEXT NULL, SelectedIndex INTEGER NOT NULL, SelectedIndicesJson TEXT NOT NULL DEFAULT '[]', IsCorrect INTEGER NOT NULL, XpAwarded INTEGER NOT NULL, AnsweredAt TEXT NOT NULL, FOREIGN KEY (SessionId) REFERENCES quiz_sessions (Id) ON DELETE CASCADE);"""
             ,"""CREATE UNIQUE INDEX IF NOT EXISTS IX_quiz_answers_SessionId_ClientId ON quiz_answers (SessionId, ClientId);"""
@@ -123,6 +127,9 @@ public static class ClassroomDatabase
             ,"""CREATE TABLE IF NOT EXISTS group_program_modules (Id TEXT NOT NULL PRIMARY KEY, GroupId TEXT NOT NULL, Name TEXT NOT NULL, StartDate TEXT NOT NULL, EndDate TEXT NOT NULL, LessonCount INTEGER NOT NULL, Comment TEXT NOT NULL, SortOrder INTEGER NOT NULL, FOREIGN KEY (GroupId) REFERENCES groups (Id) ON DELETE CASCADE);"""
             ,"""CREATE INDEX IF NOT EXISTS IX_group_program_modules_GroupId_SortOrder ON group_program_modules (GroupId, SortOrder);"""
             ,"""ALTER TABLE groups ADD COLUMN Location TEXT NOT NULL DEFAULT '';"""
+            ,"""ALTER TABLE groups ADD COLUMN FocusBlockedTitles TEXT NOT NULL DEFAULT '';"""
+            ,"""ALTER TABLE groups ADD COLUMN FocusAllowedApps TEXT NOT NULL DEFAULT '';"""
+            ,"""ALTER TABLE groups ADD COLUMN AccessPolicyJson TEXT NOT NULL DEFAULT '';"""
             ,"""ALTER TABLE students ADD COLUMN Birthday TEXT NULL;"""
         };
         foreach (var statement in statements)

@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kiberone.Infrastructure;
 
-public sealed class ClassroomService(DbContextOptions<ClassroomDbContext> options)
+public sealed partial class ClassroomService(DbContextOptions<ClassroomDbContext> options)
 {
     public async Task<IReadOnlyList<ClassroomGroup>> ListGroupsAsync(string? location = null, CancellationToken ct = default)
     {
@@ -44,6 +44,18 @@ public sealed class ClassroomService(DbContextOptions<ClassroomDbContext> option
         group.Module = Trim(draft.Module, 160);
         group.Topics = Trim(draft.Topics, 1000);
         group.Location = Trim(draft.Location, 80);
+        await db.SaveChangesAsync(ct);
+        return group;
+    }
+
+    public async Task<ClassroomGroup?> UpdateGroupFocusPolicyAsync(Guid id, string blockedTitles,
+        string allowedApps, CancellationToken ct = default)
+    {
+        await using var db = new ClassroomDbContext(options);
+        var group = await db.Groups.FindAsync([id], ct);
+        if (group is null) return null;
+        group.FocusBlockedTitles = Trim(blockedTitles, 2000);
+        group.FocusAllowedApps = Trim(allowedApps, 2000);
         await db.SaveChangesAsync(ct);
         return group;
     }
@@ -563,7 +575,10 @@ public sealed class ClassroomService(DbContextOptions<ClassroomDbContext> option
                         module.LessonCount,
                         module.Comment,
                         module.SortOrder))
-                    .ToList()))
+                    .ToList(),
+                group.FocusBlockedTitles,
+                group.FocusAllowedApps,
+                group.AccessPolicyJson))
                 .ToList(),
             students.Select(student => new LocationStudentSnapshot(
                 student.Id,
@@ -585,41 +600,45 @@ public sealed class ClassroomService(DbContextOptions<ClassroomDbContext> option
         var location = Required(snapshot.Location, "Локация", 80);
         await using var db = new ClassroomDbContext(options);
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
-
         var existingGroups = await db.Groups.Where(x => x.Location == location).ToListAsync(ct);
-        var existingIds = existingGroups.Select(x => x.Id).ToList();
-        var existingStudents = await db.Students.Where(x => existingIds.Contains(x.GroupId)).ToListAsync(ct);
-        foreach (var student in existingStudents)
+        var groupIds = new Dictionary<Guid, Guid>();
+        foreach (var group in snapshot.Groups)
         {
-            db.StoreOrders.RemoveRange(await db.StoreOrders.Where(x => x.StudentId == student.Id).ToListAsync(ct));
-            db.Grades.RemoveRange(await db.Grades.Where(x => x.StudentId == student.Id).ToListAsync(ct));
-            db.ClassroomSessions.RemoveRange(await db.ClassroomSessions.Where(x => x.StudentId == student.Id).ToListAsync(ct));
-            db.KiberonTransactions.RemoveRange(await db.KiberonTransactions.Where(x => x.StudentId == student.Id).ToListAsync(ct));
-            db.QuizAnswers.RemoveRange(await db.QuizAnswers.Where(x => x.StudentId == student.Id).ToListAsync(ct));
+            var name = Required(group.Name, "Название группы", 120);
+            var local = existingGroups.FirstOrDefault(item => item.Id == group.Id)
+                ?? existingGroups.FirstOrDefault(item => item.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            if (local is not null && local.Id != group.Id &&
+                !await db.Students.AnyAsync(student => student.GroupId == local.Id, ct))
+            {
+                // A fresh Tutor may already have this group from the built-in program.
+                // Adopt the server ID while the local group has no learner history.
+                db.Groups.Remove(local);
+                await db.SaveChangesAsync(ct);
+                existingGroups.Remove(local);
+                local = null;
+            }
+            if (local is null)
+            {
+                local = new ClassroomGroup { Id = group.Id, Name = name, Location = location };
+                db.Groups.Add(local);
+                existingGroups.Add(local);
+            }
+            local.Name = name;
+            local.Module = Trim(group.Module, 160);
+            local.Topics = Trim(group.Topics, 1000);
+            local.FocusBlockedTitles = Trim(group.FocusBlockedTitles, 2000);
+            local.FocusAllowedApps = Trim(group.FocusAllowedApps, 2000);
+            local.AccessPolicyJson = group.AccessPolicyJson;
+            groupIds[group.Id] = local.Id;
         }
-        db.Students.RemoveRange(existingStudents);
-        await db.SaveChangesAsync(ct);
-
-        foreach (var group in existingGroups)
-        {
-            await db.Database.ExecuteSqlRawAsync(
-                "DELETE FROM group_program_modules WHERE upper(GroupId) = upper({0})",
-                [group.Id.ToString()],
-                ct);
-        }
-        db.Groups.RemoveRange(existingGroups);
         await db.SaveChangesAsync(ct);
 
         foreach (var group in snapshot.Groups)
         {
-            db.Groups.Add(new ClassroomGroup
-            {
-                Id = group.Id,
-                Name = Required(group.Name, "Название группы", 120),
-                Module = Trim(group.Module, 160),
-                Topics = Trim(group.Topics, 1000),
-                Location = location
-            });
+            var localId = groupIds[group.Id];
+            await db.Database.ExecuteSqlRawAsync(
+                "DELETE FROM group_program_modules WHERE upper(GroupId) = upper({0})",
+                [localId.ToString()], ct);
             foreach (var module in group.Modules)
             {
                 if (!DateOnly.TryParse(module.Start, out var start) || !DateOnly.TryParse(module.End, out var end))
@@ -627,7 +646,7 @@ public sealed class ClassroomService(DbContextOptions<ClassroomDbContext> option
                 db.GroupProgramModules.Add(new GroupProgramModule
                 {
                     Id = module.Id == Guid.Empty ? Guid.NewGuid() : module.Id,
-                    GroupId = group.Id,
+                    GroupId = localId,
                     Name = Trim(module.Name, 240),
                     StartDate = start,
                     EndDate = end,
@@ -641,20 +660,24 @@ public sealed class ClassroomService(DbContextOptions<ClassroomDbContext> option
 
         foreach (var student in snapshot.Students)
         {
-            db.Students.Add(new Student
+            if (!groupIds.TryGetValue(student.GroupId, out var localGroupId))
+                throw new InvalidOperationException("Ученик привязан к группе вне состава локации.");
+            var local = await db.Students.FindAsync([student.Id], ct);
+            if (local is null)
             {
-                Id = student.Id,
-                LastName = Required(student.LastName, "Фамилия", 120),
-                FirstName = Required(student.FirstName, "Имя", 120),
-                Age = student.Age,
-                Birthday = student.Birthday,
-                GroupId = student.GroupId,
-                Comment = Trim(student.Comment, 2000),
-                PortfolioUrl = Trim(student.PortfolioUrl, 500),
-                CrmId = Trim(student.CrmId, 120),
-                Kiberons = Math.Max(0, student.Kiberons),
-                Xp = Math.Max(0, student.Xp)
-            });
+                local = new Student { Id = student.Id, LastName = string.Empty, FirstName = string.Empty };
+                db.Students.Add(local);
+            }
+            local.LastName = Required(student.LastName, "Фамилия", 120);
+            local.FirstName = Required(student.FirstName, "Имя", 120);
+            local.Age = student.Age;
+            local.Birthday = student.Birthday;
+            local.GroupId = localGroupId;
+            local.Comment = Trim(student.Comment, 2000);
+            local.PortfolioUrl = Trim(student.PortfolioUrl, 500);
+            local.CrmId = Trim(student.CrmId, 120);
+            local.Kiberons = Math.Max(0, student.Kiberons);
+            local.Xp = Math.Max(0, student.Xp);
         }
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);

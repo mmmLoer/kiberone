@@ -1,6 +1,7 @@
 [Unit]
-Description=KIBERone location roster hub
-After=network.target
+Description=KIBERone location roster and update hub
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
@@ -8,13 +9,19 @@ WorkingDirectory=/opt/kiberone-hub
 Environment=KIBERONE_HUB_DATA=/var/lib/kiberone-hub
 Environment=KIBERONE_HUB_SECRETS=/var/lib/kiberone-hub/location-secrets.json
 Environment=KIBERONE_HUB_URL=http://0.0.0.0:8787
+Environment=DOTNET_BUNDLE_EXTRACT_BASE_DIR=/var/lib/kiberone-hub/.net
 EnvironmentFile=-/var/lib/kiberone-hub/webhook.env
 Environment=KIBERONE_RELEASE_UNIT=kiberone-release.service
 Environment=KIBERONE_GIT_BRANCH=main
-ExecStart=/usr/bin/dotnet /opt/kiberone-hub/Kiberone.Hub.dll
+ExecStart=/opt/kiberone-hub/Kiberone.Hub
 Restart=always
 RestartSec=3
-User=root
+User=kiberone-hub
+Group=kiberone-hub
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/kiberone-hub
 
 [Install]
 WantedBy=multi-user.target

@@ -144,6 +144,20 @@ public sealed record TelemetryUpdateRequest(
     ParticipantStatus Status,
     IReadOnlyDictionary<string, int>? ProblemCharacters);
 
+public sealed record TypingAttemptDraft(
+    Guid AttemptId,
+    Guid? LessonId,
+    string LessonName,
+    string Text,
+    int GoalCharacters,
+    int CorrectKeys,
+    int WrongKeys,
+    double ActiveSeconds,
+    double PausedSeconds,
+    IReadOnlyDictionary<string, int> ProblemCharacters);
+
+public sealed record SubmitTypingAttemptRequest(Guid StudentId, TypingAttemptDraft Attempt);
+
 public sealed record ParticipantMetrics(
     Guid StudentId,
     string StudentName,

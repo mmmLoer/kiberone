@@ -8,9 +8,9 @@ public sealed class VpnConfigDistributorTests
     public void Assign_matches_by_pc_number_then_fills_remaining_in_order()
     {
         using var folder = new TempDirectory();
-        File.WriteAllText(Path.Combine(folder.Path, "03.conf"), "[Interface]");
-        File.WriteAllText(Path.Combine(folder.Path, "07.conf"), "[Interface]");
-        File.WriteAllText(Path.Combine(folder.Path, "peer-10.conf"), "[Interface]");
+        File.WriteAllText(Path.Combine(folder.Path, "03.conf"), "[Interface]\nPrivateKey = key-03");
+        File.WriteAllText(Path.Combine(folder.Path, "07.conf"), "[Interface]\nPrivateKey = key-07");
+        File.WriteAllText(Path.Combine(folder.Path, "peer-10.conf"), "[Interface]\nPrivateKey = key-10");
 
         var clients = new[]
         {
@@ -31,7 +31,7 @@ public sealed class VpnConfigDistributorTests
     public void Assign_reports_unassigned_clients_when_configs_are_missing()
     {
         using var folder = new TempDirectory();
-        File.WriteAllText(Path.Combine(folder.Path, "01.conf"), "[Interface]");
+        File.WriteAllText(Path.Combine(folder.Path, "01.conf"), "[Interface]\nPrivateKey = key-01");
 
         var clients = new[]
         {
@@ -44,6 +44,17 @@ public sealed class VpnConfigDistributorTests
 
         Assert.Single(assignments);
         Assert.Contains("без конфига: 1", summary);
+    }
+
+    [Fact]
+    public void Assign_never_distributes_duplicate_private_keys()
+    {
+        using var folder = new TempDirectory();
+        File.WriteAllText(Path.Combine(folder.Path, "01.conf"), "[Interface]\nPrivateKey = same-key");
+        File.WriteAllText(Path.Combine(folder.Path, "02.conf"), "# another file\n[Interface]\nPrivateKey = same-key");
+        var assignments = VpnConfigDistributor.Assign(
+            [CreateClient("c-1", "01", "PC-01"), CreateClient("c-2", "02", "PC-02")], folder.Path);
+        Assert.Single(assignments);
     }
 
     private static ClassroomClientSnapshot CreateClient(string clientId, string pcNumber, string hostname) =>

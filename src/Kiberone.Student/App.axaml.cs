@@ -20,6 +20,7 @@ public partial class App : Avalonia.Application
     private VpnController? vpn;
     private MainViewModel? viewModel;
     private ScreenLockManager? screenLock;
+    private BrowserPolicyManager? browserPolicy;
 
     private VpnRuntimeInfo lastVpnRuntime = new(false, false);
 
@@ -45,6 +46,9 @@ public partial class App : Avalonia.Application
                 else screenLock.Hide();
             });
             agent = new StudentAgent();
+            viewModel.MailAccountRequested = agent.GetMailAccountAsync;
+            viewModel.InstalledAppsRequested = ApplicationInventory.Read;
+            viewModel.CopyTextRequested = text => desktop.MainWindow.Clipboard?.SetTextAsync(text) ?? Task.CompletedTask;
             vpn = new VpnController();
             agent.VpnStateProvider = () => lastVpnRuntime.Connected;
             agent.VpnRuntimeProvider = () => lastVpnRuntime;
@@ -52,11 +56,22 @@ public partial class App : Avalonia.Application
             agent.VpnCommandHandler = HandleVpnCommand;
             agent.LaunchInstaller = DesktopWallpaper.LaunchInstaller;
             agent.ApplyWallpaperFile = DesktopWallpaper.Apply;
-            agent.ApplyElevatedUpdate = (source, target) => vpn!.TryApplyStudentUpdate(source, target);
+            agent.ApplyElevatedUpdate = (source, target, update, pid) => vpn!.TryApplyStudentUpdate(source, target, update, pid);
             focusMode = new FocusModeManager();
+            browserPolicy = new BrowserPolicyManager();
+            agent.ApplicationInventoryProvider = ApplicationInventory.Read;
+            agent.AccessPolicyChanged += policy => Dispatcher.UIThread.Post(() =>
+            {
+                try
+                {
+                    focusMode.Apply(policy);
+                    viewModel.AccessStatus = browserPolicy.Apply(policy);
+                }
+                catch (Exception error) { viewModel.AccessStatus = "Не удалось применить правила: " + error.Message; }
+            });
             watchdog = new WatchdogManager();
             viewModel.FocusEnabled = focusMode.Start;
-            viewModel.FocusDisabled = focusMode.Stop;
+            viewModel.FocusDisabled = () => { focusMode.Stop(); browserPolicy?.Dispose(); };
             viewModel.WatchdogEnabled = watchdog.Start;
             viewModel.WatchdogDisabled = watchdog.Stop;
             if (watchdog.ConsumeRestartSentinel())
@@ -69,12 +84,14 @@ public partial class App : Avalonia.Application
             agent.SyncStateChanged += state => Dispatcher.UIThread.Post(() => viewModel.SetSyncState(state));
             agent.UpdateAvailable += update => Dispatcher.UIThread.Post(() => viewModel.SetUpdate(update));
             agent.UpdateStateChanged += state => Dispatcher.UIThread.Post(() => viewModel.SetUpdateState(state));
+            agent.ScreenStateChanged += state => Dispatcher.UIThread.Post(() => viewModel.ScreenStatus = state ?? string.Empty);
+            agent.TypingResultStateChanged += (id, state) => Dispatcher.UIThread.Post(() => viewModel.SetTypingResultState(id, state));
             agent.UpdateRestartRequested += () => Dispatcher.UIThread.Post(() =>
             {
                 try { watchdog?.Stop(); } catch { /* ignore */ }
                 viewModel.SetUpdateState("Перезапуск для установки обновления…");
-                agent.PrepareStagedUpdate();
-                desktop.Shutdown();
+                if (agent.PrepareStagedUpdate())
+                    desktop.Shutdown();
             });
             agent.StudentsAvailable += students => Dispatcher.UIThread.Post(() => viewModel.SetStudents(students, agent.PreferredGroupName));
             agent.LessonsAvailable += lessons => Dispatcher.UIThread.Post(() => viewModel.SetTutorLessons(lessons));
@@ -82,7 +99,9 @@ public partial class App : Avalonia.Application
             viewModel.UpdateRequested = agent.RequestUpdateInstallation;
             viewModel.RetryRequested = agent.ForceRediscover;
             viewModel.QuizAnswerRequested = agent.SubmitQuizAnswer;
+            viewModel.TypingAttemptCompleted = agent.SubmitTypingAttempt;
             viewModel.StudentSelected = agent.AssignStudent;
+            viewModel.LogoutRequested = agent.LogoutAsync;
             agent.CommandHandler = async (command, ct) =>
             {
                 // Post to UI without blocking shutdown: InvokeAsync would deadlock if Exit waits on the agent.
@@ -101,9 +120,14 @@ public partial class App : Avalonia.Application
                 await using var registration = ct.Register(() => completion.TrySetCanceled(ct));
                 return await completion.Task;
             };
+            var mailRetry = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
+            mailRetry.Tick += (_, _) => viewModel.EnsureMailAccount();
+            mailRetry.Start();
             agent.Start();
             desktop.Exit += (_, _) =>
             {
+                mailRetry.Stop();
+                try { browserPolicy?.Dispose(); } catch { }
                 screenLock?.Hide();
                 try { watchdog?.Stop(); } catch { /* ignore */ }
                 try { focusMode?.Stop(); } catch { /* ignore */ }
@@ -143,7 +167,7 @@ public partial class App : Avalonia.Application
                 var result = command.Kind switch
                 {
                     ClassroomCommandKinds.VpnInstallConfig => HandleVpnInstallConfig(command),
-                    ClassroomCommandKinds.VpnConnect => ConnectWithHealth(command),
+                    ClassroomCommandKinds.VpnConnect => ConnectAssignedVpn(command),
                     ClassroomCommandKinds.VpnDisconnect => ReportVpnDisconnected(),
                     ClassroomCommandKinds.VpnStatus => ReportVpnStatus(),
                     _ => ReportVpnFailure($"Неизвестная VPN-команда: {command.Kind}")
@@ -215,6 +239,27 @@ public partial class App : Avalonia.Application
 
     private CommandExecutionResult ConnectWithHealth(ClassroomCommand command) =>
         ConnectWithHealth(ReadString(command, "check_host"), ReadString(command, "vpn_region"));
+
+    private CommandExecutionResult ConnectAssignedVpn(ClassroomCommand command)
+    {
+        var expected = ReadString(command, "config_fingerprint");
+        if (!string.IsNullOrWhiteSpace(expected))
+        {
+            if (vpn is null || !File.Exists(vpn.ConfigPath))
+                return ReportVpnFailure("Закреплённый VPN-профиль не установлен на этом ПК.");
+            try
+            {
+                var actual = VpnConfigIdentity.Fingerprint(File.ReadAllText(vpn.ConfigPath));
+                if (!actual.Equals(expected, StringComparison.OrdinalIgnoreCase))
+                    return ReportVpnFailure("На этом ПК установлен другой VPN-профиль. Подключение отменено.");
+            }
+            catch (Exception error)
+            {
+                return ReportVpnFailure($"Не удалось проверить закреплённый VPN-профиль: {error.Message}");
+            }
+        }
+        return ConnectWithHealth(command);
+    }
 
     private CommandExecutionResult ConnectWithHealth(string? checkHost, string? region)
     {

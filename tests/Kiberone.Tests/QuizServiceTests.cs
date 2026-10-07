@@ -19,7 +19,7 @@ public sealed class QuizServiceTests : IAsyncLifetime
         await ClassroomDatabase.InitializeAsync(options);
         await using var db = new ClassroomDbContext(options);
         var group = new ClassroomGroup { Name = "Quiz Group" };
-        var student = new Student { FirstName = "Анна", LastName = "Смирнова", GroupId = group.Id };
+        var student = new Kiberone.Core.Student { FirstName = "Анна", LastName = "Смирнова", GroupId = group.Id };
         group.Students.Add(student);
         db.Groups.Add(group);
         await db.SaveChangesAsync();

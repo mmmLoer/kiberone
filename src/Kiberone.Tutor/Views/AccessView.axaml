@@ -1,0 +1,49 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:vm="using:Kiberone.Tutor.ViewModels"
+ x:Class="Kiberone.Tutor.Views.AccessView" x:DataType="vm:MainViewModel" x:Name="AccessRoot">
+ <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+  <StackPanel Margin="24" Spacing="20">
+   <Grid ColumnDefinitions="*,Auto">
+    <ComboBox ItemsSource="{Binding Groups}" SelectedItem="{Binding AccessGroup}" PlaceholderText="Выберите группу" HorizontalAlignment="Stretch" MaxWidth="480" HorizontalContentAlignment="Left" />
+    <CheckBox Grid.Column="1" IsChecked="{Binding AccessEnabled}" Content="Правила включены" VerticalAlignment="Center" />
+   </Grid>
+   <WrapPanel>
+    <Button Content="Обзор" Command="{Binding OpenAccessPageCommand}" CommandParameter="0" Classes="ghost" Margin="0,0,8,0"/>
+    <Button Content="Приложения" Command="{Binding OpenAccessPageCommand}" CommandParameter="1" Classes="ghost" Margin="0,0,8,0"/>
+    <Button Content="Сайты" Command="{Binding OpenAccessPageCommand}" CommandParameter="2" Classes="ghost"/>
+   </WrapPanel>
+   <StackPanel IsVisible="{Binding IsAccessOverview}" Spacing="20">
+    <Border Background="{DynamicResource MintBrush}" CornerRadius="16" Padding="24">
+     <StackPanel Spacing="10"><TextBlock Text="Один набор правил — для всего класса" Classes="h1"/><TextBlock Text="Правила применяются ко всем компьютерам выбранной группы." Classes="muted" TextWrapping="Wrap"/></StackPanel>
+    </Border>
+    <Grid ColumnDefinitions="*,*,*">
+     <Border Classes="card" Margin="0,0,12,0"><StackPanel Spacing="16"><TextBlock Text="Приложения" Classes="h2"/><TextBlock Text="Каталог программ и иконок, полученных с ученических ПК. Единый список разрешений группы." Classes="muted" TextWrapping="Wrap"/><Button Content="Настроить приложения →" Command="{Binding OpenAccessPageCommand}" CommandParameter="1" Classes="primary"/></StackPanel></Border>
+     <Border Grid.Column="1" Classes="card" Margin="0,0,12,0"><StackPanel Spacing="16"><TextBlock Text="Сайты" Classes="h2"/><TextBlock Text="Разрешённые и закрытые адреса для Chrome и Edge на всех ПК группы." Classes="muted" TextWrapping="Wrap"/><Button Content="Настроить сайты →" Command="{Binding OpenAccessPageCommand}" CommandParameter="2" Classes="primary"/></StackPanel></Border>
+     <Border Grid.Column="2" Classes="card"><StackPanel Spacing="16"><TextBlock Text="VPN тьютора" Classes="h2"/><TextBlock Text="Настройте подключение своего компьютера." Classes="muted" TextWrapping="Wrap"/><Button Content="Открыть настройки VPN →" Command="{Binding NavigateCommand}" CommandParameter="20"/></StackPanel></Border>
+    </Grid>
+    <Border Classes="card"><StackPanel Spacing="12"><TextBlock Text="Как правила попадают на ученические ПК" Classes="h2"/><TextBlock Text="1. Ученик подключается и отправляет каталог приложений.&#10;2. Тьютор выбирает разрешения и публикует правила для группы.&#10;3. Правила действуют для всех компьютеров группы." TextWrapping="Wrap"/></StackPanel></Border>
+    <Border Classes="card"><StackPanel Spacing="12"><TextBlock Text="Почта учеников" Classes="h2"/><TextBlock Text="Каждый ученик получает личный адрес для регистрации и входа на учебные сайты. Письма хранятся 24 часа." Classes="muted" TextWrapping="Wrap"/></StackPanel></Border>
+   </StackPanel>
+   <Grid IsVisible="{Binding IsAccessApps}" ColumnDefinitions="2*,*">
+    <Border Classes="card" Margin="0,0,20,0"><StackPanel Spacing="16">
+     <TextBlock Text="Приложения, найденные у учеников" Classes="h2"/><TextBlock Text="Выберите программы, которыми ученики могут пользоваться." Classes="muted"/>
+     <Grid ColumnDefinitions="*,Auto"><TextBox Text="{Binding AccessSearch}" Watermark="Поиск приложения"/><Button Grid.Column="1" Content="Обновить каталог" Command="{Binding RefreshAccessApplicationsCommand}" Margin="8,0,0,0"/></Grid>
+     <ScrollViewer MaxHeight="470"><ItemsControl ItemsSource="{Binding AccessApplications}"><ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:AccessApplicationCard">
+      <Border IsVisible="{Binding IsVisible}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,0,1" Padding="0,16"><Grid ColumnDefinitions="42,*,Auto">
+       <Border Background="{DynamicResource MintBrush}" CornerRadius="10" Width="42" Height="42"><Image Source="{Binding Icon}" Width="32" Height="32"/></Border>
+       <StackPanel Grid.Column="1" Margin="12,0" Spacing="4"><TextBlock Text="{Binding Name}" FontWeight="SemiBold"/><TextBlock Text="{Binding Details}" Classes="muted" FontSize="12" TextWrapping="Wrap"/></StackPanel>
+       <ToggleSwitch Grid.Column="2" IsChecked="{Binding IsAllowed}" OnContent="Разрешено" OffContent="Закрыто" VerticalAlignment="Center"/>
+      </Grid></Border>
+     </DataTemplate></ItemsControl.ItemTemplate></ItemsControl></ScrollViewer>
+    </StackPanel></Border>
+    <StackPanel Grid.Column="1" Spacing="20"><Border Classes="card"><StackPanel Spacing="16"><TextBlock Text="Общее правило" Classes="h2"/><CheckBox IsChecked="{Binding OnlyAllowedApps}" Content="Только разрешённые приложения"/><TextBlock Text="При выключенном переключателе закрываются только отмеченные приложения. Системные окна остаются доступными." Classes="muted" TextWrapping="Wrap"/><Button Content="Опубликовать для группы" Command="{Binding PublishAccessCommand}" Classes="primary"/></StackPanel></Border><Border Background="{DynamicResource SurfaceSoftBrush}" CornerRadius="16" Padding="20"><TextBlock Text="Список программ обновляется автоматически для всей группы." Classes="muted" TextWrapping="Wrap"/></Border></StackPanel>
+   </Grid>
+   <Grid IsVisible="{Binding IsAccessSites}" ColumnDefinitions="2*,*">
+    <Border Classes="card" Margin="0,0,20,0"><StackPanel Spacing="16"><TextBlock Text="Сайты для класса" Classes="h2"/><TextBlock Text="Добавляйте домены или адреса отдельных страниц." Classes="muted"/><Grid ColumnDefinitions="*,Auto"><TextBox Text="{Binding NewSite}" Watermark="Домен или адрес сайта"/><Button Grid.Column="1" Content="Добавить сайт" Command="{Binding AddAccessSiteCommand}" Classes="primary" Margin="10,0,0,0"/></Grid>
+     <ItemsControl ItemsSource="{Binding AccessSites}"><ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:AccessSiteCard"><Border BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,0,1" Padding="0,18"><Grid ColumnDefinitions="*,Auto"><TextBlock Text="{Binding Address}" FontWeight="SemiBold" VerticalAlignment="Center" TextWrapping="Wrap"/><ToggleSwitch Grid.Column="1" IsChecked="{Binding IsAllowed}" OnContent="Разрешено" OffContent="Закрыто"/></Grid></Border></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+    </StackPanel></Border>
+    <Border Grid.Column="1" Classes="card" VerticalAlignment="Top"><StackPanel Spacing="16"><TextBlock Text="Правило для всех ПК" Classes="h2"/><CheckBox IsChecked="{Binding OnlyAllowedSites}" Content="Только сайты из списка"/><TextBlock Text="Если выключено — разрешены все сайты, кроме закрытых. Правила действуют в Chrome и Edge." Classes="muted" TextWrapping="Wrap"/><Button Content="Опубликовать для группы" Command="{Binding PublishAccessCommand}" Classes="primary"/></StackPanel></Border>
+   </Grid>
+   <Border Background="{DynamicResource SurfaceSoftBrush}" CornerRadius="10" Padding="14"><TextBlock Text="{Binding AccessStatus}" TextWrapping="Wrap" Classes="muted"/></Border>
+  </StackPanel>
+ </ScrollViewer>
+</UserControl>

@@ -2,16 +2,15 @@
 
 Каноническая инструкция перенесена в репозиторий из операционного runbook.
 
-## Push → сборка сразу
+## Текущий Hub
 
-GitHub webhook на `POST http://193.235.147.228:8787/api/hooks/github` при пуше в `main` сразу делает `systemctl restart kiberone-release.service`.
-Таймер раз в 15 минут остаётся запасным.
+Hub работает на `193.182.145.64:8787` (`kiberone-hub.service`). Он хранит данные локаций и раздаёт обновление Student. На этом сервере пока **нет** clone репозитория, .NET SDK, `kiberone-release.service` и таймера: push в GitHub автоматически не собирает новое обновление. Для публикации очередной версии используйте ручной порядок в `scripts/hub-deployment.md`.
 
-Секрет лежит в `/var/lib/kiberone-hub/webhook.env` на VPS.
+Описанная ниже CI-схема — заготовка для отдельной настройки. Не направляйте GitHub webhook на новый Hub, пока не установлены сборочное окружение и release service.
 
 ## Быстрый старт на сервере
 
-1. Clone `main`, SDK 8, `tunnel.dll` + `wireguard.dll` в `src/Kiberone.VpnAgent/native/`.
+1. Clone `main`, SDK 8, `tunnel.dll` + `wireguard.dll` в `src/Kiberone.VpnAgent/native/`. Закрытый PEM-ключ подписи обновлений храните вне checkout и задайте `KIBERONE_UPDATE_SIGNING_KEY_PATH` (см. `scripts/hub-deployment.md`). Без ключа сборка обновления завершится ошибкой; неподписанный manifest клиенты отклонят.
 2. Полный релиз: `./scripts/build-installers.sh`
 3. Авто-pull + publish в Hub:
 

@@ -100,6 +100,82 @@ public sealed class FileSyncServiceTests : IAsyncLifetime
         Assert.Contains(versions, x => x.Label == "До изменения");
     }
 
+    [Fact]
+    public async Task RestoredFile_IsDownloadedInsteadOfBeingOverwrittenByStudent()
+    {
+        await PrepareSafe("restore-file", "main.cs", SyncChangeKind.Created);
+        await Upload("restore-file", "main.cs", "first");
+        await service.CompleteAsync("restore-file");
+        await PrepareSafe("restore-file", "main.cs", SyncChangeKind.Modified);
+        await Upload("restore-file", "main.cs", "second");
+        await service.CompleteAsync("restore-file");
+        var version = (await service.ListVersionsAsync("restore-file", "main.cs")).Single(x => x.Label == "Первая загрузка");
+        await service.RestoreVersionAsync(new RestoreVersionRequest("restore-file", "main.cs", version.Id));
+
+        var studentHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData("second"u8));
+        var prepared = await service.PrepareAsync(new SyncPrepareRequest("restore-file",
+            [new SyncChange("main.cs", SyncChangeKind.Modified, 6)], true, false, 5, null,
+            [new SyncFileFingerprint("main.cs", 6, studentHash)]));
+        Assert.DoesNotContain("main.cs", prepared.UploadPaths ?? []);
+        Assert.Contains("main.cs", prepared.DownloadPaths ?? []);
+        Assert.True(prepared.RestoreFromServer);
+        await service.CompleteAsync("restore-file");
+    }
+
+    [Fact]
+    public async Task ProjectSnapshot_RestoresWholeFolderAndDeletesNewFilesOnStudent()
+    {
+        await PrepareSafe("project", "main.cs", SyncChangeKind.Created);
+        await Upload("project", "main.cs", "v1");
+        await service.CompleteAsync("project");
+        var first = Assert.Single(await service.ListProjectSnapshotsAsync("project"));
+        await PrepareSafe("project", "other.txt", SyncChangeKind.Created);
+        await Upload("project", "main.cs", "v2");
+        await Upload("project", "other.txt", "new");
+        await service.CompleteAsync("project");
+
+        await service.RestoreProjectSnapshotAsync(new RestoreProjectSnapshotRequest("project", first.Id));
+        Assert.Equal(["main.cs"], (await service.ListFilesAsync("project")).Select(x => x.Path).ToArray());
+        var prepared = await service.PrepareAsync(new SyncPrepareRequest("project", [], true, false, 5, null,
+            [new SyncFileFingerprint("main.cs", 2, "old"), new SyncFileFingerprint("other.txt", 3, "new")]));
+        Assert.Contains("main.cs", prepared.DownloadPaths ?? []);
+        Assert.Contains("other.txt", prepared.DeleteLocalPaths ?? []);
+        Assert.DoesNotContain("other.txt", prepared.UploadPaths ?? []);
+        await service.CompleteAsync("project");
+    }
+
+    [Fact]
+    public async Task DisablingAutoApproval_RequiresTutorForEdits()
+    {
+        service.AutoApproveSafeFiles = false;
+        var prepared = await service.PrepareAsync(new SyncPrepareRequest("review", [new SyncChange("main.cs", SyncChangeKind.Created, 4)], false, false, 5));
+        Assert.True(prepared.Required);
+        Assert.Equal(SyncApprovalStatus.Pending, prepared.Status);
+    }
+
+    [Fact]
+    public async Task ConsecutiveFileRestores_KeepBothDownloadCommands()
+    {
+        await PrepareSafe("multi-restore", "a.txt", SyncChangeKind.Created);
+        await Upload("multi-restore", "a.txt", "first");
+        await Upload("multi-restore", "b.txt", "first");
+        await service.CompleteAsync("multi-restore");
+        await PrepareSafe("multi-restore", "a.txt", SyncChangeKind.Modified);
+        await Upload("multi-restore", "a.txt", "second");
+        await Upload("multi-restore", "b.txt", "second");
+        await service.CompleteAsync("multi-restore");
+        foreach (var path in new[] { "a.txt", "b.txt" })
+        {
+            var first = (await service.ListVersionsAsync("multi-restore", path)).Single(x => x.Label == "Первая загрузка");
+            await service.RestoreVersionAsync(new RestoreVersionRequest("multi-restore", path, first.Id));
+        }
+        var prepared = await service.PrepareAsync(new SyncPrepareRequest("multi-restore", [], true, false, 5, null,
+            [new SyncFileFingerprint("a.txt", 6, "second"), new SyncFileFingerprint("b.txt", 6, "second")]));
+        Assert.Contains("a.txt", prepared.DownloadPaths ?? []);
+        Assert.Contains("b.txt", prepared.DownloadPaths ?? []);
+        Assert.Empty(prepared.UploadPaths ?? []);
+    }
+
     [Theory]
     [InlineData("../secret.txt")]
     [InlineData(".git/config")]

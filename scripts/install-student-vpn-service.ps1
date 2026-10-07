@@ -12,6 +12,7 @@ param(
 
     [string] $InstallDir = "",
     [switch] $InPlace,
+    [switch] $VerifyVpn,
     [string] $VpnDir = "$env:ProgramData\KIBERone\Student\vpn",
     [string] $ServiceName = "KIBERoneStudentVpn"
 )
@@ -45,6 +46,16 @@ function Set-VpnDirectoryAcl([string] $Path) {
     $acl.AddAccessRule((New-SidAccessRule "S-1-5-18" ([System.Security.AccessControl.FileSystemRights]::FullControl)))
     $acl.AddAccessRule((New-SidAccessRule "S-1-5-32-544" ([System.Security.AccessControl.FileSystemRights]::FullControl)))
     $acl.AddAccessRule((New-SidAccessRule "S-1-5-32-545" ([System.Security.AccessControl.FileSystemRights]::Modify)))
+    Set-Acl -LiteralPath $Path -AclObject $acl
+}
+
+function Set-InstallDirectoryAcl([string] $Path) {
+    $acl = New-Object System.Security.AccessControl.DirectorySecurity
+    $acl.SetAccessRuleProtection($true, $false)
+    $acl.AddAccessRule((New-SidAccessRule "S-1-5-18" ([System.Security.AccessControl.FileSystemRights]::FullControl)))
+    $acl.AddAccessRule((New-SidAccessRule "S-1-5-32-544" ([System.Security.AccessControl.FileSystemRights]::FullControl)))
+    # The bridge applies verified updates; users only need to run the installed binaries.
+    $acl.AddAccessRule((New-SidAccessRule "S-1-5-32-545" ([System.Security.AccessControl.FileSystemRights]::ReadAndExecute)))
     Set-Acl -LiteralPath $Path -AclObject $acl
 }
 
@@ -107,8 +118,8 @@ if ($InstallDir -ne $resolvedSource) {
 
 Write-Host "Configuring VPN directory ACL: $VpnDir"
 Set-VpnDirectoryAcl $VpnDir
-Write-Host "Configuring Student install ACL for in-app updates: $InstallDir"
-Set-VpnDirectoryAcl $InstallDir
+Write-Host "Configuring Student install ACL: $InstallDir"
+Set-InstallDirectoryAcl $InstallDir
 
 $installedExe = (Resolve-Path -LiteralPath (Join-Path $InstallDir "Kiberone.Student.exe")).Path
 $binPath = Get-ServiceBinaryPath $installedExe
@@ -177,11 +188,13 @@ Write-Host 'You can keep launching Student from dist\Student-win-x64.'
 Write-Host 'Tutor can push .conf files and enable VPN without UAC prompts.'
 
 Write-Host ""
-Write-Host 'Verifying VPN probes - optional; failure must not undo service install ...'
-& $installedExe /verify-vpn
-if ($LASTEXITCODE -ne 0) {
-    Write-Warning ("VPN probe check failed. Service {0} is still installed and running." -f $ServiceName)
-    Write-Warning 'Real classroom configs from Tutor should still connect. Re-check WireGuard if needed.'
-    # Exit 0: callers (Inno / Repair / old in-app UAC path) must treat service install as success.
-    exit 0
+if ($VerifyVpn) {
+    Write-Host 'Verifying VPN probes - optional; failure must not undo service install ...'
+    & $installedExe /verify-vpn
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning ("VPN probe check failed. Service {0} is still installed and running." -f $ServiceName)
+        Write-Warning 'Real classroom configs from Tutor should still connect. Re-check WireGuard if needed.'
+        # Exit 0: callers (Inno / Repair / old in-app UAC path) must treat service install as success.
+        exit 0
+    }
 }

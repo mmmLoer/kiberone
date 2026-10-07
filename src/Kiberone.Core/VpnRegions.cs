@@ -24,7 +24,7 @@ public sealed record VpnPeerPack(string RegionId, string RegionName, string Chec
 
 public sealed record VpnProbeConfig(string RegionId, string FileName, string Content);
 
-public sealed record AppUpdateManifest(string Version, string Filename, long Size, string Sha256, DateTimeOffset PublishedAt);
+public sealed record AppUpdateManifest(string Version, string Filename, long Size, string Sha256, DateTimeOffset PublishedAt, string? Signature = null);
 
 public static class VpnRegionCatalog
 {

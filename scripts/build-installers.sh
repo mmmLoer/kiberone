@@ -5,6 +5,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+if [[ ! -f "${KIBERONE_UPDATE_SIGNING_KEY_PATH:-}" ]]; then
+  echo "KIBERONE_UPDATE_SIGNING_KEY_PATH must point to the private PEM key before building installers." >&2
+  exit 1
+fi
+
 export EnableWindowsTargeting=true
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 export DOTNET_CLI_HOME="${DOTNET_CLI_HOME:-$ROOT/.dotnet-home}"
@@ -135,23 +140,8 @@ cp "$STUDENT_EXE_SRC" "$STUDENT_EXE_DST"
 cp "$STUDENT_EXE_SRC" "$ROOT/KIBERoneStudent.exe"
 cp "$ROOT/dist/Tutor-win-x64/Kiberone.Tutor.exe" "$ROOT/KIBERoneTutor.exe"
 
-SIZE="$(wc -c < "$STUDENT_EXE_DST" | tr -d ' ')"
-if command -v sha256sum >/dev/null 2>&1; then
-  HASH="$(sha256sum "$STUDENT_EXE_DST" | awk '{print $1}')"
-else
-  HASH="$(shasum -a 256 "$STUDENT_EXE_DST" | awk '{print $1}')"
-fi
-PUBLISHED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-
-cat > "$ROOT/updates/student_manifest.json" <<EOF
-{
-  "version": "${VERSION}",
-  "filename": "KIBERoneStudent.exe",
-  "size": ${SIZE},
-  "sha256": "${HASH}",
-  "published_at": "${PUBLISHED_AT}"
-}
-EOF
+dotnet run --project "$ROOT/tools/Kiberone.UpdateSigner/Kiberone.UpdateSigner.csproj" \
+  -c Release -- "$STUDENT_EXE_DST" "$VERSION" "$ROOT/updates/student_manifest.json"
 
 # Tutor serves updates from BaseDirectory/updates
 mkdir -p "$ROOT/dist/Tutor-win-x64/updates"

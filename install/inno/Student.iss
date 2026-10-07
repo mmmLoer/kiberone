@@ -1,6 +1,6 @@
 ; KIBERone Student — requires Administrator (VPN Windows service).
 #ifndef MyAppVersion
-  #define MyAppVersion "0.10.38"
+  #define MyAppVersion "0.10.41"
 #endif
 #ifndef DistRoot
   #define DistRoot "..\..\dist"
@@ -25,7 +25,6 @@ Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=admin
-PrivilegesRequiredOverridesAllowed=dialog
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
@@ -57,6 +56,31 @@ Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; \
   Flags: runhidden waituntilterminated; \
   StatusMsg: "Установка VPN-службы KIBERoneStudentVpn…"
 Filename: "{app}\Kiberone.Student.exe"; Description: "Запустить Student"; Flags: nowait postinstall skipifsilent; WorkingDir: "{app}"
+
+[Code]
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
+  StopCommand: String;
+begin
+  if CurStep = ssPostInstall then
+  begin
+    if (not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+        '-NoProfile -NonInteractive -Command "if((Get-Service -Name KIBERoneStudentVpn -ErrorAction SilentlyContinue).Status -ne ''Running''){exit 1}"',
+        '', SW_HIDE, ewWaitUntilTerminated, ResultCode)) or (ResultCode <> 0) then
+      RaiseException('VPN-служба KIBERoneStudentVpn не запустилась. Проверьте ProgramData\KIBERone\Student\vpn\service-install.log.');
+    Exit;
+  end;
+  if CurStep <> ssInstall then Exit;
+  { The bridge may run from the installed EXE; stop it before file replacement. }
+  StopCommand := '$s=Get-Service -Name KIBERoneStudentVpn -ErrorAction SilentlyContinue; ' +
+    'if($s -and $s.Status -ne ''Stopped''){Stop-Service -Name KIBERoneStudentVpn -ErrorAction Stop; ' +
+    '$s.WaitForStatus(''Stopped'',[TimeSpan]::FromSeconds(30))}';
+  if (not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+      '-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "' + StopCommand + '"',
+      '', SW_HIDE, ewWaitUntilTerminated, ResultCode)) or (ResultCode <> 0) then
+    RaiseException('Не удалось остановить службу KIBERoneStudentVpn перед обновлением.');
+end;
 
 [UninstallRun]
 Filename: "{cmd}"; \

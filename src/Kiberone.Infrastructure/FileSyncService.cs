@@ -20,6 +20,7 @@ public sealed class FileSyncService
     private string rosterRoot;
     private readonly ConcurrentDictionary<string, Guid> clientStudents = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<Guid, string> lessonModules = new();
+    public bool AutoApproveSafeFiles { get; set; } = true;
 
     public FileSyncService(DbContextOptions<ClassroomDbContext> options, string root)
     {
@@ -156,6 +157,12 @@ public sealed class FileSyncService
                 reasons.Add("рабочая папка стала пустой");
         }
 
+        plan = await ApplyRestoreIntentsAsync(request.ClientId, plan, ct);
+        if (plan.RestoreFromServer)
+            reasons.RemoveAll(x => x.StartsWith("удаление ", StringComparison.Ordinal) || x == "рабочая папка стала пустой");
+        if (!AutoApproveSafeFiles && plan.Upload.Count + plan.Conflicts.Count > 0)
+            reasons.Add($"создание или изменение {plan.Upload.Count + plan.Conflicts.Count} файлов");
+
         var required = reasons.Count > 0;
         if (!required)
             plan = ResolveDecision(plan, takeStudent: true);
@@ -234,6 +241,12 @@ public sealed class FileSyncService
              || x.Status == SyncApprovalStatus.Restore)).ToListAsync(ct);
         var latest = candidates.OrderByDescending(x => x.CreatedAt).FirstOrDefault();
         if (latest is null) throw new InvalidOperationException("Нет активной синхронизации.");
+        var plan = ReadPlan(latest.ChangesJson);
+        if (plan.Upload.Count > 0 || plan.Changes.Count > 0)
+            await CaptureProjectSnapshotAsync(clientId, "Автосохранение", ct);
+        var rootPath = GetStorageRoot(clientId);
+        var intents = await db.SyncRestoreIntents.Where(x => x.ClientId == clientId && x.RootPath == rootPath).ToListAsync(ct);
+        db.SyncRestoreIntents.RemoveRange(intents);
         latest.Status = SyncApprovalStatus.Completed;
         latest.CompletedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
@@ -326,7 +339,126 @@ public sealed class FileSyncService
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
         if (File.Exists(destination)) await ArchiveAsync(request.ClientId, request.Path, destination, await HashFileAsync(destination, ct), "Перед восстановлением", ct);
         File.Copy(version.StoragePath, destination, true);
+        await SetRestoreIntentsAsync(request.ClientId, [(Normalize(request.Path), false)], ct);
         return ToFileInfo(request.Path, destination, version.Sha256);
+    }
+
+    public async Task<IReadOnlyList<ProjectSnapshotInfo>> ListProjectSnapshotsAsync(string clientId, CancellationToken ct = default)
+    {
+        var rootPath = GetStorageRoot(clientId);
+        await using var db = new ClassroomDbContext(options);
+        var snapshots = await db.SyncedProjectSnapshots.AsNoTracking()
+            .Where(x => x.ClientId == clientId && x.RootPath == rootPath)
+            .ToListAsync(ct);
+        return snapshots.OrderByDescending(x => x.CreatedAt)
+            .Select(x => new ProjectSnapshotInfo(x.Id.ToString("N"), x.CreatedAt, x.Label, x.FileCount, x.TotalBytes)).ToList();
+    }
+
+    public async Task<ProjectSnapshotInfo?> CaptureProjectSnapshotAsync(string clientId, string label = "Автосохранение", CancellationToken ct = default)
+    {
+        var rootPath = GetStorageRoot(clientId);
+        var files = await ListFilesAsync(clientId, ct);
+        var entries = files.Select(x => new ProjectEntry(x.Path, x.Sha256, x.Size)).ToList();
+        var manifest = JsonSerializer.Serialize(entries, PlanJson);
+        await using var db = new ClassroomDbContext(options);
+        var existingSnapshots = await db.SyncedProjectSnapshots.AsNoTracking()
+            .Where(x => x.ClientId == clientId && x.RootPath == rootPath)
+            .ToListAsync(ct);
+        var latest = existingSnapshots.OrderByDescending(x => x.CreatedAt).FirstOrDefault();
+        if (latest?.ManifestJson == manifest) return null;
+
+        var objects = Path.Combine(rootPath, ".history", "objects");
+        Directory.CreateDirectory(objects);
+        foreach (var entry in entries)
+        {
+            var destination = Path.Combine(objects, entry.Sha256 + ".bin");
+            if (!File.Exists(destination)) File.Copy(ResolvePath(clientId, entry.Path), destination);
+        }
+        var snapshot = new SyncedProjectSnapshot
+        {
+            ClientId = clientId, RootPath = rootPath, ManifestJson = manifest,
+            Label = label, FileCount = entries.Count, TotalBytes = entries.Sum(x => x.Size)
+        };
+        db.SyncedProjectSnapshots.Add(snapshot);
+        await db.SaveChangesAsync(ct);
+        var stale = (await db.SyncedProjectSnapshots.Where(x => x.ClientId == clientId && x.RootPath == rootPath)
+            .ToListAsync(ct)).OrderByDescending(x => x.CreatedAt).Skip(30).ToList();
+        db.SyncedProjectSnapshots.RemoveRange(stale);
+        await db.SaveChangesAsync(ct);
+        return new ProjectSnapshotInfo(snapshot.Id.ToString("N"), snapshot.CreatedAt, snapshot.Label, snapshot.FileCount, snapshot.TotalBytes);
+    }
+
+    public async Task<ProjectSnapshotInfo?> RestoreProjectSnapshotAsync(RestoreProjectSnapshotRequest request, CancellationToken ct = default)
+    {
+        if (!Guid.TryParse(request.SnapshotId, out var id)) throw new LessonValidationException(["Некорректный ID контрольной точки."]);
+        var rootPath = GetStorageRoot(request.ClientId);
+        await using var db = new ClassroomDbContext(options);
+        var snapshot = await db.SyncedProjectSnapshots.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == id && x.ClientId == request.ClientId && x.RootPath == rootPath, ct)
+            ?? throw new KeyNotFoundException("Контрольная точка не найдена.");
+        var entries = JsonSerializer.Deserialize<List<ProjectEntry>>(snapshot.ManifestJson, PlanJson)
+            ?? throw new InvalidDataException("Пустой манифест контрольной точки.");
+        var desired = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in entries)
+        {
+            ValidateRelativePath(entry.Path);
+            if (!desired.Add(entry.Path) || entry.Sha256.Length != 64 || !entry.Sha256.All(Uri.IsHexDigit))
+                throw new InvalidDataException("Некорректный манифест контрольной точки.");
+            if (!File.Exists(Path.Combine(rootPath, ".history", "objects", entry.Sha256 + ".bin")))
+                throw new FileNotFoundException("Объект контрольной точки отсутствует.", entry.Path);
+        }
+        var current = await ListFilesAsync(request.ClientId, ct);
+        await CaptureProjectSnapshotAsync(request.ClientId, "Перед восстановлением", ct);
+        foreach (var entry in entries)
+        {
+            var destination = ResolvePath(request.ClientId, entry.Path);
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            File.Copy(Path.Combine(rootPath, ".history", "objects", entry.Sha256 + ".bin"), destination, true);
+        }
+        var removed = current.Where(x => !desired.Contains(x.Path)).Select(x => x.Path).ToList();
+        foreach (var path in removed) File.Delete(ResolvePath(request.ClientId, path));
+        await SetRestoreIntentsAsync(request.ClientId,
+            entries.Select(x => (x.Path, false)).Concat(removed.Select(x => (x, true))), ct);
+        return await CaptureProjectSnapshotAsync(request.ClientId, $"Восстановлено: {snapshot.Label}", ct);
+    }
+
+    private async Task<StoredPlan> ApplyRestoreIntentsAsync(string clientId, StoredPlan plan, CancellationToken ct)
+    {
+        var rootPath = GetStorageRoot(clientId);
+        await using var db = new ClassroomDbContext(options);
+        var intents = await db.SyncRestoreIntents.AsNoTracking()
+            .Where(x => x.ClientId == clientId && x.RootPath == rootPath).ToListAsync(ct);
+        if (intents.Count == 0) return plan;
+        var paths = intents.Select(x => x.RelativePath).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return plan with
+        {
+            Upload = plan.Upload.Where(x => !paths.Contains(x)).ToList(),
+            Download = plan.Download.Where(x => !paths.Contains(x))
+                .Concat(intents.Where(x => !x.DeleteLocal).Select(x => x.RelativePath))
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+            Conflicts = plan.Conflicts.Where(x => !paths.Contains(x)).ToList(),
+            DeleteLocal = intents.Where(x => x.DeleteLocal).Select(x => x.RelativePath).ToList(),
+            RestoreFromServer = true
+        };
+    }
+
+    private async Task SetRestoreIntentsAsync(string clientId, IEnumerable<(string Path, bool DeleteLocal)> changes, CancellationToken ct)
+    {
+        var rootPath = GetStorageRoot(clientId);
+        await using var db = new ClassroomDbContext(options);
+        var existing = await db.SyncRestoreIntents.Where(x => x.ClientId == clientId && x.RootPath == rootPath).ToListAsync(ct);
+        foreach (var (path, deleteLocal) in changes)
+        {
+            var normalized = Normalize(path);
+            var intent = existing.FirstOrDefault(x => string.Equals(x.RelativePath, normalized, StringComparison.OrdinalIgnoreCase));
+            if (intent is not null)
+                intent.DeleteLocal = deleteLocal;
+            else db.SyncRestoreIntents.Add(new SyncRestoreIntent
+            {
+                ClientId = clientId, RootPath = rootPath, RelativePath = normalized, DeleteLocal = deleteLocal
+            });
+        }
+        await db.SaveChangesAsync(ct);
     }
 
     private async Task EnsureCanSyncAsync(string clientId, CancellationToken ct)
@@ -501,7 +633,7 @@ public sealed class FileSyncService
         {
             var plan = JsonSerializer.Deserialize<StoredPlan>(json, PlanJson);
             if (plan is not null)
-                return new StoredPlan(plan.Upload ?? [], plan.Download ?? [], plan.Conflicts ?? [], plan.Changes ?? []);
+                return new StoredPlan(plan.Upload ?? [], plan.Download ?? [], plan.Conflicts ?? [], plan.Changes ?? [], plan.DeleteLocal ?? [], plan.RestoreFromServer);
         }
         catch (JsonException)
         {
@@ -541,9 +673,11 @@ public sealed class FileSyncService
         new(Normalize(relativePath), new FileInfo(path).Length, File.GetLastWriteTimeUtc(path), hash);
 
     private static SyncPrepareResult ToResult(SyncApproval approval, bool required, StoredPlan plan) =>
-        new(approval.Id, required, approval.Status, approval.Reason, approval.CreatedAt, plan.Upload, plan.Download);
+        new(approval.Id, required, approval.Status, approval.Reason, approval.CreatedAt, plan.Upload, plan.Download, plan.DeleteLocal, plan.RestoreFromServer);
 
-    private sealed record StoredPlan(List<string> Upload, List<string> Download, List<string> Conflicts, List<SyncChange> Changes);
+    private sealed record StoredPlan(List<string> Upload, List<string> Download, List<string> Conflicts, List<SyncChange> Changes,
+        List<string>? DeleteLocal = null, bool RestoreFromServer = false);
+    private sealed record ProjectEntry(string Path, string Sha256, long Size);
     private sealed record StudentSyncTarget(string LastName, string FirstName, string GroupName, string Module, IReadOnlyList<string> ModuleFolders);
 
     private static void TryDeleteEmptyDirectories(string root)

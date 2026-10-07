@@ -239,22 +239,15 @@ public sealed class VpnController
     /// <summary>
     /// Copies staged Student.exe into the install dir. Uses the SYSTEM bridge when Program Files is not writable.
     /// </summary>
-    public bool TryApplyStudentUpdate(string sourceExe, string targetExe)
+    public bool TryApplyStudentUpdate(string sourceExe, string targetExe, StudentUpdateInfo update, int clientPid)
     {
         try
         {
-            var targetDir = Path.GetDirectoryName(targetExe);
-            if (!string.IsNullOrWhiteSpace(targetDir) && CanWriteToPath(Path.Combine(targetDir, "probe")))
-            {
-                File.Copy(sourceExe, targetExe, overwrite: true);
-                return true;
-            }
-
             var activeBridge = EnsureBridgeReady();
             if (activeBridge is null)
                 return false;
 
-            activeBridge.ApplyUpdate(sourceExe, targetExe);
+            activeBridge.ApplyUpdate(sourceExe, targetExe, update, clientPid);
             return true;
         }
         catch (Exception error)

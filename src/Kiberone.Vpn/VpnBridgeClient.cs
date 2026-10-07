@@ -1,5 +1,6 @@
 using System.IO.Pipes;
 using System.Text.Json;
+using Kiberone.Core;
 using Kiberone.Vpn.WireGuard;
 
 namespace Kiberone.Vpn;
@@ -86,12 +87,14 @@ public sealed class VpnBridgeClient
 
     public VpnStatus Disconnect(string configPath) => ToStatus(Send(new VpnBridgeRequest(VpnBridgeAction.Disconnect, configPath)), configPath);
 
-    public void ApplyUpdate(string sourcePath, string targetPath)
+    public void ApplyUpdate(string sourcePath, string targetPath, StudentUpdateInfo update, int clientPid)
     {
         var response = Send(new VpnBridgeRequest(
             VpnBridgeAction.ApplyUpdate,
             SourcePath: sourcePath,
-            TargetPath: targetPath));
+            TargetPath: targetPath,
+            Update: update,
+            ClientPid: clientPid));
         if (!response.Ok)
             throw new InvalidOperationException(response.Error ?? "Не удалось применить обновление через VPN-службу.");
     }

@@ -37,6 +37,11 @@ public static class TypingLessonCatalog
 
     public static bool IsDefaultName(string? name) => false;
 
+    public static bool IsPlaceholderText(string? text) =>
+        string.Equals(text?.Trim(), PlainPlaceholder, StringComparison.Ordinal)
+        || string.Equals(text?.Trim(), PunctuationPlaceholder, StringComparison.Ordinal)
+        || string.Equals(text?.Trim(), EnglishPlaceholder, StringComparison.Ordinal);
+
     public static string GetLessonText(TypingLessonTemplate lesson) =>
         string.Join("\n\n", lesson.Steps.OrderBy(step => step.Order).Select(step => step.Text)
             .Where(text => !string.IsNullOrWhiteSpace(text)));

@@ -35,18 +35,53 @@ public sealed class StudentAgent : IAsyncDisposable
     private StudentUpdateInfo? availableUpdate;
     private bool updateRequested;
     private string? stagedUpdatePath;
+    private StudentUpdateInfo? stagedUpdateInfo;
+    private readonly SemaphoreSlim sessionGate = new(1, 1);
+    private CancellationTokenSource? syncCycle;
+    private Guid? previousStudentId;
     private Guid? studentId;
     private readonly ConcurrentQueue<SubmitQuizAnswerRequest> quizAnswers = new();
+    private readonly TypingAttemptOutbox typingAttempts;
     private readonly ConcurrentDictionary<Guid, byte> handledCommands = [];
     private Task? loopTask;
     private ClientWebSocket? commandSocket;
     private int commandSocketLive;
     private bool sessionOnline;
+    private DiscoveryBeacon? currentBeacon;
+    public async Task<StudentMailAccount> GetMailAccountAsync(CancellationToken ct = default)
+    {
+        var beacon = currentBeacon ?? throw new InvalidOperationException("Сначала подключитесь к тьютору и выберите своё имя.");
+        using var http = new HttpClient { BaseAddress = new Uri($"http://{beacon.Host}:{beacon.Port}"), Timeout = TimeSpan.FromSeconds(25) };
+        http.DefaultRequestHeaders.Add("X-Sync-Token", beacon.Token);
+        http.DefaultRequestHeaders.Add("X-Client-Id", clientId);
+        await SendHeartbeatAsync(http, ct);
+        using var response = await http.GetAsync("/mail/account", ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            var message = response.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden
+                ? "Имя ученика ещё не подтверждено тьютором. Дождитесь подключения и обновите почту."
+                : "Почта недоступна. Проверьте подключение и настройки почты у тьютора.";
+            try
+            {
+                var details = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: ct);
+                if (details.ValueKind == JsonValueKind.Object && details.TryGetProperty("error", out var error)
+                    && error.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(error.GetString()))
+                    message = error.GetString()!;
+            }
+            catch (JsonException) { /* Some HTTP errors have an empty or HTML response body. */ }
+            throw new InvalidOperationException(message);
+        }
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<StudentMailAccount>(JsonOptions, ct) ?? throw new InvalidDataException("Почта не получена.");
+    }
     private int rediscoverRequested;
 
     public StudentAgent(string? pcNumber = null, string? watchFolder = null)
     {
         clientId = ResolveClientId();
+        typingAttempts = new TypingAttemptOutbox(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "KIBERone Classroom", $"typing-attempts-{clientId}.json"));
         this.pcNumber = pcNumber ?? Environment.MachineName;
         this.watchFolder = watchFolder ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "KIBERone Projects");
         Directory.CreateDirectory(this.watchFolder);
@@ -57,13 +92,17 @@ public sealed class StudentAgent : IAsyncDisposable
     public Func<ClassroomCommand, CancellationToken, Task<CommandExecutionResult>>? CommandHandler { get; set; }
     public Func<byte[]?>? ScreenProvider { get; set; }
     public Func<bool>? FocusModeStateProvider { get; set; }
+    public Func<IReadOnlyList<InstalledApplication>>? ApplicationInventoryProvider { get; set; }
+    public event Action<ClassroomAccessPolicy>? AccessPolicyChanged;
+    private string? lastAccessRevision;
+    private DateTimeOffset nextInventoryAt;
     public Func<bool>? WatchdogStateProvider { get; set; }
     public Func<int?>? BatteryProvider { get; set; }
     public Func<ClassroomCommand, CommandExecutionResult>? VpnCommandHandler { get; set; }
     public Func<string, CommandExecutionResult>? LaunchInstaller { get; set; }
     public Func<string, CommandExecutionResult>? ApplyWallpaperFile { get; set; }
     /// <summary>Optional SYSTEM copy for Program Files Student updates (VPN bridge).</summary>
-    public Func<string, string, bool>? ApplyElevatedUpdate { get; set; }
+    public Func<string, string, StudentUpdateInfo, int, bool>? ApplyElevatedUpdate { get; set; }
     public Func<bool>? VpnStateProvider { get; set; }
     public Func<VpnRuntimeInfo>? VpnRuntimeProvider { get; set; }
     public Func<bool>? ScreenLockStateProvider { get; set; }
@@ -72,6 +111,8 @@ public sealed class StudentAgent : IAsyncDisposable
     public event Action<StudentSyncState>? SyncStateChanged;
     public event Action<StudentUpdateInfo>? UpdateAvailable;
     public event Action<string>? UpdateStateChanged;
+    public event Action<string?>? ScreenStateChanged;
+    public event Action<Guid, string>? TypingResultStateChanged;
     /// <summary>Raised after a verified update is staged; UI should exit so Apply can replace the exe.</summary>
     public event Action? UpdateRestartRequested;
     public event Action<IReadOnlyList<StudentSummary>>? StudentsAvailable;
@@ -91,10 +132,74 @@ public sealed class StudentAgent : IAsyncDisposable
         var first = selectedIndices.Count > 0 ? selectedIndices[0] : -1;
         quizAnswers.Enqueue(new SubmitQuizAnswerRequest(sessionId, clientId, first, selectedIndices.ToArray()));
     }
+    public void SubmitTypingAttempt(TypingAttemptDraft attempt)
+    {
+        if (studentId is Guid assigned)
+        {
+            try
+            {
+                typingAttempts.Enqueue(new SubmitTypingAttemptRequest(assigned, attempt));
+            }
+            catch (Exception error)
+            {
+                TypingResultStateChanged?.Invoke(attempt.AttemptId, $"Результат не сохранён: {error.Message}");
+            }
+        }
+        else
+            TypingResultStateChanged?.Invoke(attempt.AttemptId, "Результат не отправлен: сначала выберите ученика.");
+    }
     public void AssignStudent(Guid id)
     {
+        if (previousStudentId is Guid previous && previous != id) fileSync.RestoreForNewStudent();
         studentId = id;
         fileSync.StudentId = id;
+        nextSyncAt = DateTimeOffset.MinValue;
+    }
+
+    private async Task SyncSessionAsync(HttpClient http, CancellationToken ct)
+    {
+        await sessionGate.WaitAsync(ct);
+        using var cycle = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        Volatile.Write(ref syncCycle, cycle);
+        try { await fileSync.SyncOnceAsync(http, cycle.Token); }
+        finally { Volatile.Write(ref syncCycle, null); sessionGate.Release(); }
+    }
+    public async Task<string> LogoutAsync(CancellationToken ct = default)
+    {
+        try { Volatile.Read(ref syncCycle)?.Cancel(); } catch (ObjectDisposedException) { }
+        using var waiting = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        waiting.CancelAfter(TimeSpan.FromSeconds(30));
+        await sessionGate.WaitAsync(waiting.Token);
+        try
+        {
+            if (studentId is not Guid owner) return "Выберите своё имя.";
+            await fileSync.SaveSessionCheckpointAsync(owner, ct: ct);
+            var sent = false;
+            if (currentBeacon is { } beacon)
+            {
+                using var http = new HttpClient(new HttpClientHandler { UseProxy = false }) { BaseAddress = new Uri($"http://{beacon.Host}:{beacon.Port}"), Timeout = TimeSpan.FromSeconds(15) };
+                http.DefaultRequestHeaders.Add("X-Sync-Token", beacon.Token);
+                http.DefaultRequestHeaders.Add("X-Client-Id", clientId);
+                using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                deadline.CancelAfter(TimeSpan.FromSeconds(15));
+                try
+                {
+                    await SendHeartbeatCoreAsync(http, deadline.Token);
+                    await FlushTypingAttemptsAsync(http, deadline.Token);
+                    await fileSync.SyncOnceAsync(http, deadline.Token);
+                    sent = await fileSync.SaveSessionCheckpointAsync(owner, ct: ct) is null;
+                }
+                catch (Exception error) when (error is HttpRequestException or OperationCanceledException or IOException)
+                { System.Diagnostics.Trace.TraceWarning($"Logout sync deferred: {error.GetType().Name}"); }
+            }
+            previousStudentId = owner;
+            studentId = null;
+            fileSync.EndSession();
+            quizAnswers.Clear();
+            nextSyncAt = DateTimeOffset.MinValue;
+            return sent ? "Сохранения отправлены. Выберите своё имя." : "Изменения сохранены на этом компьютере. Выберите своё имя.";
+        }
+        finally { sessionGate.Release(); }
     }
 
     public void Start(string? hintAddress = null)
@@ -118,6 +223,7 @@ public sealed class StudentAgent : IAsyncDisposable
             }
 
             var address = $"http://{beacon.Host}:{beacon.Port}";
+            currentBeacon = beacon;
             using var http = new HttpClient(new HttpClientHandler { UseProxy = false })
             {
                 BaseAddress = new Uri(address),
@@ -196,11 +302,12 @@ public sealed class StudentAgent : IAsyncDisposable
                     if (Volatile.Read(ref commandSocketLive) == 0)
                         await PollCommandsAsync(http, cancellationToken);
                     await FlushQuizAnswersAsync(http, cancellationToken);
+                    await FlushTypingAttemptsAsync(http, cancellationToken);
                     if (DateTimeOffset.UtcNow >= nextSyncAt)
                     {
                         try
                         {
-                            await fileSync.SyncOnceAsync(http, cancellationToken);
+                            await SyncSessionAsync(http, cancellationToken);
                         }
                         catch (Exception error)
                         {
@@ -214,20 +321,24 @@ public sealed class StudentAgent : IAsyncDisposable
                         try
                         {
                             await SendScreenAsync(http, cancellationToken);
+                            ScreenStateChanged?.Invoke(null);
                         }
                         catch (Exception error)
                         {
                             // Do not fail the whole agent loop when a single screenshot upload fails.
-                            UpdateStateChanged?.Invoke($"Снимок экрана не отправился: {error.Message}");
+                            ScreenStateChanged?.Invoke($"Снимок экрана не отправился: {error.Message}");
                         }
                         nextScreenAt = DateTimeOffset.UtcNow.AddSeconds(30);
                     }
-                    if (updateRequested && availableUpdate is not null && stagedUpdatePath is null)
+                    if (updateRequested && availableUpdate is not null)
                     {
                         updateRequested = false;
                         try
                         {
-                            await StageUpdateAsync(http, availableUpdate, cancellationToken);
+                            if (stagedUpdatePath is not null && File.Exists(stagedUpdatePath))
+                                UpdateRestartRequested?.Invoke();
+                            else
+                                await StageUpdateAsync(http, availableUpdate, cancellationToken);
                         }
                         catch (Exception error)
                         {
@@ -264,6 +375,12 @@ public sealed class StudentAgent : IAsyncDisposable
 
     private async Task SendHeartbeatAsync(HttpClient http, CancellationToken cancellationToken)
     {
+        await sessionGate.WaitAsync(cancellationToken);
+        try { await SendHeartbeatCoreAsync(http, cancellationToken); }
+        finally { sessionGate.Release(); }
+    }
+    private async Task SendHeartbeatCoreAsync(HttpClient http, CancellationToken cancellationToken)
+    {
         var vpn = VpnRuntimeProvider?.Invoke();
         var heartbeat = new HeartbeatRequest(
             clientId,
@@ -287,6 +404,18 @@ public sealed class StudentAgent : IAsyncDisposable
         var settings = await response.Content.ReadFromJsonAsync<HeartbeatResponse>(JsonOptions, cancellationToken);
         if (settings is not null)
         {
+            var policy = settings.AccessPolicy ?? ClassroomAccessPolicy.Empty;
+            if (lastAccessRevision != policy.Revision)
+            {
+                AccessPolicyChanged?.Invoke(policy);
+                lastAccessRevision = policy.Revision;
+            }
+            if (ApplicationInventoryProvider is not null && DateTimeOffset.UtcNow >= nextInventoryAt)
+            {
+                var inventory = await Task.Run(ApplicationInventoryProvider, cancellationToken);
+                using var inventoryResponse = await http.PostAsJsonAsync("/apps/inventory", new ApplicationInventoryRequest(clientId, inventory), JsonOptions, cancellationToken);
+                if (inventoryResponse.IsSuccessStatusCode) nextInventoryAt = DateTimeOffset.UtcNow.AddMinutes(2);
+            }
             syncSeconds = Math.Clamp(settings.SyncSeconds, 5, 3600);
             if (!string.IsNullOrWhiteSpace(settings.PreferredGroupName)
                 && !string.Equals(PreferredGroupName, settings.PreferredGroupName, StringComparison.Ordinal))
@@ -295,7 +424,7 @@ public sealed class StudentAgent : IAsyncDisposable
                 PreferredGroupChanged?.Invoke(PreferredGroupName);
             }
             var previousFolder = fileSync.WatchFolder;
-            var workspaceChanged = ApplyStudentWorkspace(
+            var workspaceChanged = studentId is not null && ApplyStudentWorkspace(
                 settings.SaveStudentName,
                 settings.SaveModule,
                 settings.SaveIgnoreFolders);
@@ -412,7 +541,9 @@ public sealed class StudentAgent : IAsyncDisposable
             if (command.Kind == ClassroomCommandKinds.SyncNow) nextSyncAt = DateTimeOffset.MinValue;
             if (command.Kind == ClassroomCommandKinds.SetWorkspace)
             {
-                ApplyWorkspaceCommand(command);
+                await sessionGate.WaitAsync(cancellationToken);
+                try { if (studentId is not null) ApplyWorkspaceCommand(command); }
+                finally { sessionGate.Release(); }
                 nextSyncAt = DateTimeOffset.MinValue;
             }
             if (command.Kind == ClassroomCommandKinds.Configure && command.Payload.ValueKind == JsonValueKind.Object
@@ -549,8 +680,34 @@ public sealed class StudentAgent : IAsyncDisposable
         }
     }
 
+    private async Task FlushTypingAttemptsAsync(HttpClient http, CancellationToken cancellationToken)
+    {
+        while (studentId is Guid assigned
+            && typingAttempts.TryGetNextForStudent(assigned, out var attempt) && attempt is not null)
+        {
+            try
+            {
+                using var response = await http.PostAsJsonAsync("/typing/attempts", attempt, JsonOptions, cancellationToken);
+                response.EnsureSuccessStatusCode();
+                typingAttempts.Acknowledge(attempt.Attempt.AttemptId);
+                TypingResultStateChanged?.Invoke(attempt.Attempt.AttemptId, "Результат отправлен тьютору.");
+            }
+            catch (Exception error) when (error is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            {
+                TypingResultStateChanged?.Invoke(attempt.Attempt.AttemptId,
+                    $"Результат ожидает отправки: {error.Message}");
+                return;
+            }
+        }
+    }
+
     private async Task StageUpdateAsync(HttpClient http, StudentUpdateInfo update, CancellationToken cancellationToken)
     {
+        if (!StudentUpdateSignature.Verify(update.Version, update.Size, update.Sha256, update.Signature))
+        {
+            UpdateStateChanged?.Invoke("Обновление не установлено: недействительная подпись.");
+            return;
+        }
         var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KIBERone Classroom", "updates");
         Directory.CreateDirectory(directory);
         var temporary = Path.Combine(directory, $"student-{update.Version}-{Guid.NewGuid():N}.tmp");
@@ -572,11 +729,13 @@ public sealed class StudentAgent : IAsyncDisposable
                 }
                 if (total != update.Size) throw new InvalidOperationException("Размер обновления не совпадает с манифестом.");
             }
-            await using var verify = File.OpenRead(temporary);
-            var hash = Convert.ToHexString(await SHA256.HashDataAsync(verify, cancellationToken));
+            string hash;
+            await using (var verify = File.OpenRead(temporary))
+                hash = Convert.ToHexString(await SHA256.HashDataAsync(verify, cancellationToken));
             if (!hash.Equals(update.Sha256, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("SHA-256 обновления не совпадает с манифестом.");
             stagedUpdatePath = Path.ChangeExtension(temporary, ".exe");
             File.Move(temporary, stagedUpdatePath, true);
+            stagedUpdateInfo = update;
             UpdateStateChanged?.Invoke("Обновление проверено. Перезапуск для установки…");
             UpdateRestartRequested?.Invoke();
         }
@@ -587,17 +746,15 @@ public sealed class StudentAgent : IAsyncDisposable
         }
     }
 
-    private void ScheduleStagedUpdate() => PrepareStagedUpdate();
-
     /// <summary>
-    /// Writes the apply-update script (and optionally copies via SYSTEM VPN bridge into Program Files).
+    /// Writes the apply-update script (and optionally copies via SYSTEM bridge into Program Files).
     /// Call before Shutdown so the script exists even if dispose is fire-and-forget.
     /// </summary>
-    public void PrepareStagedUpdate()
+    public bool PrepareStagedUpdate()
     {
-        if (stagedUpdatePath is null || !File.Exists(stagedUpdatePath)) return;
+        if (stagedUpdatePath is null || !File.Exists(stagedUpdatePath)) return false;
         var current = Environment.ProcessPath;
-        if (string.IsNullOrWhiteSpace(current) || !IsStudentExecutablePath(current)) return;
+        if (string.IsNullOrWhiteSpace(current) || !IsStudentExecutablePath(current)) return false;
 
         var watchdogStop = Path.Combine(Path.GetTempPath(), "KIBERone-Classroom-Watchdog", "stop.flag");
         try
@@ -615,7 +772,8 @@ public sealed class StudentAgent : IAsyncDisposable
         {
             try
             {
-                appliedViaBridge = ApplyElevatedUpdate(stagedUpdatePath, current);
+                appliedViaBridge = stagedUpdateInfo is not null &&
+                    ApplyElevatedUpdate(stagedUpdatePath, current, stagedUpdateInfo, Environment.ProcessId);
             }
             catch
             {
@@ -623,10 +781,17 @@ public sealed class StudentAgent : IAsyncDisposable
             }
         }
 
+        if (!appliedViaBridge && !CanWriteUpdateTarget(current))
+        {
+            UpdateStateChanged?.Invoke("Обновление скачано, но нет доступа к папке Student. Нужно обновить установленную системную службу через установщик.");
+            return false;
+        }
+
         var script = Path.Combine(Path.GetDirectoryName(stagedUpdatePath)!, $"apply-update-{Guid.NewGuid():N}.cmd");
         var pid = Environment.ProcessId;
         if (appliedViaBridge)
         {
+            var marker = stagedUpdatePath + ".result";
             File.WriteAllLines(script,
             [
                 "@echo off",
@@ -634,12 +799,27 @@ public sealed class StudentAgent : IAsyncDisposable
                 ":wait",
                 $"tasklist /FI \"PID eq {pid}\" 2>NUL | find \"{pid}\" >NUL",
                 "if not errorlevel 1 (ping 127.0.0.1 -n 2 >NUL & goto wait)",
-                "net stop KIBERoneStudentVpn >NUL 2>&1",
+                "set attempts=0",
+                ":waitresult",
+                $"if exist \"{marker}\" goto checkresult",
+                "set /a attempts+=1",
+                "if %attempts% GEQ 180 goto failed",
                 "ping 127.0.0.1 -n 2 >NUL",
-                "net start KIBERoneStudentVpn >NUL 2>&1",
+                "goto waitresult",
+                ":checkresult",
+                $"findstr /x /c:\"ok\" \"{marker}\" >NUL",
+                "if errorlevel 1 goto failed",
                 $"del /F /Q \"{stagedUpdatePath}\" >NUL 2>&1",
+                $"del /F /Q \"{marker}\" >NUL 2>&1",
                 $"start \"\" \"{current}\"",
-                "del \"%~f0\""
+                "del \"%~f0\"",
+                "exit /b 0",
+                ":failed",
+                $"if exist \"{marker}\" copy /Y \"{marker}\" \"%TEMP%\\kiberone-update-failed.txt\" >NUL",
+                "if not exist \"%TEMP%\\kiberone-update-failed.txt\" echo UPDATE_BRIDGE_TIMEOUT>\"%TEMP%\\kiberone-update-failed.txt\"",
+                $"start \"\" \"{current}\"",
+                "del \"%~f0\"",
+                "exit /b 1"
             ]);
         }
         else
@@ -653,18 +833,14 @@ public sealed class StudentAgent : IAsyncDisposable
                 "if not errorlevel 1 (ping 127.0.0.1 -n 2 >NUL & goto wait)",
                 "echo stop>\"%TEMP%\\KIBERone-Classroom-Watchdog\\stop.flag\"",
                 "ping 127.0.0.1 -n 2 >NUL",
-                "net stop KIBERoneStudentVpn >NUL 2>&1",
-                "ping 127.0.0.1 -n 2 >NUL",
                 $"copy /Y \"{stagedUpdatePath}\" \"{current}\" >NUL",
                 "if errorlevel 1 (",
                 "  echo UPDATE_COPY_FAILED>%TEMP%\\kiberone-update-failed.txt",
-                "  net start KIBERoneStudentVpn >NUL 2>&1",
                 $"  start \"\" \"{current}\"",
                 "  del \"%~f0\"",
                 "  exit /b 1",
                 ")",
                 $"del /F /Q \"{stagedUpdatePath}\" >NUL 2>&1",
-                "net start KIBERoneStudentVpn >NUL 2>&1",
                 $"start \"\" \"{current}\"",
                 "del \"%~f0\""
             ]);
@@ -674,8 +850,27 @@ public sealed class StudentAgent : IAsyncDisposable
         start.ArgumentList.Add("/d");
         start.ArgumentList.Add("/c");
         start.ArgumentList.Add(script);
-        Process.Start(start);
+        if (Process.Start(start) is null)
+            return false;
         stagedUpdatePath = null;
+        return true;
+    }
+
+    private static bool CanWriteUpdateTarget(string target)
+    {
+        try
+        {
+            var directory = Path.GetDirectoryName(target);
+            if (string.IsNullOrWhiteSpace(directory)) return false;
+            var probe = Path.Combine(directory, $".update-write-test-{Guid.NewGuid():N}");
+            using (File.Create(probe)) { }
+            File.Delete(probe);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public static bool IsStudentExecutablePath(string path)
@@ -780,7 +975,6 @@ public sealed class StudentAgent : IAsyncDisposable
         {
             try { await loopTask; } catch (OperationCanceledException) { }
         }
-        ScheduleStagedUpdate();
         lifetime.Dispose();
     }
 }

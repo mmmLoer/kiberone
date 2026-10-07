@@ -29,6 +29,9 @@ public static class VpnConfigDistributor
 
         var configFiles = Directory
             .GetFiles(configsFolder, "*.conf", SearchOption.TopDirectoryOnly)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .Where(path => !string.IsNullOrWhiteSpace(VpnConfigText.ReadAssignment(File.ReadAllText(path), "PrivateKey")))
+            .DistinctBy(path => VpnConfigIdentity.Fingerprint(File.ReadAllText(path)))
             .Select(path =>
             {
                 var fileName = Path.GetFileName(path);

@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Kiberone.Student.ViewModels"
+        xmlns:views="using:Kiberone.Student.Views"
         x:Class="Kiberone.Student.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Width="1360"
@@ -117,7 +118,7 @@
                   CommandParameter="7"
                   Classes="nav"
                   Classes.active="{Binding IsConnectionSection}"
-                  ToolTip.Tip="Связь с Tutor и обновления">
+                  ToolTip.Tip="Подключение и обновления">
             <Grid ColumnDefinitions="30,*">
               <Border Width="26" Height="26" Background="#E9F5F4" CornerRadius="8">
                 <TextBlock Text="↗" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#068F8A" FontSize="14"/>
@@ -125,10 +126,17 @@
               <TextBlock Grid.Column="1" Text="Подключение" VerticalAlignment="Center" Margin="10,0,0,0"/>
             </Grid>
           </Button>
+          <Button Command="{Binding NavigateCommand}" CommandParameter="8" Classes="nav" Classes.active="{Binding IsAppsSection}" AutomationProperties.HelpText="Приложения компьютера и правила группы">
+            <Grid ColumnDefinitions="30,*"><Border Width="26" Height="26" Background="#E9F5F4" CornerRadius="8"><TextBlock Text="▦" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#068F8A" FontSize="14"/></Border><TextBlock Grid.Column="1" Text="Приложения" VerticalAlignment="Center" Margin="10,0,0,0"/></Grid>
+          </Button>
+          <Button Command="{Binding NavigateCommand}" CommandParameter="9" Classes="nav" Classes.active="{Binding IsMailSection}" AutomationProperties.HelpText="Почта, письма и сервисы">
+            <Grid ColumnDefinitions="30,*"><Border Width="26" Height="26" Background="#E9F5F4" CornerRadius="8"><TextBlock Text="✉" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#068F8A" FontSize="14"/></Border><TextBlock Grid.Column="1" Text="Почта" VerticalAlignment="Center" Margin="10,0,0,0"/></Grid>
+          </Button>
         </StackPanel>
 
         <Border Grid.Row="2" Classes="softCard" Padding="12">
           <StackPanel Spacing="4">
+            <Button Content="Сменить ученика" Command="{Binding ChangeStudentCommand}" Classes="ghost" HorizontalAlignment="Stretch" Margin="0,0,0,8"/>
             <TextBlock Text="СТАТУС КЛАССА" Classes="eyebrow" FontSize="11"/>
             <TextBlock Text="{Binding CurrentStudentGroup}"
                        FontWeight="SemiBold"
@@ -279,7 +287,7 @@
               <Grid ColumnDefinitions="30,*">
                 <TextBlock Text="✓" FontWeight="Bold" Foreground="#068F8A" FontSize="18" VerticalAlignment="Center"/>
                 <TextBlock Grid.Column="1"
-                           Text="Список обновляется сам, пока есть связь с Tutor. Выбери урок — и сразу жми пробел, чтобы начать."
+                           Text="Выбери урок и нажми пробел, чтобы начать."
                            Foreground="#056D69"
                            TextWrapping="Wrap"
                            VerticalAlignment="Center"/>
@@ -408,12 +416,14 @@
                 <StackPanel Spacing="3">
                   <TextBlock Text="Скорость" Classes="muted" FontSize="11"/>
                   <TextBlock Text="{Binding Cpm, StringFormat={}{0:0} зн/мин}" Classes="metricValue"/>
+                  <TextBlock Text="{Binding PersonalSpeedRecord}" Classes="muted" FontSize="11"/>
                 </StackPanel>
               </Border>
               <Border Grid.Column="1" Classes="metric" Margin="6,0">
                 <StackPanel Spacing="3">
                   <TextBlock Text="Точность" Classes="muted" FontSize="11"/>
                   <TextBlock Text="{Binding Accuracy, StringFormat={}{0:0.#}%}" Classes="metricValue"/>
+                  <TextBlock Text="{Binding PersonalAccuracyRecord}" Classes="muted" FontSize="11"/>
                 </StackPanel>
               </Border>
               <Border Grid.Column="2" Classes="metric" Margin="6,0">
@@ -440,24 +450,32 @@
             <Border Classes="card" Padding="20,18" MinHeight="160">
               <StackPanel Spacing="18">
                 <TextBlock Text="{Binding LastInputFeedback}"
-                           Foreground="#056D69"
+                           Foreground="{Binding FeedbackForeground}"
                            FontWeight="SemiBold"
                            FontSize="14"
                            HorizontalAlignment="Left"
                            TextWrapping="Wrap"
                            TextAlignment="Left"/>
 
-                <ItemsControl ItemsSource="{Binding TextGlyphs}" HorizontalAlignment="Left">
+                <Border Height="4" Background="#E64B40" CornerRadius="2" Opacity="{Binding ErrorFlashOpacity}">
+                  <Border.Transitions>
+                    <Transitions>
+                      <DoubleTransition Property="Opacity" Duration="0:0:0.15"/>
+                    </Transitions>
+                  </Border.Transitions>
+                </Border>
+
+                <ItemsControl ItemsSource="{Binding TextGlyphs}" HorizontalAlignment="Center">
                   <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
-                      <StackPanel Orientation="Horizontal" HorizontalAlignment="Left"/>
+                      <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"/>
                     </ItemsPanelTemplate>
                   </ItemsControl.ItemsPanel>
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:TypingGlyphViewModel">
                       <Border Background="{Binding GlyphBackground}"
                               CornerRadius="8"
-                              Padding="6,8"
+                              Padding="2,8"
                               Margin="2"
                               MinWidth="{Binding GlyphMinWidth}"
                               MinHeight="56"
@@ -476,6 +494,15 @@
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
+                <StackPanel Spacing="5">
+                  <TextBlock Text="ОСТАЛОСЬ НАБРАТЬ" Classes="eyebrow" Foreground="#87939A"/>
+                  <TextBlock Text="{Binding RemainingText}"
+                             FontFamily="Cascadia Mono, Consolas"
+                             FontSize="15"
+                             Foreground="#53616A"
+                             TextWrapping="Wrap"/>
+                </StackPanel>
+
                 <ProgressBar Value="{Binding Progress}" Maximum="100" Height="8"/>
               </StackPanel>
             </Border>
@@ -486,10 +513,16 @@
                     CornerRadius="9"
                     Padding="12"
                     IsVisible="{Binding HasLayoutWarning}">
-              <TextBlock Text="{Binding LayoutWarning}"
-                         Foreground="#A82E27"
-                         FontWeight="Bold"
-                         HorizontalAlignment="Center"/>
+              <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="12">
+                <TextBlock Text="{Binding LayoutWarning}"
+                           Foreground="#A82E27"
+                           FontWeight="Bold"
+                           VerticalAlignment="Center"/>
+                <Button Content="{Binding SwitchLayoutButtonText}"
+                        Command="{Binding SwitchKeyboardLayoutCommand}"
+                        Focusable="False"
+                        Classes="secondary"/>
+              </StackPanel>
             </Border>
 
             <Border Background="#E9F8F6"
@@ -559,7 +592,7 @@
               </Border>
               <StackPanel Spacing="5">
                 <TextBlock Text="Урок на паузе" Classes="h1"/>
-                <TextBlock Text="Результат сохранён. Отдохни и продолжай, когда будешь готов."
+                <TextBlock Text="Урок на паузе. Продолжи, когда будешь готов."
                            Classes="muted"
                            FontSize="16"
                            TextWrapping="Wrap"/>
@@ -592,13 +625,14 @@
                 VerticalAlignment="Top">
             <Border Classes="card" Margin="0,0,16,0">
               <StackPanel Spacing="17">
-                <Border Width="54" Height="54" CornerRadius="16" Background="#E0F5F2" HorizontalAlignment="Left">
-                  <TextBlock Text="✓" FontSize="22" FontWeight="Bold" Foreground="#068F8A" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                <Border Width="54" Height="54" CornerRadius="16" Background="{Binding ResultBadgeBackground}" HorizontalAlignment="Left">
+                  <TextBlock Text="{Binding ResultIcon}" FontSize="22" FontWeight="Bold" Foreground="{Binding ResultIconForeground}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Border>
-                <TextBlock Text="Сессия завершена" Classes="h1" TextWrapping="Wrap"/>
-                <TextBlock Text="Результат готов к синхронизации с Tutor." Classes="muted" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding ResultTitle}" Classes="h1" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding ResultDescription}" Classes="muted" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding TypingResultStatus}" Classes="muted" TextWrapping="Wrap"/>
                 <TextBlock Text="{Binding Cpm, StringFormat={}{0:0} зн/мин}" Foreground="#068F8A" FontSize="22" FontWeight="Bold" Margin="0,12,0,0"/>
-                <TextBlock Text="{Binding Accuracy, StringFormat={}{0:0}% точность}" Foreground="#1F8E5B" FontSize="18" FontWeight="Bold"/>
+                <TextBlock Text="{Binding ResultAccuracyLabel}" Foreground="#1F8E5B" FontSize="18" FontWeight="Bold"/>
                 <TextBlock Text="{Binding CorrectKeys, StringFormat={}{0} знаков}" FontSize="18" FontWeight="SemiBold"/>
                 <Button Content="Выбрать новый урок" Command="{Binding NavigateCommand}" CommandParameter="1" Classes="primary" Margin="0,8,0,0"/>
               </StackPanel>
@@ -655,7 +689,7 @@
       </TabItem>
 
       <!-- Connection -->
-      <TabItem Header="Техническое состояние">
+      <TabItem Header="Подключение">
         <ScrollViewer>
           <StackPanel Margin="24"
                       Spacing="16"
@@ -666,7 +700,7 @@
                 <Grid ColumnDefinitions="*,Auto">
                   <StackPanel Spacing="5">
                     <TextBlock Text="Подключение к классу" Classes="h1"/>
-                    <TextBlock Text="Student находит Tutor автоматически в локальной сети."
+                    <TextBlock Text="Программа находит тьютора автоматически."
                                Classes="muted"
                                TextWrapping="Wrap"/>
                   </StackPanel>
@@ -683,6 +717,10 @@
                     <StackPanel Spacing="4">
                       <TextBlock Text="Синхронизация" FontWeight="SemiBold"/>
                       <TextBlock Text="{Binding SyncLabel}" Classes="muted" TextWrapping="Wrap"/>
+                      <TextBlock Text="{Binding ScreenStatus}"
+                                 IsVisible="{Binding HasScreenIssue}"
+                                 Foreground="#A82E27"
+                                 TextWrapping="Wrap"/>
                       <TextBlock Text="{Binding VpnLabel}" Classes="muted" TextWrapping="Wrap" Margin="0,6,0,0"/>
                     </StackPanel>
                     <TextBlock Grid.Column="1" Text="{Binding UpdateLabel}" Classes="muted" VerticalAlignment="Center" Margin="16,0,0,0"/>
@@ -719,7 +757,7 @@
                   <TextBlock Text="!" Foreground="#B52E27" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Border>
                 <StackPanel Grid.Column="1" Spacing="6" Margin="12,0,0,0">
-                  <TextBlock Text="Tutor пока не найден" FontSize="18" FontWeight="SemiBold"/>
+                  <TextBlock Text="Тьютор пока не найден" FontSize="18" FontWeight="SemiBold"/>
                   <TextBlock Text="Результаты остаются на этом компьютере. После восстановления связи очередь отправится автоматически."
                              Classes="muted"
                              TextWrapping="Wrap"/>
@@ -730,7 +768,7 @@
             <Border Classes="card">
               <StackPanel Spacing="10">
                 <TextBlock Text="Как работает подключение" Classes="h2"/>
-                <TextBlock Text="Student сам находит Tutor в общей локальной сети. Адрес и токен класса защищены, поэтому их нельзя изменить случайно."
+                <TextBlock Text="Программа находит тьютора автоматически. Если подключения нет, обратись к тьютору."
                            Classes="muted"
                            TextWrapping="Wrap"/>
                 <Border Classes="softCard" Padding="14">
@@ -747,6 +785,8 @@
           </StackPanel>
         </ScrollViewer>
       </TabItem>
+      <TabItem Header="Приложения"><ScrollViewer><StackPanel Margin="24" Spacing="20"><Border Classes="card"><StackPanel Spacing="14"><TextBlock Text="Приложения этого компьютера" Classes="h1"/><TextBlock Text="Каталог с иконками отправляется тьютору автоматически. Он выбирает разрешения сразу для всей группы." Classes="muted" TextWrapping="Wrap"/><TextBlock Text="{Binding AccessStatus}" TextWrapping="Wrap"/><Button Content="Обновить каталог" Command="{Binding RefreshInstalledAppsCommand}"/></StackPanel></Border><ItemsControl ItemsSource="{Binding InstalledApps}"><ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:StudentAppCard"><Border Classes="softCard" Margin="0,0,0,8"><StackPanel Spacing="4"><TextBlock Text="{Binding Name}" FontWeight="SemiBold"/></StackPanel></Border></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></StackPanel></ScrollViewer></TabItem>
+      <TabItem Header="Моя почта"><views:MailView/></TabItem>
     </TabControl>
 
     <!-- Quiz modal -->
@@ -814,6 +854,11 @@
       </Border>
     </Border>
 
+    <Border Grid.RowSpan="2" Grid.ColumnSpan="2" Background="#E6F1F5F6" IsVisible="{Binding IsChangingStudent}" ZIndex="1200">
+      <Border Classes="card" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="32">
+        <StackPanel Spacing="14"><TextBlock Text="Сохраняем изменения…" Classes="h2"/><ProgressBar IsIndeterminate="True" Width="280"/><TextBlock Text="Пожалуйста, подожди." Classes="muted"/></StackPanel>
+      </Border>
+    </Border>
     <!-- Login -->
     <Border Grid.RowSpan="2"
             Grid.ColumnSpan="2"

@@ -7,7 +7,7 @@ namespace Kiberone.Infrastructure;
 
 public sealed record DistributedAsset(string Name, long Size, string Kind, string Sha256 = "", bool RunsInstaller = false);
 public sealed record DistributedAssetDownload(Stream Content, string FileName, string ContentType);
-public sealed record StudentReleaseManifest(string Version, string Filename, long Size, string Sha256, DateTimeOffset PublishedAt);
+public sealed record StudentReleaseManifest(string Version, string Filename, long Size, string Sha256, DateTimeOffset PublishedAt, string? Signature = null);
 
 public sealed class AssetDistributionService
 {
@@ -53,7 +53,8 @@ public sealed class AssetDistributionService
         try
         {
             var manifest = JsonSerializer.Deserialize<StudentReleaseManifest>(File.ReadAllText(manifestPath), new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower });
-            if (manifest is null || !IsSafeName(manifest.Filename)) return null;
+            if (manifest is null || !IsSafeName(manifest.Filename) ||
+                !StudentUpdateSignature.Verify(manifest.Version, manifest.Size, manifest.Sha256, manifest.Signature)) return null;
             var file = Path.Combine(updatesRoot, manifest.Filename);
             if (!File.Exists(file) || new FileInfo(file).Length != manifest.Size) return null;
             var hash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(file)));
@@ -67,7 +68,7 @@ public sealed class AssetDistributionService
         var release = GetStudentRelease();
         if (release is null || !Version.TryParse(release.Version, out var available)) return null;
         return !Version.TryParse(currentVersion, out var current) || available > current
-            ? new StudentUpdateInfo(release.Version, release.Sha256, release.Size)
+            ? new StudentUpdateInfo(release.Version, release.Sha256, release.Size, release.Signature)
             : null;
     }
 
@@ -84,6 +85,8 @@ public sealed class AssetDistributionService
             throw new LessonValidationException(["Пустой файл обновления Student."]);
         if (!IsSafeName(remote.Filename))
             throw new LessonValidationException(["Некорректное имя файла обновления."]);
+        if (!StudentUpdateSignature.Verify(remote.Version, remote.Size, remote.Sha256, remote.Signature))
+            throw new LessonValidationException(["Недействительная подпись обновления Student."]);
         var hash = Convert.ToHexString(SHA256.HashData(content));
         if (!hash.Equals(remote.Sha256, StringComparison.OrdinalIgnoreCase))
             throw new LessonValidationException(["Хеш обновления Student не совпал."]);
@@ -91,7 +94,7 @@ public sealed class AssetDistributionService
         Directory.CreateDirectory(updatesRoot);
         var destination = Path.Combine(updatesRoot, remote.Filename);
         File.WriteAllBytes(destination, content);
-        var stored = new StudentReleaseManifest(remote.Version, remote.Filename, content.Length, hash, remote.PublishedAt);
+        var stored = new StudentReleaseManifest(remote.Version, remote.Filename, content.Length, hash, remote.PublishedAt, remote.Signature);
         File.WriteAllText(
             Path.Combine(updatesRoot, "student_manifest.json"),
             JsonSerializer.Serialize(stored, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower, WriteIndented = true }));

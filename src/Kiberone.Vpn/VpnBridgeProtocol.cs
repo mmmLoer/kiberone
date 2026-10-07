@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using Kiberone.Core;
+
 namespace Kiberone.Vpn;
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
@@ -19,7 +21,9 @@ public sealed record VpnBridgeRequest(
     string? ConfigPath = null,
     string? ConfigBase64 = null,
     string? SourcePath = null,
-    string? TargetPath = null);
+    string? TargetPath = null,
+    StudentUpdateInfo? Update = null,
+    int? ClientPid = null);
 
 public sealed record VpnBridgeResponse(
     bool Ok,

@@ -1,3 +1,5 @@
+using Microsoft.Win32;
+
 namespace Kiberone.Vpn;
 
 public sealed class VpnOptions
@@ -68,13 +70,31 @@ public sealed class VpnOptions
                 return false;
             if (!string.Equals(Path.GetExtension(full), ".exe", StringComparison.OrdinalIgnoreCase))
                 return false;
+            if (!Path.GetFileName(full).StartsWith("student-", StringComparison.OrdinalIgnoreCase))
+                return false;
 
             var localRoot = Path.GetFullPath(Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "KIBERone Classroom"))
+                    "KIBERone Classroom", "updates"))
                 .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
                 + Path.DirectorySeparatorChar;
-            return full.StartsWith(localRoot, StringComparison.OrdinalIgnoreCase);
+            if (full.StartsWith(localRoot, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            // The bridge runs as SYSTEM: its LocalApplicationData is not the student's.
+            using var profiles = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList");
+            if (profiles is null) return false;
+            foreach (var sid in profiles.GetSubKeyNames())
+            {
+                using var key = profiles.OpenSubKey(sid);
+                var profile = Environment.ExpandEnvironmentVariables(key?.GetValue("ProfileImagePath") as string ?? string.Empty);
+                if (string.IsNullOrWhiteSpace(profile)) continue;
+                var updates = Path.GetFullPath(Path.Combine(profile, "AppData", "Local", "KIBERone Classroom", "updates"))
+                    .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+                if (full.StartsWith(updates, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
         }
         catch
         {

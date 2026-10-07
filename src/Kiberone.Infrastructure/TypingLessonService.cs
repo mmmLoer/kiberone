@@ -20,6 +20,7 @@ public sealed class TypingLessonService(DbContextOptions<ClassroomDbContext> opt
     {
         var lessons = await ListLessonsAsync(cancellationToken);
         return lessons
+            .Where(lesson => lesson.Lifecycle != LessonLifecycle.Archived)
             .Select(lesson =>
             {
                 var text = TypingLessonCatalog.GetLessonText(lesson);
@@ -33,7 +34,7 @@ public sealed class TypingLessonService(DbContextOptions<ClassroomDbContext> opt
                     lesson.DurationMinutes,
                     text);
             })
-            .Where(offer => !string.IsNullOrWhiteSpace(offer.Text))
+            .Where(offer => !string.IsNullOrWhiteSpace(offer.Text) && !TypingLessonCatalog.IsPlaceholderText(offer.Text))
             .ToList();
     }
 
@@ -140,6 +141,113 @@ public sealed class TypingLessonService(DbContextOptions<ClassroomDbContext> opt
         await db.SaveChangesAsync(cancellationToken);
         return session;
     }
+
+    public async Task<Guid> EnsureLiveLessonAsync(string name, string text, int goalCharacters, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name.Length > 120 || string.IsNullOrWhiteSpace(text)
+            || text.Length > 50_000 || goalCharacters < 1 || goalCharacters > text.Length)
+            throw new LessonValidationException(["Некорректный текст урока."]);
+        await using var db = new ClassroomDbContext(options);
+        var lesson = await FindLessonByTextAsync(db, name, text, cancellationToken);
+        if (lesson is not null) return lesson.Id;
+        lesson = NewLiveLesson(name, text, goalCharacters);
+        db.TypingLessons.Add(lesson);
+        await db.SaveChangesAsync(cancellationToken);
+        return lesson.Id;
+    }
+
+    public async Task<TypingSessionSnapshot> RecordAttemptAsync(SubmitTypingAttemptRequest request, CancellationToken cancellationToken = default)
+    {
+        var attempt = request.Attempt;
+        if (attempt.AttemptId == Guid.Empty || request.StudentId == Guid.Empty
+            || string.IsNullOrWhiteSpace(attempt.LessonName) || attempt.LessonName.Length > 120
+            || string.IsNullOrWhiteSpace(attempt.Text) || attempt.Text.Length > 50_000
+            || attempt.GoalCharacters < 1 || attempt.GoalCharacters > attempt.Text.Length
+            || attempt.CorrectKeys < 0 || attempt.CorrectKeys > attempt.Text.Length || attempt.WrongKeys < 0
+            || !double.IsFinite(attempt.ActiveSeconds) || attempt.ActiveSeconds < 0
+            || !double.IsFinite(attempt.PausedSeconds) || attempt.PausedSeconds < 0
+            || attempt.ActiveSeconds > TimeSpan.FromDays(30).TotalSeconds
+            || attempt.PausedSeconds > TimeSpan.FromDays(30).TotalSeconds
+            || attempt.ProblemCharacters is null || attempt.ProblemCharacters.Any(x => x.Value < 0))
+            throw new LessonValidationException(["Некорректный результат урока печати."]);
+
+        await using var db = new ClassroomDbContext(options);
+        var existing = await LoadSessionAsync(db, attempt.AttemptId, false, cancellationToken);
+        if (existing is not null)
+        {
+            if (existing.Participants.Count != 1 || existing.Participants[0].StudentId != request.StudentId)
+                throw new LessonValidationException(["Эта попытка принадлежит другому ученику."]);
+            return MapSnapshot(existing);
+        }
+
+        var student = await db.Students.SingleOrDefaultAsync(x => x.Id == request.StudentId, cancellationToken)
+            ?? throw new KeyNotFoundException("Ученик не найден.");
+        TypingLessonTemplate? lesson = null;
+        if (attempt.LessonId is Guid lessonId)
+        {
+            lesson = await db.TypingLessons.Include(x => x.Steps)
+                .SingleOrDefaultAsync(x => x.Id == lessonId, cancellationToken);
+            if (lesson is not null && !lesson.Steps.Any(x => x.Text == attempt.Text)) lesson = null;
+        }
+        lesson ??= await FindLessonByTextAsync(db, attempt.LessonName, attempt.Text, cancellationToken);
+        if (lesson is null)
+        {
+            lesson = NewLiveLesson(attempt.LessonName, attempt.Text, attempt.GoalCharacters);
+            db.TypingLessons.Add(lesson);
+        }
+
+        var finishedAt = DateTimeOffset.UtcNow;
+        var participant = new TypingParticipant
+        {
+            StudentId = student.Id,
+            Student = student,
+            Status = ParticipantStatus.Finished,
+            CorrectKeys = attempt.CorrectKeys,
+            WrongKeys = attempt.WrongKeys,
+            ActiveSeconds = attempt.ActiveSeconds,
+            PausedSeconds = attempt.PausedSeconds,
+            ProblemCharactersJson = JsonSerializer.Serialize(attempt.ProblemCharacters),
+            CompletedAt = finishedAt,
+            LastSeenAt = finishedAt
+        };
+        participant.Samples.Add(new TypingTelemetrySample
+        {
+            CorrectKeys = attempt.CorrectKeys,
+            WrongKeys = attempt.WrongKeys,
+            ActiveSeconds = attempt.ActiveSeconds,
+            PausedSeconds = attempt.PausedSeconds,
+            Status = ParticipantStatus.Finished
+        });
+        var session = new TypingSession
+        {
+            Id = attempt.AttemptId,
+            LessonId = lesson.Id,
+            Lesson = lesson,
+            GroupId = student.GroupId,
+            Status = TypingSessionStatus.Finished,
+            StartedAt = finishedAt - TimeSpan.FromSeconds(attempt.ActiveSeconds + attempt.PausedSeconds),
+            FinishedAt = finishedAt,
+            Participants = [participant]
+        };
+        db.TypingSessions.Add(session);
+        await db.SaveChangesAsync(cancellationToken);
+        return MapSnapshot(session);
+    }
+
+    private static async Task<TypingLessonTemplate?> FindLessonByTextAsync(
+        ClassroomDbContext db, string name, string text, CancellationToken cancellationToken) =>
+        (await db.TypingLessons.Include(x => x.Steps)
+            .Where(x => x.Name == name).ToListAsync(cancellationToken))
+        .FirstOrDefault(x => x.Steps.Any(step => step.Text == text));
+
+    private static TypingLessonTemplate NewLiveLesson(string name, string text, int goalCharacters) => new()
+    {
+        Name = name.Trim(),
+        Description = "Урок, отправленный тьютором",
+        MinimumCharacters = goalCharacters,
+        Lifecycle = LessonLifecycle.Archived,
+        Steps = [new TypingLessonStep { Order = 0, Title = "Текст урока", Text = text }]
+    };
 
     public async Task<TypingSessionSnapshot?> RecordTelemetryAsync(Guid sessionId, TelemetryUpdateRequest request, CancellationToken cancellationToken = default)
     {

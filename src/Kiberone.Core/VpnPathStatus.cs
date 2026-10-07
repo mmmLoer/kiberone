@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -29,6 +30,8 @@ public sealed record VpnIssuedConfig(
     string Address,
     string Endpoint,
     string Config);
+
+public sealed record VpnSlotInfo(string Slot, bool InUse);
 
 public sealed class VpnPathStatusClient : IDisposable
 {
@@ -186,6 +189,26 @@ public sealed class VpnPathStatusClient : IDisposable
             parsed.Config);
     }
 
+    public async Task<IReadOnlyList<VpnSlotInfo>> ListSlotsAsync(VpnRegionInfo region,
+        string location, CancellationToken ct = default)
+    {
+        var resolved = await ResolveLocationKeyAsync(region, location, ct);
+        using var request = new HttpRequestMessage(HttpMethod.Get,
+            $"{region.StatusBaseUrl}/configs?location={Uri.EscapeDataString(resolved)}");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", SharedToken);
+        using var response = await http.SendAsync(request, ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            throw new UnauthorizedAccessException("VPN API: неверный токен.");
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<SlotsDto>(Json, ct);
+        if (result?.Ok != true)
+            throw new InvalidOperationException("VPN API не вернул список слотов.");
+        return result?.Slots?
+            .Where(slot => !string.IsNullOrWhiteSpace(slot.Slot))
+            .Select(slot => new VpnSlotInfo(slot.Slot!, slot.InUse))
+            .ToList() ?? [];
+    }
+
     private async Task<string> ResolveLocationKeyAsync(VpnRegionInfo region, string location, CancellationToken ct)
     {
         var key = location.Trim();
@@ -271,6 +294,9 @@ public sealed class VpnPathStatusClient : IDisposable
         string? Address,
         string? Endpoint,
         string? Config);
+
+    private sealed record SlotsDto(bool Ok, List<SlotDto>? Slots);
+    private sealed record SlotDto(string? Slot, [property: JsonPropertyName("in_use")] bool InUse);
 }
 
 public sealed record VpnApiLocation(string Id, string Name);

@@ -7,8 +7,9 @@ namespace Kiberone.Infrastructure;
 
 public static class ClassroomHubApi
 {
-    public static void Map(WebApplication app, ClassroomHubStore store)
+    public static void Map(WebApplication app, ClassroomHubStore store, StudentMailboxStore? mailboxes = null)
     {
+        StudentMailApi.Map(app, store, mailboxes);
         app.MapGet("/api/health", () => Results.Ok(new { ok = true }));
         app.MapGet("/api/locations", () => Results.Json(store.List()));
         app.MapGet("/api/locations/{location}/roster", (string location, HttpRequest request) =>
@@ -79,9 +80,24 @@ public static class ClassroomHubApi
                 return Results.BadRequest(new { error = error.Message });
             }
         });
-        app.MapGet("/api/update/student", () =>
+        app.MapPost("/api/vpn/reservations/lookup", (VpnPeerReservationLookup request) =>
         {
-            var manifest = store.GetStudentUpdate();
+            try { return Results.Json(store.GetVpnReservation(request.Location, request.Password, request.ClientId)); }
+            catch (UnauthorizedAccessException) { return Results.StatusCode(403); }
+            catch (InvalidOperationException error) { return Results.BadRequest(new { error = error.Message }); }
+        });
+        app.MapPost("/api/vpn/reservations", (VpnPeerReservationRequest request) =>
+        {
+            try { return Results.Ok(store.ReserveVpnPeer(request)); }
+            catch (UnauthorizedAccessException) { return Results.StatusCode(403); }
+            catch (VpnPeerConflictException error) { return Results.Conflict(new { error = error.Message }); }
+            catch (InvalidOperationException error) { return Results.BadRequest(new { error = error.Message }); }
+        });
+        app.MapGet("/api/update/student", (HttpRequest request) =>
+        {
+            var channel = request.Query["channel"].ToString();
+            if (channel is not "" and not "test") return Results.BadRequest(new { error = "Неизвестный канал обновления." });
+            var manifest = store.GetStudentUpdate(channel == "test");
             return manifest is null
                 ? Results.NotFound()
                 : Results.Json(manifest, new JsonSerializerOptions
@@ -89,9 +105,14 @@ public static class ClassroomHubApi
                     PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
                 });
         });
-        app.MapGet("/api/update/student/file", () => store.OpenStudentUpdate() is { } stream
-            ? Results.File(stream, "application/octet-stream", "KIBERoneStudent.exe", enableRangeProcessing: true)
-            : Results.NotFound());
+        app.MapGet("/api/update/student/file", (HttpRequest request) =>
+        {
+            var channel = request.Query["channel"].ToString();
+            if (channel is not "" and not "test") return Results.BadRequest(new { error = "Неизвестный канал обновления." });
+            return store.OpenStudentUpdate(channel == "test") is { } stream
+                ? Results.File(stream, "application/octet-stream", "KIBERoneStudent.exe", enableRangeProcessing: true)
+                : Results.NotFound();
+        });
         app.MapGet("/api/update/installers", () => Results.Json(store.ListInstallerZips()));
     }
 }
@@ -99,3 +120,9 @@ public static class ClassroomHubApi
 public sealed record VpnPeerDownloadRequest(string Location, string Password);
 
 public sealed record VpnPeerUploadRequest(string Location, string Password, IReadOnlyList<VpnPeerFile> Files);
+
+public sealed record VpnPeerReservationLookup(string Location, string Password, string ClientId);
+public sealed record VpnPeerReservationRequest(string Location, string Password, string ClientId,
+    string RegionId, string Slot, string Fingerprint);
+public sealed record VpnPeerReservation(string Location, string ClientId, string RegionId, string Slot, string Fingerprint);
+public sealed class VpnPeerConflictException(string message) : Exception(message);

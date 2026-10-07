@@ -35,6 +35,12 @@ public static class VpnInstallVerifier
             return 1;
         }
 
+        if (controller.IsConnected)
+        {
+            Console.WriteLine("Отключите текущий VPN перед пробной проверкой, чтобы не прерывать занятие.");
+            return 1;
+        }
+
         using var api = new VpnPathStatusClient();
         var liveCount = 0;
         IReadOnlyList<(VpnRegionInfo Region, bool Health, VpnPathStatusReport Status)> rows;
@@ -83,7 +89,7 @@ public static class VpnInstallVerifier
                 Console.WriteLine($"  пробуем {probe.FileName}…");
                 try
                 {
-                    var result = Probe(controller, probe, region);
+                    var result = Probe(probe, region);
                     if (result.Healthy)
                     {
                         Console.WriteLine($"  туннель ок · {probe.FileName} · ping {result.CheckHost} {result.PingMs} мс");
@@ -96,10 +102,6 @@ public static class VpnInstallVerifier
                 catch (Exception error)
                 {
                     Console.WriteLine($"  ошибка: {error.Message}");
-                }
-                finally
-                {
-                    try { controller.Disconnect(); } catch { }
                 }
             }
 
@@ -126,7 +128,7 @@ public static class VpnInstallVerifier
         return 0;
     }
 
-    private static VpnRuntimeInfo Probe(VpnController controller, VpnProbeConfig probe, VpnRegionInfo region)
+    private static VpnRuntimeInfo Probe(VpnProbeConfig probe, VpnRegionInfo region)
     {
         var checkHost = VpnHealthCheck.ResolveCheckHost(probe.Content, null, region.CheckHost);
         var directory = Path.Combine(
@@ -135,9 +137,9 @@ public static class VpnInstallVerifier
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory, $"probe-{probe.FileName}");
         File.WriteAllText(path, probe.Content);
+        var controller = new VpnController(new VpnOptions { RequireBridge = true, ConfigPath = path });
         try
         {
-            controller.InstallConfig(System.Text.Encoding.UTF8.GetBytes(probe.Content));
             var connected = controller.Connect();
             if (!connected.Connected)
                 return new VpnRuntimeInfo(false, false, null, probe.RegionId, checkHost, connected.LastError ?? "Туннель не поднялся.");

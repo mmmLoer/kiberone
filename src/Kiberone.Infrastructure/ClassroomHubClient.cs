@@ -6,7 +6,7 @@ namespace Kiberone.Infrastructure;
 
 public sealed class ClassroomHubClient
 {
-    public const string DefaultBaseUrl = "http://193.235.147.228:8787";
+    public const string DefaultBaseUrl = "http://193.182.145.64:8787";
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -94,12 +94,38 @@ public sealed class ClassroomHubClient
                ?? throw new InvalidOperationException("Сервер не вернул VPN-конфиги.");
     }
 
-    public Task<AppUpdateManifest?> GetStudentUpdateAsync(CancellationToken ct = default) =>
-        GetOptionalAsync<AppUpdateManifest>("api/update/student", ct);
-
-    public async Task<byte[]> DownloadStudentUpdateFileAsync(CancellationToken ct = default)
+    public async Task<VpnPeerReservation?> GetVpnReservationAsync(string location, string password,
+        string clientId, CancellationToken ct = default)
     {
-        using var response = await http.GetAsync("api/update/student/file", HttpCompletionOption.ResponseHeadersRead, ct);
+        using var response = await http.PostAsJsonAsync("api/vpn/reservations/lookup",
+            new VpnPeerReservationLookup(location, password, clientId), ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+            throw new UnauthorizedAccessException("Неверный пароль локации.");
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadAsStringAsync(ct);
+        return string.IsNullOrWhiteSpace(body) ? null : JsonSerializer.Deserialize<VpnPeerReservation>(body, Json);
+    }
+
+    public async Task<VpnPeerReservation> ReserveVpnPeerAsync(VpnPeerReservationRequest request,
+        CancellationToken ct = default)
+    {
+        using var response = await http.PostAsJsonAsync("api/vpn/reservations", request, ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+            throw new UnauthorizedAccessException("Неверный пароль локации.");
+        if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+            throw new VpnPeerConflictException("VPN-профиль уже закреплён за другим ПК.");
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<VpnPeerReservation>(Json, ct)
+            ?? throw new InvalidOperationException("Сервер не подтвердил VPN-резервацию.");
+    }
+
+    public Task<AppUpdateManifest?> GetStudentUpdateAsync(bool testChannel = false, CancellationToken ct = default) =>
+        GetOptionalAsync<AppUpdateManifest>(testChannel ? "api/update/student?channel=test" : "api/update/student", ct);
+
+    public async Task<byte[]> DownloadStudentUpdateFileAsync(bool testChannel = false, CancellationToken ct = default)
+    {
+        using var response = await http.GetAsync(testChannel ? "api/update/student/file?channel=test" : "api/update/student/file",
+            HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
         await using var stream = await response.Content.ReadAsStreamAsync(ct);
         using var memory = new MemoryStream();

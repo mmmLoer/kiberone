@@ -109,7 +109,7 @@ Do not commit `dist/` (see `.gitignore`).
 
 Student is a Windows app (`win-x64`). Do not expect it to run on this Mac.
 
-Linux hub (if still in deploy docs): `http://193.235.147.228:8787`. CI on push to `main` is documented in `scripts/linux-ci-release.md`. Windows installer publish from Linux: `scripts/linux-windows-build.md` and `scripts/build-installers.sh`. Location passwords and hub secrets are **not** in git (`deploy/location-secrets.json`, `deploy/location-passwords.txt` are ignored). Restore those from the VPS / password manager, not from this repo.
+Linux hub: `http://193.182.145.64:8787`. In an existing Tutor installation, set this address in Settings; the compiled default only affects new settings. Location passwords were regenerated during migration and are stored outside git on the Windows build PC (`%LOCALAPPDATA%\KiberoneHubMigration\location-passwords.json`). The old Hub could not be reached, so only the locally available `ШБ` roster was restored. See `scripts/hub-deployment.md` for the current server layout and update publishing. Windows installer publish from Linux is documented in `scripts/linux-windows-build.md` and `scripts/build-installers.sh`. Never commit passwords or hub secrets.
 
 ## What not to commit
 

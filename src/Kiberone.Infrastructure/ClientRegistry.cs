@@ -12,6 +12,21 @@ public sealed record ClientPresenceEvent(
 
 public sealed class ClientRegistry(TimeProvider? timeProvider = null)
 {
+    private readonly ConcurrentDictionary<string, IReadOnlyList<InstalledApplication>> inventories = new(StringComparer.OrdinalIgnoreCase);
+    public void SetApplicationInventory(string clientId, IReadOnlyList<InstalledApplication> applications)
+    {
+        inventories[clientId] = applications.Take(200)
+            .Where(x => x.Executable.Length is > 0 and <= 100 && !x.Executable.Contains('/') && !x.Executable.Contains('\\') && x.Name.Length <= 200 && (x.IconBase64?.Length ?? 0) <= 32000)
+            .GroupBy(x => x.Executable, StringComparer.OrdinalIgnoreCase).Select(x => x.First()).ToArray();
+    }
+    public IReadOnlyList<ClassroomApplication> GetApplicationInventory(IEnumerable<string> clientIds)
+    {
+        return clientIds.Distinct(StringComparer.OrdinalIgnoreCase)
+            .SelectMany(id => inventories.TryGetValue(id, out var apps) ? apps.Select(app => (Id: id, App: app)) : [])
+            .GroupBy(x => x.App.Executable, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new ClassroomApplication(g.First().App, g.Select(x => x.Id).Distinct().ToArray()))
+            .OrderBy(x => x.Application.Name).ToArray();
+    }
     private readonly ConcurrentDictionary<string, ClientState> clients = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, bool> lastKnownOnline = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentQueue<ClientPresenceEvent> presenceEvents = new();

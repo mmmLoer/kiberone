@@ -1,8 +1,14 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO.Pipes;
+using Microsoft.Win32.SafeHandles;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using System.Text;
 using System.Text.Json;
+using Kiberone.Core;
 using Kiberone.Vpn.WireGuard;
 
 namespace Kiberone.Vpn;
@@ -71,6 +77,11 @@ public sealed class VpnBridgeServer
             }
 
             VpnLog.Info("bridge", $"Request: {request.Action} config={request.ConfigPath ?? VpnOptions.ManagedConfigPath}");
+            if (request.Action == VpnBridgeAction.ApplyUpdate && !IsStudentUpdateCaller(pipe, request))
+            {
+                await WriteResponseAsync(pipe, new VpnBridgeResponse(false, Error: "Обновление разрешено только запущенному Student."), cancellationToken);
+                return;
+            }
             var response = Execute(request);
             VpnLog.Info("bridge", $"Response: ok={response.Ok} connected={response.Connected} state={response.State} error={response.Error ?? "-"}");
             await WriteResponseAsync(pipe, response, cancellationToken);
@@ -118,21 +129,143 @@ public sealed class VpnBridgeServer
 
         if (!VpnOptions.IsAllowedUpdateTargetPath(request.TargetPath))
             return new VpnBridgeResponse(false, Error: "Цель обновления вне разрешённой папки Student.");
+        if (request.ClientPid is null or <= 0 || request.Update is null ||
+            !StudentUpdateSignature.Verify(request.Update.Version, request.Update.Size,
+                request.Update.Sha256, request.Update.Signature))
+            return new VpnBridgeResponse(false, Error: "Недействительная подпись обновления Student.");
 
         try
         {
             var source = Path.GetFullPath(request.SourcePath);
             var target = Path.GetFullPath(request.TargetPath);
-            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            File.Copy(source, target, overwrite: true);
-            VpnLog.Info("bridge", $"Applied update {source} -> {target}");
-            return new VpnBridgeResponse(true, State: "updated", ConfigPath: target);
+            var stagedDirectory = Path.Combine(Path.GetDirectoryName(target)!, ".update-staging");
+            Directory.CreateDirectory(stagedDirectory);
+            var staged = Path.Combine(stagedDirectory, $"student-{Guid.NewGuid():N}.exe");
+            try
+            {
+                using (var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read))
+                using (var output = new FileStream(staged, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                    input.CopyTo(output);
+
+                string stagedHash;
+                using (var verify = File.OpenRead(staged))
+                    stagedHash = Convert.ToHexString(SHA256.HashData(verify));
+                if (new FileInfo(staged).Length != request.Update.Size ||
+                    !stagedHash.Equals(request.Update.Sha256, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("SHA-256 обновления не совпадает с проверенным файлом.");
+
+                var marker = source + ".result";
+                if (File.Exists(marker)) File.Delete(marker);
+                var serviceExe = Environment.ProcessPath;
+                var serviceUsesTarget = !string.IsNullOrWhiteSpace(serviceExe)
+                    && string.Equals(Path.GetFullPath(serviceExe), target, StringComparison.OrdinalIgnoreCase);
+                var script = BuildUpdateHelperScript(staged, target, marker, stagedHash,
+                    request.ClientPid.Value, Environment.ProcessId, serviceUsesTarget);
+                var start = new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),
+                    "WindowsPowerShell", "v1.0", "powershell.exe"))
+                {
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    WindowStyle = ProcessWindowStyle.Hidden
+                };
+                start.ArgumentList.Add("-NoProfile");
+                start.ArgumentList.Add("-NonInteractive");
+                start.ArgumentList.Add("-EncodedCommand");
+                start.ArgumentList.Add(Convert.ToBase64String(Encoding.Unicode.GetBytes(script)));
+                using var helper = Process.Start(start);
+                if (helper is null)
+                    throw new InvalidOperationException("Не удалось запустить системный помощник обновления.");
+                VpnLog.Info("bridge", $"Queued update {source} -> {target}, helper PID={helper.Id}");
+                return new VpnBridgeResponse(true, State: "queued", ConfigPath: target);
+            }
+            catch
+            {
+                if (File.Exists(staged)) File.Delete(staged);
+                throw;
+            }
         }
         catch (Exception error)
         {
             VpnLog.Error("bridge", "ApplyUpdate failed", error);
             return new VpnBridgeResponse(false, Error: error.Message);
         }
+    }
+
+    private static bool IsStudentUpdateCaller(NamedPipeServerStream pipe, VpnBridgeRequest request)
+    {
+        if (request.ClientPid is null or <= 0 || string.IsNullOrWhiteSpace(request.TargetPath)) return false;
+        if (!GetNamedPipeClientProcessId(pipe.SafePipeHandle, out var clientPid) || clientPid != request.ClientPid)
+            return false;
+        try
+        {
+            using var process = Process.GetProcessById(request.ClientPid.Value);
+            var actual = process.MainModule?.FileName;
+            return !string.IsNullOrWhiteSpace(actual)
+                && string.Equals(Path.GetFullPath(actual), Path.GetFullPath(request.TargetPath), StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GetNamedPipeClientProcessId(SafePipeHandle pipe, out uint clientProcessId);
+
+    private static string BuildUpdateHelperScript(string staged, string target, string marker, string expectedHash,
+        int clientPid, int servicePid, bool serviceUsesTarget)
+    {
+        static string Literal(string value) => "'" + value.Replace("'", "''") + "'";
+        return $$"""
+            $ErrorActionPreference = 'Stop'
+            $staged = {{Literal(staged)}}
+            $target = {{Literal(target)}}
+            $marker = {{Literal(marker)}}
+            $expectedHash = {{Literal(expectedHash)}}
+            $clientPid = {{clientPid}}
+            $servicePid = {{servicePid}}
+            $serviceUsesTarget = ${{(serviceUsesTarget ? "true" : "false")}}
+            $serviceName = {{Literal(VpnBridgeConstants.ServiceName)}}
+            $backup = $target + '.update-backup'
+            try {
+                $deadline = (Get-Date).AddSeconds(120)
+                while (Get-Process -Id $clientPid -ErrorAction SilentlyContinue) {
+                    if ((Get-Date) -gt $deadline) { throw 'Student не завершился за 120 секунд.' }
+                    Start-Sleep -Seconds 1
+                }
+                if ($serviceUsesTarget) {
+                    Stop-Service -Name $serviceName -ErrorAction Stop
+                    $deadline = (Get-Date).AddSeconds(45)
+                    while (Get-Process -Id $servicePid -ErrorAction SilentlyContinue) {
+                        if ((Get-Date) -gt $deadline) { throw 'Системная служба не завершилась.' }
+                        Start-Sleep -Seconds 1
+                    }
+                }
+                Copy-Item -LiteralPath $target -Destination $backup -Force
+                Copy-Item -LiteralPath $staged -Destination $target -Force
+                $stream = [IO.File]::OpenRead($target)
+                $hasher = [Security.Cryptography.SHA256]::Create()
+                try { $actualHash = [BitConverter]::ToString($hasher.ComputeHash($stream)).Replace('-', '') }
+                finally { $stream.Dispose(); $hasher.Dispose() }
+                if ($actualHash -ne $expectedHash) {
+                    throw 'SHA-256 установленного файла не совпадает.'
+                }
+                if ($serviceUsesTarget) { Start-Service -Name $serviceName -ErrorAction Stop }
+                [IO.File]::WriteAllText($marker, 'ok')
+                Remove-Item -LiteralPath $backup -Force -ErrorAction SilentlyContinue
+            } catch {
+                $failure = $_.Exception.Message
+                try {
+                    if (Test-Path -LiteralPath $backup) { Copy-Item -LiteralPath $backup -Destination $target -Force }
+                    if ($serviceUsesTarget -and (Get-Service -Name $serviceName).Status -ne 'Running') {
+                        Start-Service -Name $serviceName
+                    }
+                } catch { $failure += '; rollback: ' + $_.Exception.Message }
+                [IO.File]::WriteAllText($marker, 'error: ' + $failure)
+            } finally {
+                Remove-Item -LiteralPath $staged -Force -ErrorAction SilentlyContinue
+            }
+            """;
     }
 
     private static VpnBridgeResponse InstallConfig(VpnBridgeRequest request, string configPath)

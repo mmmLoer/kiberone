@@ -13,6 +13,46 @@ namespace Kiberone.Tests;
 public sealed class VpnHubAndProbeTests
 {
     [Fact]
+    public async Task Hub_reservation_api_is_atomic_and_lookup_returns_same_slot()
+    {
+        var data = Path.Combine(Path.GetTempPath(), $"kiberone-hub-reserve-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(data);
+        var password = "test-password";
+        var secret = LocationPassword.Create(password);
+        var store = new ClassroomHubStore(data, [new LocationSecretRecord("ШБ", secret.Salt, secret.Hash)]);
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        await using var app = builder.Build();
+        ClassroomHubApi.Map(app, store);
+        await app.StartAsync();
+        try
+        {
+            var address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.First();
+            var client = new ClassroomHubClient(address);
+            Assert.Null(await client.GetStudentUpdateAsync(testChannel: true));
+            using (var http = new HttpClient())
+            {
+                Assert.Equal(HttpStatusCode.BadRequest,
+                    (await http.GetAsync(address + "/api/update/student?channel=unknown")).StatusCode);
+                Assert.Equal(HttpStatusCode.NotFound,
+                    (await http.GetAsync(address + "/api/update/student/file?channel=test")).StatusCode);
+            }
+            Assert.Null(await client.GetVpnReservationAsync("ШБ", password, "pc-1"));
+            var request = new VpnPeerReservationRequest("ШБ", password, "pc-1", "path-nl", "slot-1",
+                VpnConfigIdentity.Fingerprint("PrivateKey = key-1"));
+            await client.ReserveVpnPeerAsync(request);
+            Assert.Equal("slot-1", (await client.GetVpnReservationAsync("ШБ", password, "pc-1"))?.Slot);
+            await Assert.ThrowsAsync<VpnPeerConflictException>(() =>
+                client.ReserveVpnPeerAsync(request with { ClientId = "pc-2" }));
+        }
+        finally
+        {
+            await app.StopAsync();
+            Directory.Delete(data, true);
+        }
+    }
+
+    [Fact]
     public void Embedded_probes_are_england_and_netherlands()
     {
         Assert.True(VpnProbeConfigs.AreReady);
@@ -37,7 +77,7 @@ public sealed class VpnHubAndProbeTests
     {
         using var primary = new TempDirectory();
         using var fallback = new TempDirectory();
-        File.WriteAllText(Path.Combine(primary.Path, "05.conf"), "primary");
+        File.WriteAllText(Path.Combine(primary.Path, "05.conf"), "[Interface]\nPrivateKey = key-05");
         File.WriteAllText(Path.Combine(fallback.Path, "05.conf"), "fallback");
 
         var assignments = VpnConfigDistributor.Assign(
@@ -122,6 +162,17 @@ public sealed class VpnHubAndProbeTests
     }
 
     [Fact]
+    public async Task Config_api_lists_free_and_busy_slots_before_assignment()
+    {
+        using var handler = new StubStatusHandler();
+        using var client = new VpnPathStatusClient(handler);
+        var slots = await client.ListSlotsAsync(VpnRegionCatalog.Resolve("path-nl"), "ШБ");
+        Assert.Equal(2, slots.Count);
+        Assert.False(slots[0].InUse);
+        Assert.True(slots[1].InUse);
+    }
+
+    [Fact]
     public void Score_prefers_empty_path_over_busy_one()
     {
         var busy = new VpnPathStatusReport(true, "path-fr", "193.233.220.158", 51822, 70, 72, 80, 1.2, 0, 40, 80, true, 40);
@@ -203,6 +254,13 @@ public sealed class VpnHubAndProbeTests
                     config = "[Interface]\nPrivateKey = bbb\nAddress = 10.79.0.3/32\n\n[Peer]\nEndpoint = 80.90.188.85:51823\n"
                 });
             }
+
+            if (path == "/configs")
+                return Json(new { ok = true, slots = new[]
+                {
+                    new { slot = "shb-01", in_use = false },
+                    new { slot = "shb-02", in_use = true }
+                } });
 
             if (path == "/status" && host.StartsWith("193.233.220.158"))
             {

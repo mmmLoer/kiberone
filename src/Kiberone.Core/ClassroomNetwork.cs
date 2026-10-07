@@ -4,7 +4,7 @@ namespace Kiberone.Core;
 
 public static class BuildInfo
 {
-    public const string Version = "0.10.38";
+    public const string Version = "0.10.41";
 }
 
 public sealed record HeartbeatRequest(
@@ -44,9 +44,10 @@ public sealed record HeartbeatResponse(
     string? PreferredGroupName = null,
     string? SaveModule = null,
     string? SaveStudentName = null,
-    IReadOnlyList<string>? SaveIgnoreFolders = null);
+    IReadOnlyList<string>? SaveIgnoreFolders = null,
+    ClassroomAccessPolicy? AccessPolicy = null);
 
-public sealed record StudentUpdateInfo(string Version, string Sha256, long Size);
+public sealed record StudentUpdateInfo(string Version, string Sha256, long Size, string? Signature = null);
 
 public sealed record ClassroomClientSnapshot(
     string ClientId,
@@ -129,10 +130,11 @@ public static class ClassroomCommandKinds
 public static class FocusModeBlocklist
 {
     public static readonly string[] Defaults =
-        ["roblox", "poki", "yandex games", "яндекс игры", "minecraft", "steam"];
+        ["roblox", "poki", "yandex games", "яндекс игры", "игры — яндекс", "minecraft", "steam"];
 
     public static string[] Parse(string? text) =>
-        (text ?? string.Empty).Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        (text ?? string.Empty).Split([';', '\r', '\n'], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
 
     public static string[] FromPayload(JsonElement payload)
     {
@@ -149,6 +151,19 @@ public static class FocusModeBlocklist
             .Select(item => item.ValueKind == JsonValueKind.String ? item.GetString() : null)
             .Where(title => !string.IsNullOrWhiteSpace(title))
             .Select(title => title!.Trim())
+            .ToArray();
+    }
+
+    public static string[] AllowedAppsFromPayload(JsonElement payload)
+    {
+        if (!payload.TryGetProperty("allowed_apps", out var value)) return [];
+        if (value.ValueKind == JsonValueKind.String) return Parse(value.GetString());
+        if (value.ValueKind != JsonValueKind.Array) return [];
+        return value.EnumerateArray()
+            .Where(item => item.ValueKind == JsonValueKind.String)
+            .Select(item => item.GetString()?.Trim())
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Select(item => item!)
             .ToArray();
     }
 

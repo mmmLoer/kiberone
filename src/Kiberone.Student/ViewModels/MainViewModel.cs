@@ -5,6 +5,7 @@ using Kiberone.Core;
 using Kiberone.Infrastructure;
 using Kiberone.Vpn;
 using System.Collections.ObjectModel;
+using System.Windows.Forms;
 
 namespace Kiberone.Student.ViewModels;
 
@@ -15,6 +16,8 @@ public partial class MainViewModel : ViewModelBase
     private readonly Dictionary<string, int> problemCharacters = [];
     private readonly List<bool> typedResults = [];
     private bool lastAttemptWasWrong;
+    private Guid? activeLessonId;
+    private Guid? currentAttemptId;
 
     [ObservableProperty] private string lessonName = "Разминка · Python";
     [ObservableProperty] private string targetText = "for i in range(10): print(i)";
@@ -29,12 +32,19 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private bool isPaused;
     [ObservableProperty] private bool isFinished;
     [ObservableProperty] private string statusMessage = "Печатайте — Backspace отключён, Escape ставит урок на паузу.";
+    [ObservableProperty] private string typingResultStatus = string.Empty;
     [ObservableProperty] private string currentCharacter = "f";
     [ObservableProperty] private bool isLessonStarted;
     [ObservableProperty] private string elapsedLabel = "00:00";
     [ObservableProperty] private string lastInputFeedback = "Нажмите ПРОБЕЛ, чтобы начать";
     [ObservableProperty] private string layoutWarning = string.Empty;
     [ObservableProperty] private bool hasLayoutWarning;
+    [ObservableProperty] private string switchLayoutButtonText = "Сменить раскладку";
+    [ObservableProperty] private string remainingText = string.Empty;
+    [ObservableProperty] private string feedbackForeground = "#056D69";
+    [ObservableProperty] private double errorFlashOpacity;
+    private bool expectedRussianLayout;
+    private CancellationTokenSource? errorFlashCancellation;
     [ObservableProperty] private int currentStreak;
     [ObservableProperty] private int bestStreak;
     [ObservableProperty] private bool isConnected;
@@ -43,6 +53,9 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string syncLabel = "Ожидаем первую проверку…";
     [ObservableProperty] private string vpnLabel = "VPN: ожидает команду тьютора";
     [ObservableProperty] private string updateLabel = $"Версия {BuildInfo.Version}";
+    [ObservableProperty] private string screenStatus = string.Empty;
+    public bool HasScreenIssue => !string.IsNullOrEmpty(ScreenStatus);
+    partial void OnScreenStatusChanged(string value) => OnPropertyChanged(nameof(HasScreenIssue));
     [ObservableProperty] private bool hasUpdate;
     [ObservableProperty] private bool isScreenLocked;
     [ObservableProperty] private string lockMessage = "Занятие продолжается. Экран временно заблокирован тьютором.";
@@ -81,13 +94,19 @@ public partial class MainViewModel : ViewModelBase
     private string? lastPreferredGroup;
     public Action? UpdateRequested { get; set; }
     public Action? RetryRequested { get; set; }
-    public Action<IReadOnlyList<string>>? FocusEnabled { get; set; }
+    public Action<IReadOnlyList<string>, IReadOnlyList<string>>? FocusEnabled { get; set; }
     public Action? FocusDisabled { get; set; }
     public Action? WatchdogEnabled { get; set; }
     public Action? WatchdogDisabled { get; set; }
     public Action<Guid, IReadOnlyList<int>>? QuizAnswerRequested { get; set; }
+    public Action<TypingAttemptDraft>? TypingAttemptCompleted { get; set; }
     public Action<Guid>? StudentSelected { get; set; }
     public Action<bool>? ScreenLockChanged { get; set; }
+
+    public void SetTypingResultState(Guid attemptId, string state)
+    {
+        if (currentAttemptId == attemptId) TypingResultStatus = state;
+    }
 
     partial void OnIsScreenLockedChanged(bool value) => ScreenLockChanged?.Invoke(value);
 
@@ -95,7 +114,7 @@ public partial class MainViewModel : ViewModelBase
     {
         if (IsPaused || IsFinished) return;
         if (!IsLessonStarted) StartLesson();
-        if (TypedText.Length >= GoalCharacters || TypedText.Length >= TargetText.Length)
+        if (TypedText.Length >= TargetText.Length)
         {
             Finish();
             return;
@@ -109,6 +128,7 @@ public partial class MainViewModel : ViewModelBase
             CurrentStreak++;
             BestStreak = Math.Max(BestStreak, CurrentStreak);
             LastInputFeedback = $"Верно: {Printable(character)}";
+            FeedbackForeground = "#056D69";
             typedResults.Add(true);
             HasLayoutWarning = false;
             LayoutWarning = string.Empty;
@@ -120,12 +140,14 @@ public partial class MainViewModel : ViewModelBase
             WrongKeys++;
             CurrentStreak = 0;
             LastInputFeedback = $"Ошибка: ожидалась {Printable(expected)}, нажата {Printable(character)}";
+            FeedbackForeground = "#C9362B";
+            FlashTypingError();
             var key = expected.ToString();
             problemCharacters[key] = problemCharacters.GetValueOrDefault(key) + 1;
             DetectLayoutMismatch(expected, character);
         }
         UpdateMetrics();
-        if (TypedText.Length >= GoalCharacters || TypedText.Length >= TargetText.Length) Finish();
+        if (TypedText.Length >= TargetText.Length) Finish();
     }
 
     public void StartLesson()
@@ -136,6 +158,55 @@ public partial class MainViewModel : ViewModelBase
         LastInputFeedback = "Урок начат — смотрите на подсвеченную клавишу";
         StatusMessage = "Урок идёт. Escape — пауза.";
         RebuildTypingPresentation();
+    }
+
+    private async void FlashTypingError()
+    {
+        errorFlashCancellation?.Cancel();
+        var cancellation = new CancellationTokenSource();
+        errorFlashCancellation = cancellation;
+        ErrorFlashOpacity = 1;
+        try
+        {
+            await Task.Delay(220, cancellation.Token);
+            ErrorFlashOpacity = 0;
+        }
+        catch (OperationCanceledException) { }
+        finally
+        {
+            if (ReferenceEquals(errorFlashCancellation, cancellation))
+                errorFlashCancellation = null;
+            cancellation.Dispose();
+        }
+    }
+
+    [RelayCommand]
+    private void SwitchKeyboardLayout()
+    {
+        try
+        {
+            var languageCode = expectedRussianLayout ? "ru" : "en";
+            var installed = InputLanguage.InstalledInputLanguages
+                .Cast<InputLanguage>()
+                .FirstOrDefault(language => language.Culture.TwoLetterISOLanguageName == languageCode);
+            if (installed is null)
+            {
+                LayoutWarning = expectedRussianLayout
+                    ? "Русская раскладка не установлена в Windows. Добавьте её в настройках языка."
+                    : "Английская раскладка не установлена в Windows. Добавьте её в настройках языка.";
+                return;
+            }
+
+            InputLanguage.CurrentInputLanguage = installed;
+            HasLayoutWarning = false;
+            LayoutWarning = string.Empty;
+            LastInputFeedback = $"Раскладка переключена на {(expectedRussianLayout ? "русский" : "английский")}. Продолжайте печатать.";
+            FeedbackForeground = "#056D69";
+        }
+        catch (Exception exception)
+        {
+            LayoutWarning = $"Не удалось сменить раскладку: {exception.Message}";
+        }
     }
 
     public void RegisterBlockedBackspace()
@@ -180,6 +251,7 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsOffline));
         OnPropertyChanged(nameof(ConnectionForeground));
         OnPropertyChanged(nameof(ConnectionBackground));
+        EnsureMailAccount();
     }
 
     public bool IsOffline => !IsConnected;
@@ -199,6 +271,15 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(LevelProgressLabel));
     }
     public string LessonMeta => $"{(TargetText.Any(IsCyrillic) ? "Русская раскладка" : "Английская раскладка")} · {TargetText.Length} знаков";
+    private bool HasPassedLesson => GoalCharacters > 0 && TypedText.Length >= GoalCharacters;
+    public string ResultTitle => HasPassedLesson ? "Зачёт получен" : "Попытка завершена";
+    public string ResultDescription => HasPassedLesson
+        ? $"Набрано {TypedText.Length} из {GoalCharacters} знаков для зачёта."
+        : $"Набрано {TypedText.Length} из {GoalCharacters} знаков для зачёта. Попробуй ещё раз.";
+    public string ResultIcon => HasPassedLesson ? "✓" : "↻";
+    public string ResultBadgeBackground => HasPassedLesson ? "#E0F5F2" : "#FFF3C9";
+    public string ResultIconForeground => HasPassedLesson ? "#068F8A" : "#8B6500";
+    public string ResultAccuracyLabel => CorrectKeys + WrongKeys == 0 ? "Точность —" : $"{Accuracy:0}% точность";
     public bool IsHomeSection => SelectedSectionIndex == 0;
     public bool IsLessonsSection => SelectedSectionIndex is >= 1 and <= 5;
     public bool IsProfileSection => SelectedSectionIndex == 6;
@@ -206,14 +287,14 @@ public partial class MainViewModel : ViewModelBase
     public string SectionTitle => SelectedSectionIndex switch
     {
         0 => "Главная", 1 => "Уроки печати", 2 => "Назначенный урок", 3 => "Урок печати",
-        4 => "Пауза", 5 => "Итоги урока",         6 => "Уровень и награды", _ => "Связь"
+        4 => "Пауза", 5 => "Итоги урока", 6 => "Уровень и награды", 8 => "Приложения", 9 => SelectedMailMessage is null ? "Моя почта" : "Письмо", _ => "Связь"
     };
     public string SectionSubtitle => SelectedSectionIndex switch
     {
         0 => "Твой следующий шаг появится здесь", 1 => "Выбери доступный материал",
         2 => "Пробел запускает урок", 3 => "Одна строка · пробел — старт",
-        4 => "Можно передохнуть", 5 => "Урок закончен",
-        6 => "Уровень и кибероны", _ => "Связь с классом"
+        4 => "Можно передохнуть", 5 => HasPassedLesson ? "Зачёт выполнен" : "Попытка завершена",
+        6 => "Уровень и кибероны", 8 => "Каталог приложений для тьютора", 9 => "Письма, доступы и сервисы", _ => "Связь с классом"
     };
 
     partial void OnSelectedSectionIndexChanged(int value)
@@ -224,6 +305,10 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsLessonsSection));
         OnPropertyChanged(nameof(IsProfileSection));
         OnPropertyChanged(nameof(IsConnectionSection));
+        OnPropertyChanged(nameof(IsMailSection));
+        OnPropertyChanged(nameof(IsAppsSection));
+        if (value == 9) _ = RefreshMailAsync();
+        if (value == 8) _ = RefreshInstalledAppsAsync();
     }
 
     partial void OnTargetTextChanged(string value) => OnPropertyChanged(nameof(LessonMeta));
@@ -362,12 +447,51 @@ public partial class MainViewModel : ViewModelBase
         IsQuizVisible = false;
     }
 
-    [RelayCommand]
+    public Func<CancellationToken, Task<string>>? LogoutRequested { get; set; }
+    [ObservableProperty] private bool isChangingStudent;
+    private bool CanChangeStudent() => !IsLoginVisible && !IsChangingStudent;
+    private bool CanConfirmStudent() => IsLoginVisible && !IsChangingStudent;
+    partial void OnIsChangingStudentChanged(bool value)
+    { ChangeStudentCommand.NotifyCanExecuteChanged(); ConfirmStudentCommand.NotifyCanExecuteChanged(); }
+    partial void OnIsLoginVisibleChanged(bool value)
+    { ChangeStudentCommand.NotifyCanExecuteChanged(); ConfirmStudentCommand.NotifyCanExecuteChanged(); }
+    [RelayCommand(CanExecute = nameof(CanChangeStudent))]
+    private async Task ChangeStudentAsync()
+    {
+        if (LogoutRequested is null) return;
+        IsChangingStudent = true;
+        try
+        {
+            if (IsLessonStarted && !IsFinished) Finish();
+            var message = await LogoutRequested(CancellationToken.None);
+            ResetMail();
+            IsQuizVisible = false;
+            quizSessionId = null;
+            IsNotificationVisible = false;
+            ResetLesson("", 0);
+            CurrentStudentName = "Ученик";
+            CurrentStudentGroup = "Группа не выбрана";
+            CurrentStudentLevel = 1; CurrentStudentKiberons = 0; CurrentStudentXp = 0;
+            SelectedSectionIndex = 0;
+            IsLoginVisible = true;
+            LoginMessage = message;
+            OnPropertyChanged(nameof(Greeting)); OnPropertyChanged(nameof(LevelLabel)); OnPropertyChanged(nameof(BalanceLabel));
+        }
+        catch (Exception error)
+        {
+            System.Diagnostics.Trace.TraceError($"Student logout failed: {error.GetType().Name}");
+            NotificationText = "Не удалось сохранить изменения. Закрой открытые файлы проекта и попробуй сменить ученика ещё раз.";
+            IsNotificationVisible = true;
+        }
+        finally { IsChangingStudent = false; }
+    }
+    [RelayCommand(CanExecute = nameof(CanConfirmStudent))]
     private void ConfirmStudent()
     {
         if (SelectedLoginGroup is null) { LoginMessage = "Сначала выберите группу."; return; }
         if (SelectedStudent is null) { LoginMessage = "Затем выберите своё имя в группе."; return; }
         StudentSelected?.Invoke(SelectedStudent.Id);
+        ResetMail();
         IsLoginVisible = false;
         CurrentStudentName = SelectedStudent.Name;
         CurrentStudentGroup = SelectedStudent.Group;
@@ -380,6 +504,8 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(BalanceLabel));
         OnPropertyChanged(nameof(LevelProgressLabel));
         LessonName = $"Добро пожаловать, {SelectedStudent.Name}";
+        EnsureMailAccount();
+        UpdatePersonalRecords();
     }
 
     [RelayCommand]
@@ -388,7 +514,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void Navigate(string? sectionIndex)
     {
-        if (int.TryParse(sectionIndex, out var parsed)) SelectedSectionIndex = Math.Clamp(parsed, 0, 7);
+        if (int.TryParse(sectionIndex, out var parsed)) SelectedSectionIndex = Math.Clamp(parsed, 0, 9);
     }
 
     public void SetTutorLessons(IReadOnlyList<TypingLessonOffer> lessons)
@@ -414,7 +540,7 @@ public partial class MainViewModel : ViewModelBase
     {
         if (lesson is null) return;
         LessonName = lesson.Name;
-        ResetLesson(lesson.Text, lesson.MinimumCharacters);
+        ResetLesson(lesson.Text, lesson.MinimumCharacters, lesson.Id);
         OpenTypingTrainer();
     }
 
@@ -506,7 +632,12 @@ public partial class MainViewModel : ViewModelBase
                 if (command.Payload.TryGetProperty("minimum_characters", out var minimumProperty)
                     && minimumProperty.ValueKind == System.Text.Json.JsonValueKind.Number)
                     minimum = minimumProperty.GetInt32();
-                ResetLesson(text, minimum);
+                Guid? lessonId = null;
+                if (command.Payload.TryGetProperty("lesson_id", out var lessonIdProperty)
+                    && lessonIdProperty.ValueKind == System.Text.Json.JsonValueKind.String
+                    && lessonIdProperty.TryGetGuid(out var parsedLessonId))
+                    lessonId = parsedLessonId;
+                ResetLesson(text, minimum, lessonId);
                 OpenTypingTrainer();
                 return CommandExecutionResult.Success;
             case ClassroomCommandKinds.TypingFinish:
@@ -523,7 +654,8 @@ public partial class MainViewModel : ViewModelBase
                 IsScreenLocked = false;
                 return CommandExecutionResult.Success;
             case ClassroomCommandKinds.FocusOn:
-                FocusEnabled?.Invoke(FocusModeBlocklist.FromPayload(command.Payload));
+                FocusEnabled?.Invoke(FocusModeBlocklist.FromPayload(command.Payload),
+                    FocusModeBlocklist.AllowedAppsFromPayload(command.Payload));
                 StatusMessage = "Тьютор оставил только нужные окна.";
                 return CommandExecutionResult.Success;
             case ClassroomCommandKinds.FocusOff:
@@ -603,8 +735,11 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
-    private void ResetLesson(string text, int? minimumCharacters = null)
+    private void ResetLesson(string text, int? minimumCharacters = null, Guid? lessonId = null)
     {
+        activeLessonId = lessonId;
+        currentAttemptId = null;
+        TypingResultStatus = string.Empty;
         TargetText = text;
         GoalCharacters = TypingLessonCatalog.SuggestGoalCharacters(text, minimumCharacters);
         GoalLabel = $"Зачёт: 0 / {GoalCharacters} знаков · в тексте {text.Length}";
@@ -626,24 +761,42 @@ public partial class MainViewModel : ViewModelBase
         BestStreak = 0;
         ElapsedLabel = "00:00";
         LastInputFeedback = "Нажмите ПРОБЕЛ, чтобы начать";
+        FeedbackForeground = "#056D69";
+        errorFlashCancellation?.Cancel();
+        ErrorFlashOpacity = 0;
         LayoutWarning = string.Empty;
         HasLayoutWarning = false;
         CurrentCharacter = text.Length > 0 ? text[0].ToString() : "✓";
         StatusMessage = GoalCharacters < text.Length
             ? $"Для зачёта наберите {GoalCharacters} знаков. Весь текст печатать не обязательно."
             : "Урок назначен. Нажмите пробел, чтобы начать.";
+        UpdatePersonalRecords();
         RebuildTypingPresentation();
     }
 
     private void Finish()
     {
+        if (IsFinished) return;
         activeTime.Stop();
         pauseTime.Stop();
         IsFinished = true;
-        StatusMessage = GoalCharacters < TargetText.Length
-            ? $"Зачёт получен ({TypedText.Length} из {GoalCharacters} знаков). Можно остановиться или потренироваться дальше в следующий раз."
-            : "Этап завершён. Результат готов к отправке тьютору.";
+        currentAttemptId = Guid.NewGuid();
+        TypingResultStatus = "Результат ожидает отправки тьютору…";
+        TypingAttemptCompleted?.Invoke(new TypingAttemptDraft(
+            currentAttemptId.Value, activeLessonId, LessonName, TargetText,
+            Math.Min(GoalCharacters, TargetText.Length),
+            CorrectKeys, WrongKeys, activeTime.Elapsed.TotalSeconds, pauseTime.Elapsed.TotalSeconds,
+            new Dictionary<string, int>(problemCharacters)));
+        StatusMessage = HasPassedLesson
+            ? $"Зачёт получен: {TypedText.Length} из {GoalCharacters} знаков."
+            : $"Попытка завершена: {TypedText.Length} из {GoalCharacters} знаков для зачёта.";
         UpdateMetrics();
+        OnPropertyChanged(nameof(ResultTitle));
+        OnPropertyChanged(nameof(ResultDescription));
+        OnPropertyChanged(nameof(ResultIcon));
+        OnPropertyChanged(nameof(ResultBadgeBackground));
+        OnPropertyChanged(nameof(ResultIconForeground));
+        OnPropertyChanged(nameof(ResultAccuracyLabel));
         SelectedSectionIndex = 5;
     }
 
@@ -655,37 +808,35 @@ public partial class MainViewModel : ViewModelBase
         GoalLabel = $"Зачёт: {Math.Min(TypedText.Length, GoalCharacters)} / {GoalCharacters} знаков · в тексте {TargetText.Length}";
         CurrentCharacter = TypedText.Length < TargetText.Length ? TargetText[TypedText.Length].ToString() : "✓";
         ElapsedLabel = $"{(int)activeTime.Elapsed.TotalMinutes:00}:{activeTime.Elapsed.Seconds:00}";
+        UpdatePersonalRecords();
+        if (!IsFinished && TypedText.Length >= GoalCharacters)
+            StatusMessage = "Зачёт получен! Продолжай печатать или нажми «Завершить».";
         RebuildTypingPresentation();
     }
 
     private void RebuildTypingPresentation()
     {
         TextGlyphs.Clear();
+        RemainingText = TypedText.Length < TargetText.Length ? TargetText[TypedText.Length..] : string.Empty;
         if (string.IsNullOrEmpty(TargetText))
             return;
 
-        // One active line. Keep the current glyph on-screen from the first letter —
-        // a centered 42-char strip used to clip the start of the line.
-        const int maxVisibleChars = 22;
-        const int lookbehind = 2;
+        // Keep the active key at the center even at the beginning and end of a line.
+        const int glyphsOnEachSide = 7;
         var caret = Math.Clamp(TypedText.Length, 0, TargetText.Length);
         var (lineStart, lineEnd) = GetCurrentLineRange(TargetText, Math.Min(caret, Math.Max(0, TargetText.Length - 1)));
-        if (lineEnd <= lineStart)
-            lineEnd = Math.Min(TargetText.Length, lineStart + 1);
-
-        var caretInLine = Math.Clamp(caret - lineStart, 0, lineEnd - lineStart);
-        var lineLength = lineEnd - lineStart;
-        var visibleStartInLine = Math.Max(0, caretInLine - lookbehind);
-        var visibleEndInLine = Math.Min(lineLength, visibleStartInLine + maxVisibleChars);
-        visibleStartInLine = Math.Max(0, visibleEndInLine - maxVisibleChars);
-
-        var start = lineStart + visibleStartInLine;
-        var end = lineStart + visibleEndInLine;
-        for (var index = start; index < end; index++)
+        for (var offset = -glyphsOnEachSide; offset <= glyphsOnEachSide; offset++)
         {
+            var index = caret + offset;
+            if (index < lineStart || index >= TargetText.Length ||
+                index >= lineEnd && !(index == caret && TargetText[index] == '\n'))
+            {
+                TextGlyphs.Add(TypingGlyphViewModel.Placeholder());
+                continue;
+            }
             TypingGlyphState state;
             if (index < TypedText.Length)
-                state = index < typedResults.Count && typedResults[index] ? TypingGlyphState.Correct : TypingGlyphState.Correct;
+                state = TypingGlyphState.Correct;
             else if (index == TypedText.Length)
                 state = lastAttemptWasWrong ? TypingGlyphState.Wrong : TypingGlyphState.Current;
             else
@@ -726,8 +877,8 @@ public partial class MainViewModel : ViewModelBase
             return (0, 0);
 
         caret = Math.Clamp(caret, 0, text.Length);
-        var start = caret == 0 ? 0 : text.LastIndexOf('\n', caret - 1);
-        start = start < 0 ? 0 : start + 1;
+        var previousNewline = caret == 0 ? -1 : text.LastIndexOf('\n', caret - 1);
+        var start = previousNewline + 1;
         var end = text.IndexOf('\n', caret);
         if (end < 0)
             end = text.Length;
@@ -736,7 +887,7 @@ public partial class MainViewModel : ViewModelBase
 
     private bool IsExpectedKey(string key)
     {
-        if (TypedText.Length >= TargetText.Length || TypedText.Length >= GoalCharacters) return false;
+        if (TypedText.Length >= TargetText.Length) return false;
         var expected = char.ToLowerInvariant(TargetText[TypedText.Length]);
         if (char.IsWhiteSpace(expected)) return key is "ПРОБЕЛ" or "SPACE";
         return key.Length == 1 && char.ToLowerInvariant(key[0]) == expected;
@@ -744,18 +895,11 @@ public partial class MainViewModel : ViewModelBase
 
     private void DetectLayoutMismatch(char expected, char actual)
     {
-        var ruToEn = new Dictionary<char, char>
-        {
-            ['й']='q',['ц']='w',['у']='e',['к']='r',['е']='t',['н']='y',['г']='u',['ш']='i',['щ']='o',['з']='p',
-            ['ф']='a',['ы']='s',['в']='d',['а']='f',['п']='g',['р']='h',['о']='j',['л']='k',['д']='l',
-            ['я']='z',['ч']='x',['с']='c',['м']='v',['и']='b',['т']='n',['ь']='m'
-        };
-        var normalizedExpected = char.ToLowerInvariant(expected);
-        var normalizedActual = char.ToLowerInvariant(actual);
-        var enToRu = ruToEn.ToDictionary(pair => pair.Value, pair => pair.Key);
-        var expectsRussianButTypedEnglish = ruToEn.TryGetValue(normalizedExpected, out var latin) && latin == normalizedActual;
-        var expectsEnglishButTypedRussian = enToRu.TryGetValue(normalizedExpected, out var russian) && russian == normalizedActual;
+        var expectsRussianButTypedEnglish = IsCyrillic(expected) && char.IsAsciiLetter(actual);
+        var expectsEnglishButTypedRussian = char.IsAsciiLetter(expected) && IsCyrillic(actual);
         HasLayoutWarning = expectsRussianButTypedEnglish || expectsEnglishButTypedRussian;
+        expectedRussianLayout = expectsRussianButTypedEnglish;
+        SwitchLayoutButtonText = expectsRussianButTypedEnglish ? "Переключить на русский" : "Переключить на английский";
         LayoutWarning = expectsRussianButTypedEnglish
             ? "Проверьте раскладку: включён английский язык"
             : expectsEnglishButTypedRussian
@@ -769,11 +913,12 @@ public partial class MainViewModel : ViewModelBase
 
 public enum TypingGlyphState { Pending, Current, Correct, Wrong }
 
-public sealed class TypingGlyphViewModel(char character, TypingGlyphState state)
+public sealed class TypingGlyphViewModel(char character, TypingGlyphState state, bool isPlaceholder = false)
 {
-    public string DisplayCharacter { get; } = character == ' ' ? " " : character.ToString();
+    public static TypingGlyphViewModel Placeholder() => new('\0', TypingGlyphState.Pending, true);
+    public string DisplayCharacter { get; } = isPlaceholder ? string.Empty : character == '\n' ? "↵" : character == ' ' ? " " : character.ToString();
     public bool IsWhitespace { get; } = character == ' ';
-    public double GlyphMinWidth => IsWhitespace ? 36 : 28;
+    public double GlyphMinWidth => 42;
     public string GlyphForeground => state switch
     {
         TypingGlyphState.Correct => "#087F5B",
@@ -781,7 +926,7 @@ public sealed class TypingGlyphViewModel(char character, TypingGlyphState state)
         TypingGlyphState.Current => "#13181D",
         _ => "#8A969E"
     };
-    public string GlyphBackground => state switch
+    public string GlyphBackground => isPlaceholder ? "Transparent" : state switch
     {
         TypingGlyphState.Correct => "#DDF7E9",
         TypingGlyphState.Wrong => "#FFE2DE",
@@ -790,7 +935,7 @@ public sealed class TypingGlyphViewModel(char character, TypingGlyphState state)
     };
     public string GlyphBorderBrush => state == TypingGlyphState.Current ? "#13181D" : "Transparent";
     public double GlyphBorderThickness => state == TypingGlyphState.Current ? 2 : 0;
-    public string Decrations => state == TypingGlyphState.Wrong ? "Underline" : "None";
+    public string Decoration => state == TypingGlyphState.Wrong ? "Underline" : "None";
 }
 
 public sealed class KeyboardRowViewModel(IReadOnlyList<KeyboardKeyViewModel> keys)

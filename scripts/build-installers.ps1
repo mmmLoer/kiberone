@@ -1,8 +1,17 @@
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$version = "0.10.38"
+$version = "0.10.41"
 $installersDir = Join-Path $projectRoot "dist\installers"
 $stagingRoot = Join-Path $installersDir "_staging"
+
+if (-not $env:KIBERONE_UPDATE_SIGNING_KEY_PATH) {
+    $localKey = Join-Path $env:LOCALAPPDATA "KiberoneHubMigration\student-update-signing-private.pem"
+    if (Test-Path -LiteralPath $localKey) { $env:KIBERONE_UPDATE_SIGNING_KEY_PATH = $localKey }
+}
+if (-not $env:KIBERONE_UPDATE_SIGNING_KEY_PATH -or
+    -not (Test-Path -LiteralPath $env:KIBERONE_UPDATE_SIGNING_KEY_PATH)) {
+    throw "KIBERONE_UPDATE_SIGNING_KEY_PATH must point to the private PEM key before building installers."
+}
 
 function Ensure-NativeDlls {
     param([string] $Root)
@@ -163,16 +172,9 @@ function Update-StudentManifest {
     New-Item -ItemType Directory -Force -Path $updatesDir | Out-Null
     $dest = Join-Path $updatesDir "KIBERoneStudent.exe"
     Copy-Item $StudentExe $dest -Force
-    $bytes = [IO.File]::ReadAllBytes($dest)
-    $hash = [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($bytes)).Replace("-", "").ToLowerInvariant()
-    $manifest = @{
-        version      = $version
-        filename     = "KIBERoneStudent.exe"
-        size         = $bytes.Length
-        sha256       = $hash
-        published_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-    }
-    $manifest | ConvertTo-Json | Set-Content (Join-Path $updatesDir "student_manifest.json") -Encoding UTF8
+    & $dotnet run --project (Join-Path $projectRoot "tools\Kiberone.UpdateSigner\Kiberone.UpdateSigner.csproj") `
+        -c Release -- $dest $version (Join-Path $updatesDir "student_manifest.json")
+    if ($LASTEXITCODE -ne 0) { throw "Signing Student update failed." }
 }
 
 Write-Host "=== KIBERone release build v$version ===" -ForegroundColor Cyan

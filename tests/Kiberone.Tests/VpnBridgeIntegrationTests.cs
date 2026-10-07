@@ -4,7 +4,7 @@ namespace Kiberone.Tests;
 
 public sealed class VpnBridgeIntegrationTests
 {
-    [Fact]
+    [RealVpnFact]
     public void Bridge_ping_when_service_running()
     {
         var client = new VpnBridgeClient();
@@ -14,7 +14,7 @@ public sealed class VpnBridgeIntegrationTests
         Assert.True(client.TryPing());
     }
 
-    [Fact]
+    [RealVpnFact]
     public void Bridge_connect_when_config_present()
     {
         var configPath = VpnOptions.ManagedConfigPath;
@@ -36,5 +36,14 @@ public sealed class VpnBridgeIntegrationTests
 
         var status = client.Connect(configPath);
         Assert.True(status.Connected, status.LastError ?? $"state={status.State}");
+    }
+}
+
+public sealed class RealVpnFactAttribute : Xunit.FactAttribute
+{
+    public RealVpnFactAttribute()
+    {
+        if (Environment.GetEnvironmentVariable("KIBERONE_TEST_REAL_VPN") != "1")
+            Skip = "Real VPN tests require explicit opt-in on a test VM.";
     }
 }

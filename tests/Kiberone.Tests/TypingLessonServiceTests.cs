@@ -24,7 +24,7 @@ public sealed class TypingLessonServiceTests : IAsyncLifetime
         await using (var db = new ClassroomDbContext(options))
         {
             var group = new ClassroomGroup { Name = "Python 01" };
-            var student = new Student { FirstName = "Софья", LastName = "Петрова", GroupId = group.Id };
+            var student = new Kiberone.Core.Student { FirstName = "Софья", LastName = "Петрова", GroupId = group.Id };
             group.Students.Add(student);
             db.Groups.Add(group);
             await db.SaveChangesAsync();
@@ -47,6 +47,90 @@ public sealed class TypingLessonServiceTests : IAsyncLifetime
         await using var verify = new ClassroomDbContext(options);
         Assert.Equal(20, await verify.Students.Where(x => x.Id == studentId).Select(x => x.Xp).SingleAsync());
         Assert.Single(await verify.TypingTelemetry.ToListAsync());
+    }
+
+    [Fact]
+    public async Task CompletedStudentAttempt_AppearsInStudentAndGroupStats_WithoutDuplicateOnRetry()
+    {
+        var service = new TypingLessonService(options);
+        Guid studentId;
+        Guid groupId;
+        await using (var db = new ClassroomDbContext(options))
+        {
+            var group = new ClassroomGroup { Name = "Тестовая группа" };
+            var student = new Kiberone.Core.Student { FirstName = "Анна", LastName = "Иванова", GroupId = group.Id };
+            group.Students.Add(student);
+            db.Groups.Add(group);
+            await db.SaveChangesAsync();
+            studentId = student.Id;
+            groupId = group.Id;
+        }
+
+        var attempt = new TypingAttemptDraft(
+            Guid.NewGuid(), null, "Пробный урок", "тест", 4, 3, 1, 6, 2,
+            new Dictionary<string, int> { ["т"] = 1 });
+        var request = new SubmitTypingAttemptRequest(studentId, attempt);
+        var first = await service.RecordAttemptAsync(request);
+        var retry = await service.RecordAttemptAsync(request);
+        var studentStats = await service.GetTypingStatsAsync(null, studentId, null);
+        var groupStats = await service.GetTypingStatsAsync(groupId, null, null);
+
+        Assert.Equal(attempt.AttemptId, first.SessionId);
+        Assert.Equal(first.SessionId, retry.SessionId);
+        Assert.Equal(TypingSessionStatus.Finished, first.Status);
+        Assert.Equal(1, Assert.Single(studentStats.Points).Attempts);
+        Assert.Equal(3, Assert.Single(groupStats.Points).TotalCorrectKeys);
+        Assert.Empty(await service.ListCatalogAsync());
+        await using var verify = new ClassroomDbContext(options);
+        Assert.Single(await verify.TypingSessions.ToListAsync());
+        Assert.Single(await verify.TypingTelemetry.ToListAsync());
+    }
+
+    [Fact]
+    public async Task LiveLesson_ReusesOneLessonForTheWholeClass()
+    {
+        var service = new TypingLessonService(options);
+        var first = await service.EnsureLiveLessonAsync("Общий урок", "текст для класса", 5);
+        var second = await service.EnsureLiveLessonAsync("Общий урок", "текст для класса", 5);
+
+        Assert.Equal(first, second);
+        Assert.Empty(await service.ListCatalogAsync());
+        await using var db = new ClassroomDbContext(options);
+        Assert.Single(await db.TypingLessons.ToListAsync());
+    }
+
+    [Fact]
+    public async Task TwoStudentsOnSameLiveLesson_AppearAsTwoAttemptsInOneChartPoint()
+    {
+        var service = new TypingLessonService(options);
+        Guid groupId;
+        Guid[] studentIds;
+        await using (var db = new ClassroomDbContext(options))
+        {
+            var group = new ClassroomGroup { Name = "Общий класс" };
+            var students = new[]
+            {
+                new Kiberone.Core.Student { FirstName = "Анна", LastName = "Иванова", GroupId = group.Id },
+                new Kiberone.Core.Student { FirstName = "Борис", LastName = "Петров", GroupId = group.Id }
+            };
+            group.Students.AddRange(students);
+            db.Groups.Add(group);
+            await db.SaveChangesAsync();
+            groupId = group.Id;
+            studentIds = students.Select(x => x.Id).ToArray();
+        }
+
+        var lessonId = await service.EnsureLiveLessonAsync("Задание класса", "текст", 5);
+        foreach (var studentId in studentIds)
+        {
+            var attempt = new TypingAttemptDraft(Guid.NewGuid(), lessonId, "Задание класса", "текст", 5,
+                5, 0, 10, 0, new Dictionary<string, int>());
+            await service.RecordAttemptAsync(new SubmitTypingAttemptRequest(studentId, attempt));
+        }
+
+        var point = Assert.Single((await service.GetTypingStatsAsync(groupId, null, null)).Points);
+        Assert.Equal(lessonId, point.LessonId);
+        Assert.Equal(2, point.Attempts);
     }
 
     [Fact]
@@ -82,7 +166,7 @@ public sealed class TypingLessonServiceTests : IAsyncLifetime
         await using (var db = new ClassroomDbContext(options))
         {
             var group = new ClassroomGroup { Name = "Edge" };
-            var student = new Student { FirstName = "Ева", LastName = "Ким", GroupId = group.Id };
+            var student = new Kiberone.Core.Student { FirstName = "Ева", LastName = "Ким", GroupId = group.Id };
             group.Students.Add(student);
             db.Groups.Add(group);
             await db.SaveChangesAsync();
@@ -113,6 +197,23 @@ public sealed class TypingLessonServiceTests : IAsyncLifetime
         Assert.Contains(lessons, x => x.Name == "Дурак и молния — как в тексте");
         Assert.Contains(lessons, x => x.Name == "Fool and Lightning");
         Assert.All(lessons, lesson => Assert.False(TypingLessonCatalog.IsDefaultName(lesson.Name)));
+    }
+
+    [Fact]
+    public async Task PlaceholderLessons_AreHiddenFromStudentUntilTutorAddsText()
+    {
+        await ClassroomDatabase.SeedDefaultsAsync(options);
+        var service = new TypingLessonService(options);
+        Assert.Empty(await service.ListCatalogAsync());
+
+        var lesson = (await service.ListLessonsAsync()).First();
+        var updated = await service.UpdateLessonAsync(lesson.Id, new UpdateLessonRequest(
+            lesson.Name, lesson.Description, lesson.ContentKind, lesson.KeyboardLayout,
+            lesson.MinimumCharacters, lesson.DurationMinutes, lesson.Lifecycle,
+            [new LessonStepDraft("Текст", "Собственный текст для урока печати")]));
+
+        Assert.NotNull(updated);
+        Assert.Contains(await service.ListCatalogAsync(), x => x.Id == lesson.Id);
     }
 
     [Fact]
