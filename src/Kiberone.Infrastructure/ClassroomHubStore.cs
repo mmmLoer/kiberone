@@ -69,7 +69,13 @@ public sealed class ClassroomHubStore
     public LocationRosterSnapshot GetAuthorized(string location, string password)
     {
         EnsureAuthorized(location, password);
-        return Get(location);
+        lock (gate)
+        {
+            var roster = ReadUnlocked(location) ?? Empty(location);
+            EnsureRosterOwnershipUnlocked(location, roster.Students.Select(x => x.Id),
+                roster.Groups.Select(x => x.Id).Concat(roster.Students.Select(x => x.GroupId)));
+            return roster;
+        }
     }
 
     public LocationStudentSnapshot EnrollMailStudent(string location, string password, LocationStudentSnapshot student, LocationGroupSnapshot group)
@@ -82,10 +88,7 @@ public sealed class ClassroomHubStore
             throw new ArgumentException("Некорректные данные ученика.");
         lock (gate)
         {
-            foreach (var other in secrets.Keys.Where(x => !string.Equals(x, location.Trim(), StringComparison.OrdinalIgnoreCase)))
-                if (ReadUnlocked(other)?.Students.Any(x => x.Id == student.Id) == true
-                    || ReadUnlocked(other)?.Groups.Any(x => x.Id == group.Id) == true)
-                    throw new UnauthorizedAccessException("Ученик относится к другой локации.");
+            EnsureRosterOwnershipUnlocked(location, [student.Id], [group.Id]);
             var roster = ReadUnlocked(location) ?? Empty(location);
             var existing = roster.Students.FirstOrDefault(x => x.Id == student.Id);
             if (existing is not null) return existing;
@@ -118,8 +121,7 @@ public sealed class ClassroomHubStore
 
     public LocationRosterSnapshot Put(string location, string password, LocationRosterSnapshot snapshot)
     {
-        if (!secrets.TryGetValue(location.Trim(), out var secret) || !LocationPassword.Verify(password, secret.Salt, secret.Hash))
-            throw new UnauthorizedAccessException("Неверный пароль локации.");
+        EnsureAuthorized(location, password);
         if (!string.Equals(snapshot.Location.Trim(), location.Trim(), StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Снимок относится к другой локации.");
 
@@ -130,9 +132,26 @@ public sealed class ClassroomHubStore
         };
         lock (gate)
         {
+            EnsureRosterOwnershipUnlocked(location, stored.Students.Select(x => x.Id),
+                stored.Groups.Select(x => x.Id).Concat(stored.Students.Select(x => x.GroupId)));
             File.WriteAllText(RosterPath(location), JsonSerializer.Serialize(stored, Json));
         }
         return stored;
+    }
+
+    // Called under gate so two locations cannot claim the same UUID concurrently.
+    private void EnsureRosterOwnershipUnlocked(string location, IEnumerable<Guid> studentIds, IEnumerable<Guid> groupIds)
+    {
+        var students = studentIds.ToHashSet();
+        var groups = groupIds.ToHashSet();
+        foreach (var other in secrets.Keys.Where(x => !string.Equals(x, location.Trim(), StringComparison.OrdinalIgnoreCase)))
+        {
+            var roster = ReadUnlocked(other);
+            if (roster is not null && (roster.Students.Any(x => students.Contains(x.Id))
+                || roster.Groups.Any(x => groups.Contains(x.Id))
+                || roster.Students.Any(x => groups.Contains(x.GroupId))))
+                throw new UnauthorizedAccessException("Ученик или группа относится к другой локации.");
+        }
     }
 
     private LocationRosterSnapshot? ReadUnlocked(string location)
@@ -274,61 +293,182 @@ public sealed class ClassroomHubStore
             : [];
     }
 
-    public AppUpdateManifest? GetStudentUpdate(bool testChannel = false)
+    public AppUpdateManifest? GetAppUpdate(string app, string channel)
     {
-        var directory = testChannel ? Path.Combine(updatesDirectory, "test") : updatesDirectory;
-        var manifestPath = Path.Combine(directory, "student_manifest.json");
-        if (!File.Exists(manifestPath))
-            return null;
-        var manifest = JsonSerializer.Deserialize<AppUpdateManifest>(File.ReadAllText(manifestPath), UpdateJson)
-            ?? JsonSerializer.Deserialize<AppUpdateManifest>(File.ReadAllText(manifestPath), Json);
-        if (manifest is null || string.IsNullOrWhiteSpace(manifest.Filename) ||
-            !StudentUpdateSignature.Verify(manifest.Version, manifest.Size, manifest.Sha256, manifest.Signature))
-            return null;
-        var file = Path.Combine(directory, Path.GetFileName(manifest.Filename));
-        if (!File.Exists(file))
-            return null;
-        var info = new FileInfo(file);
-        if (info.Length != manifest.Size)
-            return null;
-        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(file)));
-        return hash.Equals(manifest.Sha256, StringComparison.OrdinalIgnoreCase) ? manifest : null;
+        ValidateAppChannel(app, channel);
+        var release = OpenVerifiedUpdate(app, AppUpdateDirectory(app, channel), channel);
+        using var content = release?.Content;
+        return release?.Manifest;
     }
 
-    public Stream? OpenStudentUpdate(bool testChannel = false)
+    public Stream? OpenAppUpdate(string app, string channel, string? version = null, string? sha256 = null)
     {
-        var manifest = GetStudentUpdate(testChannel);
-        if (manifest is null)
+        ValidateAppChannel(app, channel);
+        ValidateUpdatePin(version, sha256);
+        var current = OpenVerifiedUpdate(app, AppUpdateDirectory(app, channel), channel, version, sha256);
+        return current?.Content ?? (version is null ? null
+            : OpenVerifiedUpdate(app, Path.Combine(updatesDirectory, channel), channel, version, sha256, archived: true)?.Content);
+    }
+
+    // Keep old test-channel URLs separate from beta: deployed test releases did
+    // not use the beta version suffix and must not become beta candidates.
+    public AppUpdateManifest? GetStudentUpdate(bool testChannel = false)
+    {
+        if (!testChannel) return GetAppUpdate("student", "release");
+        var release = OpenVerifiedUpdate("student", Path.Combine(updatesDirectory, "test"), channel: null);
+        using var content = release?.Content;
+        return release?.Manifest;
+    }
+
+    public Stream? OpenStudentUpdate(bool testChannel = false, string? version = null, string? sha256 = null)
+    {
+        ValidateUpdatePin(version, sha256);
+        return testChannel
+            ? OpenVerifiedUpdate("student", Path.Combine(updatesDirectory, "test"), channel: null, version, sha256)?.Content
+            : OpenAppUpdate("student", "release", version, sha256);
+    }
+
+    private static void ValidateUpdatePin(string? version, string? sha256)
+    {
+        if (version is null && sha256 is null) return;
+        if (!AppReleaseVersion.IsValid(version) || sha256 is null || sha256.Length != 64 || !sha256.All(Uri.IsHexDigit))
+            throw new ArgumentException("Для выбора обновления нужны версия и SHA-256.");
+    }
+
+    internal static void ValidateAppChannel(string app, string channel)
+    {
+        if (app is not "student" and not "tutor") throw new ArgumentException("Неизвестное приложение обновления.", nameof(app));
+        if (channel is not "release" and not "beta") throw new ArgumentException("Неизвестный канал обновления.", nameof(channel));
+    }
+
+    private string AppUpdateDirectory(string app, string channel)
+    {
+        var directory = Path.Combine(updatesDirectory, channel);
+        // Only an absent release manifest permits migration fallback. A broken
+        // canonical release must not silently select an older legacy artifact.
+        return app == "student" && channel == "release"
+            && !File.Exists(Path.Combine(directory, "student_manifest.json"))
+            ? updatesDirectory : directory;
+    }
+
+    private (AppUpdateManifest Manifest, FileStream Content)? OpenVerifiedUpdate(string app, string directory, string? channel,
+        string? version = null, string? sha256 = null, bool archived = false)
+    {
+        FileStream? content = null;
+        try
+        {
+            var manifestPath = archived ? Path.Combine(directory, ".versions", app, version + ".json")
+                : Path.Combine(directory, app + "_manifest.json");
+            if (!File.Exists(manifestPath)) return null;
+            var manifest = JsonSerializer.Deserialize<AppUpdateManifest>(File.ReadAllText(manifestPath), UpdateJson);
+            if (manifest is null || !AppReleaseVersion.IsValid(manifest.Version)
+                || (channel is not null && AppReleaseVersion.ChannelFor(manifest.Version) != channel)
+                || (version is not null && (manifest.Version != version || !string.Equals(manifest.Sha256, sha256, StringComparison.OrdinalIgnoreCase)))
+                || string.IsNullOrWhiteSpace(manifest.Filename)
+                || manifest.Filename is "." or ".."
+                || manifest.Filename.IndexOfAny(['/', '\\', ':']) >= 0
+                || manifest.Filename.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+                || !StudentUpdateSignature.VerifyApp(app, manifest.Version, manifest.Size, manifest.Sha256, manifest.Signature))
+                return null;
+            content = new FileStream(Path.Combine(directory, manifest.Filename), FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+            if (content.Length != manifest.Size) return null;
+            var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(content));
+            if (!hash.Equals(manifest.Sha256, StringComparison.OrdinalIgnoreCase)) return null;
+            content.Position = 0;
+            var result = (manifest, content);
+            content = null; // Transfer ownership of this verified handle to the caller.
+            return result;
+        }
+        catch (Exception error) when (error is JsonException or IOException)
+        {
             return null;
-        var directory = testChannel ? Path.Combine(updatesDirectory, "test") : updatesDirectory;
-        var file = Path.Combine(directory, Path.GetFileName(manifest.Filename));
-        return File.Exists(file)
-            ? new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read)
-            : null;
+        }
+        finally { content?.Dispose(); }
     }
 
     /// <summary>
-    /// CI drops KIBERoneStudent.exe + student_manifest.json into updates/. This republishes
-    /// from a built exe and writes a snake_case manifest Tutors already expect.
+    /// Republishes a signed Student binary into its version's release/beta channel.
     /// </summary>
-    public AppUpdateManifest PublishStudentUpdate(string sourceExePath, string version, string signature)
-    {
-        if (!File.Exists(sourceExePath))
-            throw new FileNotFoundException("Не найден собранный Student.exe.", sourceExePath);
-        if (string.IsNullOrWhiteSpace(version))
-            throw new ArgumentException("Нужна версия обновления.", nameof(version));
+    public AppUpdateManifest PublishStudentUpdate(string sourceExePath, string version, string signature) =>
+        PublishAppUpdate("student", sourceExePath, version, signature);
 
-        var bytes = File.ReadAllBytes(sourceExePath);
-        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant();
-        if (!StudentUpdateSignature.Verify(version, bytes.LongLength, hash, signature))
-            throw new InvalidOperationException("Недействительная подпись обновления Student.");
-        var filename = "KIBERoneStudent.exe";
-        Directory.CreateDirectory(updatesDirectory);
-        File.WriteAllBytes(Path.Combine(updatesDirectory, filename), bytes);
-        var manifest = new AppUpdateManifest(version.Trim(), filename, bytes.Length, hash, DateTimeOffset.UtcNow, signature);
-        File.WriteAllText(
-            Path.Combine(updatesDirectory, "student_manifest.json"),
-            JsonSerializer.Serialize(manifest, UpdateJson));
+    public AppUpdateManifest PublishAppUpdate(string app, string sourceExePath, string version, string signature)
+    {
+        if (!AppReleaseVersion.IsValid(version))
+            throw new ArgumentException("Некорректная версия обновления.", nameof(version));
+        var channel = AppReleaseVersion.ChannelFor(version);
+        ValidateAppChannel(app, channel);
+        if (!File.Exists(sourceExePath))
+            throw new FileNotFoundException("Не найден собранный файл приложения.", sourceExePath);
+
+        using var source = new FileStream(sourceExePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        var size = source.Length;
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(source)).ToLowerInvariant();
+        if (!StudentUpdateSignature.VerifyApp(app, version, size, hash, signature))
+            throw new InvalidOperationException("Недействительная подпись обновления приложения.");
+        var filename = $"KIBERone{(app == "student" ? "Student" : "Tutor")}-{hash}.exe";
+        var directory = Path.Combine(updatesDirectory, channel);
+        Directory.CreateDirectory(directory);
+        var binaryPath = Path.Combine(directory, filename);
+        var manifestPath = Path.Combine(directory, app + "_manifest.json");
+        var versionsDirectory = Path.Combine(directory, ".versions", app);
+        var versionPath = Path.Combine(versionsDirectory, version + ".json");
+        var suffix = "." + Guid.NewGuid().ToString("N") + ".tmp";
+        var manifest = new AppUpdateManifest(version, filename, size, hash, DateTimeOffset.UtcNow, signature);
+        try
+        {
+            source.Position = 0;
+            using (var output = new FileStream(binaryPath + suffix, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                source.CopyTo(output);
+            lock (gate)
+            {
+                Directory.CreateDirectory(versionsDirectory);
+                var previousPaths = Directory.EnumerateFiles(versionsDirectory, "*.json")
+                    .Append(Path.Combine(AppUpdateDirectory(app, channel), app + "_manifest.json"))
+                    .Where(File.Exists).Distinct().ToArray();
+                AppUpdateManifest? sameVersion = null;
+                foreach (var previousPath in previousPaths)
+                {
+                    var previous = JsonSerializer.Deserialize<AppUpdateManifest>(File.ReadAllText(previousPath), UpdateJson)
+                        ?? throw new InvalidDataException("Повреждён журнал опубликованных версий.");
+                    if (!AppReleaseVersion.IsValid(previous.Version) || AppReleaseVersion.ChannelFor(previous.Version) != channel)
+                        throw new InvalidDataException("Неверный канал опубликованной версии.");
+                    if (previous.Version == version)
+                    {
+                        if (previous.Size != size || !string.Equals(previous.Sha256, hash, StringComparison.OrdinalIgnoreCase))
+                            throw new InvalidOperationException("Опубликованную версию нельзя использовать для другого файла.");
+                        sameVersion = previous;
+                    }
+                    else if (!AppReleaseVersion.IsNewer(version, previous.Version))
+                        throw new InvalidOperationException("Публикация более старой версии запрещена.");
+                }
+                if (File.Exists(binaryPath))
+                {
+                    using var existing = File.OpenRead(binaryPath);
+                    if (existing.Length != size || !Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(existing)).Equals(hash, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidDataException("Неизменяемый файл обновления повреждён.");
+                }
+                else File.Move(binaryPath + suffix, binaryPath); // Never overwrite a hash-named artifact.
+                if (sameVersion is not null)
+                    manifest = manifest with { PublishedAt = sameVersion.PublishedAt };
+                var manifestJson = JsonSerializer.Serialize(manifest, UpdateJson);
+                // Commit the version reservation before changing the current pointer.
+                // If publication is interrupted, only an identical retry is allowed.
+                if (!File.Exists(versionPath))
+                {
+                    File.WriteAllText(versionPath + suffix, manifestJson);
+                    File.Move(versionPath + suffix, versionPath);
+                }
+                File.WriteAllText(manifestPath + suffix, manifestJson);
+                File.Move(manifestPath + suffix, manifestPath, true);
+            }
+        }
+        finally
+        {
+            if (File.Exists(binaryPath + suffix)) File.Delete(binaryPath + suffix);
+            if (File.Exists(manifestPath + suffix)) File.Delete(manifestPath + suffix);
+            if (File.Exists(versionPath + suffix)) File.Delete(versionPath + suffix);
+        }
         return manifest;
     }
 

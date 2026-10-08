@@ -4,7 +4,8 @@ namespace Kiberone.Core;
 
 public static class BuildInfo
 {
-    public const string Version = "0.10.41";
+    public static readonly string Version = typeof(BuildInfo).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false).Cast<System.Reflection.AssemblyMetadataAttribute>().Single(x => x.Key == "KiberoneVersion").Value!;
+    public static string Channel => AppReleaseVersion.ChannelFor(Version);
 }
 
 public sealed record HeartbeatRequest(

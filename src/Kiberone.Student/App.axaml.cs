@@ -1,4 +1,4 @@
-using Avalonia;
+﻿using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Kiberone.Student.ViewModels;
@@ -62,6 +62,7 @@ public partial class App : Avalonia.Application
             agent.ApplicationInventoryProvider = ApplicationInventory.Read;
             agent.AccessPolicyChanged += policy => Dispatcher.UIThread.Post(() =>
             {
+                viewModel.SetAccessPolicy(policy);
                 try
                 {
                     focusMode.Apply(policy);
@@ -75,7 +76,10 @@ public partial class App : Avalonia.Application
             viewModel.WatchdogEnabled = watchdog.Start;
             viewModel.WatchdogDisabled = watchdog.Stop;
             if (watchdog.ConsumeRestartSentinel())
+            {
                 watchdog.Start();
+                viewModel.IsExitBlocked = true;
+            }
             agent.ScreenProvider = ScreenCapture.CaptureJpeg;
             agent.FocusModeStateProvider = () => focusMode.IsActive;
             agent.WatchdogStateProvider = () => watchdog.IsActive;
@@ -84,6 +88,8 @@ public partial class App : Avalonia.Application
             agent.SyncStateChanged += state => Dispatcher.UIThread.Post(() => viewModel.SetSyncState(state));
             agent.UpdateAvailable += update => Dispatcher.UIThread.Post(() => viewModel.SetUpdate(update));
             agent.UpdateStateChanged += state => Dispatcher.UIThread.Post(() => viewModel.SetUpdateState(state));
+            agent.QuizResultReceived += result => Dispatcher.UIThread.Post(() => viewModel.SetQuizResult(result));
+            agent.UpdateFailed += () => Dispatcher.UIThread.Post(viewModel.SetUpdateFailed);
             agent.ScreenStateChanged += state => Dispatcher.UIThread.Post(() => viewModel.ScreenStatus = state ?? string.Empty);
             agent.TypingResultStateChanged += (id, state) => Dispatcher.UIThread.Post(() => viewModel.SetTypingResultState(id, state));
             agent.UpdateRestartRequested += () => Dispatcher.UIThread.Post(() =>
@@ -92,7 +98,10 @@ public partial class App : Avalonia.Application
                 viewModel.SetUpdateState("Перезапуск для установки обновления…");
                 if (agent.PrepareStagedUpdate())
                     desktop.Shutdown();
+                else
+                    viewModel.SetUpdateFailed();
             });
+            agent.TypingRecordsAvailable += (owner, records) => Dispatcher.UIThread.Post(() => viewModel.MergePersonalRecords(owner, records));
             agent.StudentsAvailable += students => Dispatcher.UIThread.Post(() => viewModel.SetStudents(students, agent.PreferredGroupName));
             agent.LessonsAvailable += lessons => Dispatcher.UIThread.Post(() => viewModel.SetTutorLessons(lessons));
             agent.PreferredGroupChanged += group => Dispatcher.UIThread.Post(() => viewModel.ApplyPreferredGroup(group));

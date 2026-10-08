@@ -3,10 +3,11 @@ using Kiberone.Infrastructure;
 namespace Kiberone.Tutor.ViewModels;
 public partial class MainViewModel
 {
-    private readonly LocationCredentialStore locationCredentials = new();
+    private readonly LocationCredentialStore locationCredentials = credentialStore ?? new();
     [ObservableProperty] private string setupLocationPassword = "";
     [ObservableProperty] private string credentialStatus = "Введите пароль один раз. После подключения он сохранится для этой локации.";
     private string CredentialServer => string.IsNullOrWhiteSpace(HubUrl) ? ClassroomHubClient.DefaultBaseUrl : HubUrl;
+    partial void OnSetupLocationPasswordChanged(string value) => ConfirmSetupLocationCommand.NotifyCanExecuteChanged();
     private string ReadLocationPassword(string? location)
     {
         if (string.IsNullOrWhiteSpace(location)) return "";

@@ -1,6 +1,18 @@
+param([string] $Version = "")
+
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$version = "0.10.41"
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    $version = (Get-Content -LiteralPath (Join-Path $projectRoot "version.json") -Raw | ConvertFrom-Json).version
+}
+if ($version -isnot [string] -or $version -cnotmatch '^(0|[1-9][0-9]*)\.[0-9]\.(0|[1-9][0-9]*)(b)?$') {
+    throw "version.json must contain version major.minor.patch with minor 0-9 and optional beta suffix b."
+}
+$channel = if ($version.EndsWith('b')) { 'beta' } else { 'release' }
+$dotnet = if (Test-Path (Join-Path $projectRoot ".dotnet\dotnet.exe")) { Join-Path $projectRoot ".dotnet\dotnet.exe" } else { "dotnet" }
+$env:DOTNET_CLI_HOME = Join-Path $projectRoot ".dotnet-home"
+$env:DOTNET_CLI_TELEMETRY_OPTOUT = "1"
+$env:NUGET_PACKAGES = Join-Path $projectRoot ".nuget\packages"
 $installersDir = Join-Path $projectRoot "dist\installers"
 $stagingRoot = Join-Path $installersDir "_staging"
 
@@ -26,6 +38,36 @@ function Ensure-NativeDlls {
         } else {
             throw "Missing $dll. Place tunnel.dll and wireguard.dll in src\Kiberone.VpnAgent\native\"
         }
+    }
+}
+
+function Reset-TutorPublishDirectory {
+    param([ValidateSet('Tutor-win-x64', 'Tutor-update-win-x64')] [string] $Name)
+    $workspace = [System.IO.Path]::GetFullPath($projectRoot).TrimEnd('\', '/')
+    $target = [System.IO.Path]::GetFullPath((Join-Path $workspace "dist\$Name"))
+    $expected = Join-Path $workspace "dist\$Name"
+    if ($target -ne $expected -or -not $target.StartsWith($workspace + '\', [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Unsafe publish cleanup target: $target"
+    }
+    foreach ($ancestor in @($workspace, (Join-Path $workspace 'dist'), $target)) {
+        if (Test-Path -LiteralPath $ancestor) {
+            $item = Get-Item -LiteralPath $ancestor -Force
+            if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+                throw "Publish cleanup requires ordinary workspace directories: $ancestor"
+            }
+        }
+    }
+    if (Test-Path -LiteralPath $target) {
+        # Inspect each directory before descending; never traverse a junction for cleanup.
+        $pending = New-Object 'System.Collections.Generic.Stack[string]'
+        $pending.Push($target)
+        while ($pending.Count -gt 0) {
+            foreach ($item in Get-ChildItem -LiteralPath $pending.Pop() -Force) {
+                if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Publish cleanup refuses links: $($item.FullName)" }
+                if ($item.PSIsContainer) { $pending.Push($item.FullName) }
+            }
+        }
+        Remove-Item -LiteralPath $target -Recurse -Force
     }
 }
 
@@ -166,15 +208,16 @@ function Compile-InnoInstallers {
     return $true
 }
 
-function Update-StudentManifest {
-    param([string] $StudentExe)
-    $updatesDir = Join-Path $projectRoot "updates"
+function Update-AppManifest {
+    param([string] $AppExe, [ValidateSet('student', 'tutor')] [string] $App)
+    $updatesDir = Join-Path $projectRoot "updates\$channel"
     New-Item -ItemType Directory -Force -Path $updatesDir | Out-Null
-    $dest = Join-Path $updatesDir "KIBERoneStudent.exe"
-    Copy-Item $StudentExe $dest -Force
+    $product = if ($App -eq 'student') { 'Student' } else { 'Tutor' }
+    $dest = Join-Path $updatesDir "KIBERone$product.exe"
+    Copy-Item -LiteralPath $AppExe -Destination $dest -Force
     & $dotnet run --project (Join-Path $projectRoot "tools\Kiberone.UpdateSigner\Kiberone.UpdateSigner.csproj") `
-        -c Release -- $dest $version (Join-Path $updatesDir "student_manifest.json")
-    if ($LASTEXITCODE -ne 0) { throw "Signing Student update failed." }
+        -c Release "-p:KiberoneVersion=$version" -- $dest $version (Join-Path $updatesDir "${App}_manifest.json") $App
+    if ($LASTEXITCODE -ne 0) { throw "Signing $product update failed." }
 }
 
 Write-Host "=== KIBERone release build v$version ===" -ForegroundColor Cyan
@@ -183,18 +226,28 @@ Ensure-NativeDlls -Root $projectRoot
 Get-Process -Name "Kiberone.Student", "Kiberone.Tutor" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 2
 
-& (Join-Path $projectRoot "scripts\publish-student.ps1")
+$studentPublish = Join-Path $projectRoot "dist\Student-win-x64"
+$tutorPublish = Join-Path $projectRoot "dist\Tutor-win-x64"
+& $dotnet publish (Join-Path $projectRoot "src\Kiberone.Student\Kiberone.Student.csproj") `
+    -c Release -r win-x64 --self-contained true -o $studentPublish `
+    -p:PublishSingleFile=false "-p:KiberoneVersion=$version"
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+New-Item -ItemType Directory -Force -Path (Join-Path $studentPublish "native"), (Join-Path $studentPublish "service") | Out-Null
+foreach ($dll in @("tunnel.dll", "wireguard.dll")) {
+    $source = Join-Path $projectRoot "src\Kiberone.VpnAgent\native\$dll"
+    Copy-Item -LiteralPath $source -Destination (Join-Path $studentPublish "native\$dll") -Force
+    Copy-Item -LiteralPath $source -Destination (Join-Path $studentPublish $dll) -Force
+}
+Copy-Item -LiteralPath (Join-Path $projectRoot "scripts\install-student-vpn-service.ps1") -Destination (Join-Path $studentPublish "service") -Force
 
 # Single-file artifact for Tutor→Student update channel (must replace one exe; folder publish apphost is ~150KB and useless).
 $studentUpdateOut = Join-Path $projectRoot "dist\Student-update-win-x64"
 Write-Host "Publishing single-file Student update package to $studentUpdateOut ..."
-$dotnet = if (Test-Path (Join-Path $projectRoot ".dotnet\dotnet.exe")) { Join-Path $projectRoot ".dotnet\dotnet.exe" } else { "dotnet" }
 & $dotnet publish (Join-Path $projectRoot "src\Kiberone.Student\Kiberone.Student.csproj") `
     -c Release -r win-x64 --self-contained true `
     -o $studentUpdateOut `
     -p:PublishSingleFile=true `
-    -p:IncludeNativeLibrariesForSelfExtract=true
+    -p:IncludeNativeLibrariesForSelfExtract=true "-p:KiberoneVersion=$version"
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $nativeSrc = Join-Path $projectRoot "src\Kiberone.VpnAgent\native"
 foreach ($dll in @("tunnel.dll", "wireguard.dll")) {
@@ -202,7 +255,24 @@ foreach ($dll in @("tunnel.dll", "wireguard.dll")) {
     if (Test-Path $src) { Copy-Item $src (Join-Path $studentUpdateOut $dll) -Force }
 }
 
-& (Join-Path $projectRoot "scripts\publish-tutor.ps1")
+Reset-TutorPublishDirectory -Name 'Tutor-win-x64'
+& $dotnet publish (Join-Path $projectRoot "src\Kiberone.Tutor\Kiberone.Tutor.csproj") `
+    -c Release -r win-x64 --self-contained true -o $tutorPublish `
+    -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true "-p:KiberoneVersion=$version"
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+if (-not (Test-Path -LiteralPath (Join-Path $tutorPublish 'Kiberone.Tutor.exe')) -or
+    (Test-Path -LiteralPath (Join-Path $tutorPublish 'Kiberone.Tutor.dll'))) {
+    throw 'Tutor installer publish must contain a standalone EXE without Kiberone.Tutor.dll.'
+}
+
+# A folder-publish apphost cannot be used as a one-file Tutor update.
+$tutorUpdateOut = Join-Path $projectRoot "dist\Tutor-update-win-x64"
+Reset-TutorPublishDirectory -Name 'Tutor-update-win-x64'
+& $dotnet publish (Join-Path $projectRoot "src\Kiberone.Tutor\Kiberone.Tutor.csproj") `
+    -c Release -r win-x64 --self-contained true `
+    -o $tutorUpdateOut `
+    -p:PublishSingleFile=true `
+    -p:IncludeNativeLibrariesForSelfExtract=true "-p:KiberoneVersion=$version"
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $studentPublish = Join-Path $projectRoot "dist\Student-win-x64"
@@ -228,14 +298,18 @@ if (-not $usedInno) {
 
 $studentUpdateExe = Join-Path $studentUpdateOut "Kiberone.Student.exe"
 Copy-Item $studentUpdateExe (Join-Path $projectRoot "KIBERoneStudent.exe") -Force
-Copy-Item (Join-Path $tutorPublish "Kiberone.Tutor.exe") (Join-Path $projectRoot "KIBERoneTutor.exe") -Force
-Update-StudentManifest -StudentExe $studentUpdateExe
+$tutorUpdateExe = Join-Path $tutorUpdateOut "Kiberone.Tutor.exe"
+Copy-Item $tutorUpdateExe (Join-Path $projectRoot "KIBERoneTutor.exe") -Force
+Update-AppManifest -AppExe $studentUpdateExe -App student
+Update-AppManifest -AppExe $tutorUpdateExe -App tutor
 
 # Tutor serves updates from BaseDirectory\updates — keep a copy next to the Tutor publish.
-$tutorUpdates = Join-Path $tutorPublish "updates"
+$tutorUpdates = Join-Path $tutorPublish "updates\$channel"
 New-Item -ItemType Directory -Force -Path $tutorUpdates | Out-Null
-Copy-Item (Join-Path $projectRoot "updates\KIBERoneStudent.exe") (Join-Path $tutorUpdates "KIBERoneStudent.exe") -Force
-Copy-Item (Join-Path $projectRoot "updates\student_manifest.json") (Join-Path $tutorUpdates "student_manifest.json") -Force
+foreach ($app in @('Student', 'Tutor')) {
+    Copy-Item (Join-Path $projectRoot "updates\$channel\KIBERone$app.exe") $tutorUpdates -Force
+    Copy-Item (Join-Path $projectRoot "updates\$channel\$($app.ToLowerInvariant())_manifest.json") $tutorUpdates -Force
+}
 
 if (Test-Path $stagingRoot) { Remove-Item $stagingRoot -Recurse -Force }
 

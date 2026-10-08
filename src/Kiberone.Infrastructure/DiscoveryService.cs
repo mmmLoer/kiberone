@@ -41,7 +41,7 @@ public static class DiscoveryProtocol
 public sealed class DiscoveryAnnouncer(
     ClassroomServerOptions options,
     string serverId,
-    string version = BuildInfo.Version) : IAsyncDisposable
+    string? version = null) : IAsyncDisposable
 {
     private CancellationTokenSource? lifetime;
     private UdpClient? listener;
@@ -145,7 +145,7 @@ public sealed class DiscoveryAnnouncer(
         (preferredHost ?? LocalAddressResolver.GetPreferredIpv4Address(peer)).ToString(),
         options.Port,
         serverId,
-        version);
+        version ?? BuildInfo.Version);
 
     private static UdpClient CreateBoundClient(int port)
     {

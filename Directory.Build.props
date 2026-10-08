@@ -5,8 +5,12 @@
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild>false</ContinuousIntegrationBuild>
     <InvariantGlobalization>false</InvariantGlobalization>
-    <Version>0.8.0</Version>
+    <KiberoneVersion Condition="'$(KiberoneVersion)' == ''">$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)version.json')), '[0-9]+\.[0-9]+\.[0-9]+b?').Value)</KiberoneVersion>
+    <Version>$([System.String]::Copy('$(KiberoneVersion)').TrimEnd('b'))</Version>
     <Company>KIBERone</Company>
     <Product>KIBERone Classroom</Product>
   </PropertyGroup>
+  <ItemGroup>
+    <AssemblyMetadata Include="KiberoneVersion" Value="$(KiberoneVersion)" />
+  </ItemGroup>
 </Project>

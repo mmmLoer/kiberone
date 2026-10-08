@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using Kiberone.Core;
 
 namespace Kiberone.Infrastructure;
@@ -77,6 +77,22 @@ public sealed class ClientRegistry(TimeProvider? timeProvider = null)
     public IReadOnlyList<string> GetKnownClientIds() => clients.Keys.Order(StringComparer.OrdinalIgnoreCase).ToList();
 
     public bool Contains(string clientId) => clients.ContainsKey(clientId);
+
+    public bool Touch(string clientId)
+    {
+        while (clients.TryGetValue(clientId, out var previous))
+        {
+            var now = clock.GetUtcNow();
+            if (!clients.TryUpdate(clientId, new ClientState(previous.Request, previous.FirstSeenAt, now), previous)) continue;
+            if (now - previous.LastSeenAt >= OnlineWindow)
+                presenceEvents.Enqueue(new ClientPresenceEvent(clientId, previous.Request.PcNumber,
+                    previous.Request.Hostname, previous.Request.StudentId, Online: true));
+            lastKnownOnline[clientId] = true;
+            return true;
+        }
+        return false;
+    }
+
 
     public IReadOnlyList<ClientPresenceEvent> DrainPresenceEvents()
     {

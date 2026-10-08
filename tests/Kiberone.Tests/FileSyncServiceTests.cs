@@ -20,6 +20,39 @@ public sealed class FileSyncServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GitRestoreInvalidatesOldUploadPlanSoItCannotOverwriteRestoredFiles()
+    {
+        await PrepareSafe("pc-git-race","main.txt",SyncChangeKind.Created);
+        await Upload("pc-git-race","main.txt","initial"); await service.CompleteAsync("pc-git-race");
+        var first=(await service.GetGitHistoryAsync("pc-git-race")).First();
+        await PrepareSafe("pc-git-race","main.txt",SyncChangeKind.Modified);
+        await service.ChangeGitProjectAsync("pc-git-race","restore",first.Sha);
+        await Assert.ThrowsAsync<InvalidOperationException>(()=>Upload("pc-git-race","main.txt","late upload"));
+        await Assert.ThrowsAsync<InvalidOperationException>(()=>service.CompleteAsync("pc-git-race"));
+        Assert.Equal("initial",File.ReadAllText(Path.Combine(service.GetClientFolderPath("pc-git-race"),"main.txt")));
+        var next=await service.PrepareAsync(new SyncPrepareRequest("pc-git-race",[],false,false,5));
+        Assert.Contains("main.txt",next.DownloadPaths??[]);
+    }
+
+    [Fact]
+    public async Task GitSwitchAndRestoreSendDownloadsAndDeletionsToStudent()
+    {
+        await PrepareSafe("pc-git","main.txt",SyncChangeKind.Created);
+        await Upload("pc-git","main.txt","initial"); await service.CompleteAsync("pc-git");
+        var initial=(await service.GetGitHistoryAsync("pc-git")).First();
+        await service.CreateGitBranchAsync("pc-git","experiment");
+        await service.ChangeGitProjectAsync("pc-git","checkout","experiment");
+        var root=service.GetClientFolderPath("pc-git"); File.WriteAllText(Path.Combine(root,"new.txt"),"experiment");
+        File.WriteAllText(Path.Combine(root,"main.txt"),"modified");
+        await service.ChangeGitProjectAsync("pc-git","checkout","main");
+        Assert.False(File.Exists(Path.Combine(root,"new.txt"))); Assert.Equal("initial",File.ReadAllText(Path.Combine(root,"main.txt")));
+        var plan=await service.PrepareAsync(new SyncPrepareRequest("pc-git",[],false,false,5));
+        Assert.Contains("main.txt",plan.DownloadPaths??[]); Assert.Contains("new.txt",plan.DeleteLocalPaths??[]);
+        await service.ChangeGitProjectAsync("pc-git","restore",initial.Sha);
+        Assert.Equal("initial",File.ReadAllText(Path.Combine(root,"main.txt")));
+    }
+
+    [Fact]
     public async Task CreateAndEdit_DoNotRequireTutorApproval()
     {
         var created = await service.PrepareAsync(new SyncPrepareRequest(
@@ -129,7 +162,9 @@ public sealed class FileSyncServiceTests : IAsyncLifetime
         await Upload("project", "main.cs", "v1");
         await service.CompleteAsync("project");
         var first = Assert.Single(await service.ListProjectSnapshotsAsync("project"));
-        await PrepareSafe("project", "other.txt", SyncChangeKind.Created);
+        await service.PrepareAsync(new SyncPrepareRequest("project",
+            [new SyncChange("main.cs", SyncChangeKind.Modified, 2), new SyncChange("other.txt", SyncChangeKind.Created, 3)],
+            false, false, 5));
         await Upload("project", "main.cs", "v2");
         await Upload("project", "other.txt", "new");
         await service.CompleteAsync("project");
@@ -156,11 +191,15 @@ public sealed class FileSyncServiceTests : IAsyncLifetime
     [Fact]
     public async Task ConsecutiveFileRestores_KeepBothDownloadCommands()
     {
-        await PrepareSafe("multi-restore", "a.txt", SyncChangeKind.Created);
+        await service.PrepareAsync(new SyncPrepareRequest("multi-restore",
+            [new SyncChange("a.txt", SyncChangeKind.Created, 5), new SyncChange("b.txt", SyncChangeKind.Created, 5)],
+            false, false, 5));
         await Upload("multi-restore", "a.txt", "first");
         await Upload("multi-restore", "b.txt", "first");
         await service.CompleteAsync("multi-restore");
-        await PrepareSafe("multi-restore", "a.txt", SyncChangeKind.Modified);
+        await service.PrepareAsync(new SyncPrepareRequest("multi-restore",
+            [new SyncChange("a.txt", SyncChangeKind.Modified, 6), new SyncChange("b.txt", SyncChangeKind.Modified, 6)],
+            false, false, 5));
         await Upload("multi-restore", "a.txt", "second");
         await Upload("multi-restore", "b.txt", "second");
         await service.CompleteAsync("multi-restore");
@@ -360,6 +399,6 @@ public sealed class FileSyncServiceTests : IAsyncLifetime
     {
         await Task.Yield();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        if (Directory.Exists(testRoot)) Directory.Delete(testRoot, true);
+        if (Directory.Exists(testRoot)) { foreach (var path in Directory.EnumerateFiles(testRoot, "*", SearchOption.AllDirectories)) File.SetAttributes(path, FileAttributes.Normal); Directory.Delete(testRoot, true); }
     }
 }

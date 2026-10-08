@@ -1,0 +1,39 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kiberone.Student.ViewModels"
+             x:Class="Kiberone.Student.Views.ApplicationsView"
+             x:DataType="vm:MainViewModel">
+<ScrollViewer>
+          <StackPanel Margin="24" Spacing="20">
+            <Border Classes="card">
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Spacing="8" Margin="0,0,16,0">
+                  <TextBlock Text="Приложения для занятия" Classes="h1"/>
+                  <TextBlock Text="{Binding AppsStatus}" Classes="muted" TextWrapping="Wrap"/>
+                </StackPanel>
+                <Button Grid.Column="1" Content="Обновить" Command="{Binding RefreshInstalledAppsCommand}" Classes="ghost" VerticalAlignment="Center"/>
+              </Grid>
+            </Border>
+            <ProgressBar IsVisible="{Binding AppsBusy}" IsIndeterminate="True" Height="4"/>
+
+            <ItemsControl ItemsSource="{Binding AllowedApplications}">
+              <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:StudentAppCard">
+                  <Border Classes="softCard" Width="168" Margin="0,0,12,12" Padding="16" ToolTip.Tip="{Binding Name}">
+                    <StackPanel Spacing="12">
+                      <Border Background="White" BorderBrush="#E1E7EA" BorderThickness="1" CornerRadius="14" Width="64" Height="64" HorizontalAlignment="Center">
+                        <Grid>
+                          <Image Source="{Binding Icon}" IsVisible="{Binding HasIcon}" Width="40" Height="40" Stretch="Uniform"/>
+                          <TextBlock Text="{Binding Initial}" IsVisible="{Binding HasNoIcon}" FontSize="26" FontWeight="SemiBold" Foreground="#056D69" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Grid>
+                      </Border>
+                      <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxLines="2" Height="40"/>
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </ScrollViewer>
+</UserControl>

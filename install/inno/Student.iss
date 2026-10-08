@@ -1,6 +1,6 @@
 ; KIBERone Student — requires Administrator (VPN Windows service).
 #ifndef MyAppVersion
-  #define MyAppVersion "0.10.41"
+  #error MyAppVersion is required; run scripts/build-installers.ps1 (reads version.json)
 #endif
 #ifndef DistRoot
   #define DistRoot "..\..\dist"

@@ -1,7 +1,7 @@
 ; KIBERone combined setup — always elevates (Student VPN needs admin).
 ; Wizard: choose Student / Tutor / both.
 #ifndef MyAppVersion
-  #define MyAppVersion "0.10.38"
+  #error MyAppVersion is required; run scripts/build-installers.ps1 (reads version.json)
 #endif
 #ifndef DistRoot
   #define DistRoot "..\..\dist"

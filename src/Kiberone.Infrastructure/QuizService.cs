@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kiberone.Infrastructure;
 
-public sealed class QuizService(DbContextOptions<ClassroomDbContext> options, ClientRegistry clients, ReliableCommandQueue commands)
+public sealed partial class QuizService(DbContextOptions<ClassroomDbContext> options, ClientRegistry clients, ReliableCommandQueue commands)
 {
     public async Task<QuizSession> StartAsync(StartQuizRequest request, CancellationToken ct = default)
     {
@@ -56,14 +56,17 @@ public sealed class QuizService(DbContextOptions<ClassroomDbContext> options, Cl
             xp_reward = request.XpReward,
             time_limit_seconds = request.TimeLimitSeconds,
             show_feedback = request.ShowFeedback,
+            question_number = request.QuestionNumber,
+            question_count = request.QuestionCount,
             allow_multiple = session.IsMultiple
         });
-        commands.Enqueue(new EnqueueCommandRequest(request.ClientIds, ClassroomCommandKinds.QuizStart, payload, 600));
+        commands.Enqueue(new EnqueueCommandRequest(request.ClientIds, ClassroomCommandKinds.QuizStart, payload, Math.Clamp(request.TimeLimitSeconds ?? 600, 10, 600)));
         return session;
     }
 
     public async Task<QuizResult> SubmitAsync(SubmitQuizAnswerRequest request, CancellationToken ct = default)
     {
+        ValidateSequenceAnswer(request);
         await using var db = new ClassroomDbContext(options);
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var existing = await db.QuizAnswers.SingleOrDefaultAsync(x => x.SessionId == request.SessionId && x.ClientId == request.ClientId, ct);

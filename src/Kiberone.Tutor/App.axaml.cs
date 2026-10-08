@@ -60,6 +60,7 @@ public partial class App : Application
             {
                 DataContext = viewModel,
             };
+            viewModel.TutorUpdateRestartRequested = ShutdownServicesAndExit;
             viewModel.VpnConfigsFolderPicker = () => mainWindow.PickVpnConfigsFolderAsync();
             viewModel.StudentSavesFolderPicker = () => mainWindow.PickStudentSavesFolderAsync();
             viewModel.QuizExportPathPicker = () => mainWindow.PickQuizExportPathAsync();

@@ -1,0 +1,26 @@
+[Unit]
+Description=KIBERone pull beta and publish win-x64 Student and Tutor beta updates to Hub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/kiberone
+Environment=DOTNET_ROOT=/usr/share/dotnet
+Environment=PATH=/usr/share/dotnet:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
+Environment=KIBERONE_HUB_DATA=/var/lib/kiberone-hub
+Environment=KIBERONE_GIT_BRANCH=beta
+# Match the main service's default state directory: one lock protects the shared checkout.
+Environment=KIBERONE_RELEASE_STATE_DIR=/var/lib/kiberone-hub/release-state
+# Deliberately no KIBERONE_VERSION override: beta/version.json must end in b.
+Environment=KIBERONE_SKIP_BUILD_IF_UNCHANGED=1
+Environment=KIBERONE_ALLOW_MISSING_TUNNEL=1
+Environment=KIBERONE_NATIVE_CACHE=/var/lib/kiberone-hub/native-cache
+Environment=EnableWindowsTargeting=true
+Environment=DOTNET_CLI_TELEMETRY_OPTOUT=1
+ExecStart=/opt/kiberone/scripts/ci-pull-and-release.sh
+TimeoutStartSec=0
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

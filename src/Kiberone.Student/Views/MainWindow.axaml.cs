@@ -1,4 +1,4 @@
-using Avalonia.Controls;
+﻿using Avalonia.Controls;
 using Avalonia.Input;
 using Kiberone.Student.ViewModels;
 
@@ -15,7 +15,8 @@ public partial class MainWindow : Window
 
     private void OnClosing(object? sender, WindowClosingEventArgs eventArgs)
     {
-        if (DataContext is MainViewModel viewModel && viewModel.IsScreenLocked)
+        if (eventArgs.CloseReason is WindowCloseReason.ApplicationShutdown or WindowCloseReason.OSShutdown) return;
+        if (DataContext is MainViewModel viewModel && (viewModel.IsScreenLocked || viewModel.IsExitBlocked))
             eventArgs.Cancel = true;
     }
 

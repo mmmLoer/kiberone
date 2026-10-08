@@ -23,7 +23,7 @@ public partial class MainViewModel
     public Func<CancellationToken, Task<StudentMailAccount>>? MailAccountRequested { get; set; }
     public Func<string, Task>? CopyTextRequested { get; set; }
     public Func<IReadOnlyList<InstalledApplication>>? InstalledAppsRequested { get; set; }
-    [ObservableProperty] private string accessStatus = "Каталог приложений отправляется тьютору после подключения.";
+    [ObservableProperty] private string accessStatus = "Тьютор выберет приложения для твоей группы.";
     [ObservableProperty] private string mailAddress = "Почта пока не выдана";
     [ObservableProperty] private string mailStatus = "Подключись к тьютору и обнови входящие.";
     [ObservableProperty] private bool mailBusy;
@@ -32,7 +32,6 @@ public partial class MainViewModel
     [ObservableProperty] private string newMailServiceUrl = "";
     public ObservableCollection<MailMessageCard> MailMessages { get; } = [];
     public ObservableCollection<MailServiceCard> MailServices { get; } = [];
-    public ObservableCollection<StudentAppCard> InstalledApps { get; } = [];
     public bool IsMailSection => SelectedSectionIndex == 9;
     public bool IsAppsSection => SelectedSectionIndex == 8;
     public bool IsInboxVisible => SelectedMailMessage is null;
@@ -144,16 +143,6 @@ public partial class MainViewModel
         }
         catch { MailStatus = "Не удалось прочитать сохранённые сервисы."; }
     }
-    [RelayCommand] private async Task RefreshInstalledAppsAsync()
-    {
-        if (InstalledAppsRequested is null) return;
-        try
-        {
-            var apps = await Task.Run(InstalledAppsRequested);
-            InstalledApps.Clear(); foreach (var app in apps) InstalledApps.Add(new StudentAppCard(app));
-        }
-        catch (Exception error) { AccessStatus = "Не удалось прочитать приложения: " + error.Message; }
-    }
 }
 public sealed class MailMessageCard(StudentMailMessage message)
 {
@@ -177,9 +166,4 @@ public sealed class MailServiceCard(StudentMailService service)
     public string Name => service.Name;
     public string Url => service.Url;
     public string Initial => string.IsNullOrEmpty(Name) ? "↗" : Name[..1].ToUpperInvariant();
-}
-public sealed class StudentAppCard(InstalledApplication application)
-{
-    public string Name => application.Name;
-    public string Executable => application.Executable;
 }

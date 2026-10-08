@@ -1,0 +1,13 @@
+[Unit]
+Description=Run KIBERone beta release builder every 15 minutes
+
+[Timer]
+# Offset from the main timer; the shared lock still prevents overlapping checkout/builds.
+OnBootSec=4min
+OnUnitActiveSec=15min
+AccuracySec=1min
+Persistent=true
+Unit=kiberone-release-beta.service
+
+[Install]
+WantedBy=timers.target

@@ -37,10 +37,11 @@ public static class GithubPushReleaseHook
             var root = document.RootElement;
             var branchRef = root.TryGetProperty("ref", out var refProperty) ? refProperty.GetString() : null;
             var expectedBranch = Environment.GetEnvironmentVariable("KIBERONE_GIT_BRANCH") ?? "main";
-            if (!string.Equals(branchRef, $"refs/heads/{expectedBranch}", StringComparison.Ordinal))
-                return Results.Ok(new { ok = true, skipped = true, reason = $"ref:{branchRef}" });
+            var unit = SelectReleaseUnit(branchRef, expectedBranch,
+                Environment.GetEnvironmentVariable("KIBERONE_RELEASE_UNIT") ?? "kiberone-release.service",
+                Environment.GetEnvironmentVariable("KIBERONE_BETA_RELEASE_UNIT"));
+            if (unit is null) return Results.Ok(new { ok = true, skipped = true, reason = $"ref:{branchRef}" });
 
-            var unit = Environment.GetEnvironmentVariable("KIBERONE_RELEASE_UNIT") ?? "kiberone-release.service";
             try
             {
                 StartReleaseUnit(unit);
@@ -54,6 +55,10 @@ public static class GithubPushReleaseHook
             return Results.Ok(new { ok = true, started = unit, commit = after });
         });
     }
+
+    public static string? SelectReleaseUnit(string? branchRef, string releaseBranch, string releaseUnit, string? betaUnit) =>
+        branchRef == "refs/heads/beta" && !string.IsNullOrWhiteSpace(betaUnit) ? betaUnit
+        : branchRef == $"refs/heads/{releaseBranch}" ? releaseUnit : null;
 
     private static bool VerifySignature(string secret, string payload, string header)
     {

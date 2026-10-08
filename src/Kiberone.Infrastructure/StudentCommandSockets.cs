@@ -24,6 +24,8 @@ public sealed class StudentCommandSockets : IAsyncDisposable
         Func<Task>? onChannelOpened = null,
         Func<Task>? onChannelClosed = null)
     {
+        // ClassroomServer authenticates the device and checks the query identity before entry.
+        // Receive frames never select a different client; the session stays bound to clientId.
         using var socket = await context.WebSockets.AcceptWebSocketAsync();
         var session = new Session(socket);
         var id = Guid.NewGuid();
@@ -55,8 +57,7 @@ public sealed class StudentCommandSockets : IAsyncDisposable
         {
             bag.TryRemove(id, out _);
             var closed = bag.IsEmpty;
-            if (closed)
-                sessions.TryRemove(clientId, out _);
+            // Retain the per-client bag: a reconnect may already be adding a new session.
             await session.DisposeAsync();
             if (closed && onChannelClosed is not null)
             {
@@ -72,21 +73,14 @@ public sealed class StudentCommandSockets : IAsyncDisposable
 
     public async Task PushAsync(IReadOnlyList<string> clientIds, ClassroomCommand command)
     {
-        foreach (var clientId in clientIds)
-        {
-            if (!sessions.TryGetValue(clientId, out var bag)) continue;
-            foreach (var session in bag.Values)
+        var deliveries = clientIds.Distinct(StringComparer.OrdinalIgnoreCase)
+            .SelectMany(clientId => sessions.TryGetValue(clientId, out var bag) ? bag.Values.ToArray() : [])
+            .Select(async session =>
             {
-                try
-                {
-                    await session.SendAsync(command, CancellationToken.None);
-                }
-                catch (Exception)
-                {
-                    await session.DisposeAsync();
-                }
-            }
-        }
+                try { await session.SendAsync(command, CancellationToken.None); }
+                catch (Exception) { await session.DisposeAsync(); }
+            });
+        await Task.WhenAll(deliveries);
     }
 
     private static async Task SendPendingAsync(Session session, string clientId, ReliableCommandQueue commands, CancellationToken cancellationToken)
@@ -124,11 +118,13 @@ public sealed class StudentCommandSockets : IAsyncDisposable
         {
             if (socket.State != WebSocketState.Open) return;
             var payload = JsonSerializer.SerializeToUtf8Bytes(command, JsonOptions);
-            await sendLock.WaitAsync(cancellationToken);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(3));
+            await sendLock.WaitAsync(timeout.Token);
             try
             {
                 if (socket.State != WebSocketState.Open) return;
-                await socket.SendAsync(payload, WebSocketMessageType.Text, true, cancellationToken);
+                await socket.SendAsync(payload, WebSocketMessageType.Text, true, timeout.Token);
             }
             finally
             {
@@ -142,13 +138,16 @@ public sealed class StudentCommandSockets : IAsyncDisposable
             try
             {
                 if (socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
-                    await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "bye", CancellationToken.None);
+                    {
+                    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                    await socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "bye", timeout.Token);
+                }
             }
             catch
             {
             }
             socket.Dispose();
-            sendLock.Dispose();
+            // In-flight sends release the semaphore after the socket is disposed.
         }
     }
 }

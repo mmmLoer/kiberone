@@ -18,6 +18,17 @@ if (-not (Test-Path -LiteralPath $serviceScriptSource)) {
 }
 
 Write-Host "Installing KIBERone Student to $InstallDir ..."
+$existingService = Get-Service -Name "KIBERoneStudentVpn" -ErrorAction SilentlyContinue
+if ($null -ne $existingService) {
+    try {
+        if ($existingService.Status -ne [System.ServiceProcess.ServiceControllerStatus]::Stopped) {
+            Stop-Service -InputObject $existingService -ErrorAction Stop
+        }
+        $existingService.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Stopped, [TimeSpan]::FromSeconds(60))
+    } finally {
+        $existingService.Dispose()
+    }
+}
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 Copy-Item -Path (Join-Path $sourceDir "*") -Destination $InstallDir -Recurse -Force
 

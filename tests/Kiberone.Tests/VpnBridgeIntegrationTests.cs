@@ -8,9 +8,8 @@ public sealed class VpnBridgeIntegrationTests
     public void Bridge_ping_when_service_running()
     {
         var client = new VpnBridgeClient();
-        if (!client.IsServiceInstalled || !client.IsServiceRunning)
-            return;
-
+        Assert.True(client.IsServiceInstalled, "VPN bridge is not installed on the test VM.");
+        Assert.True(client.IsServiceRunning, "VPN bridge is not running on the test VM.");
         Assert.True(client.TryPing());
     }
 
@@ -18,24 +17,22 @@ public sealed class VpnBridgeIntegrationTests
     public void Bridge_connect_when_config_present()
     {
         var configPath = VpnOptions.ManagedConfigPath;
-        if (!File.Exists(configPath))
-            return;
+        Assert.True(File.Exists(configPath), "The test VM has no managed VPN configuration.");
 
         var client = new VpnBridgeClient();
-        if (!client.IsServiceInstalled || !client.IsServiceRunning || !client.TryPing())
-            return;
-
+        Assert.True(client.IsServiceInstalled && client.IsServiceRunning && client.TryPing(), "VPN bridge is unavailable.");
+        var initiallyConnected = client.GetStatus(configPath).Connected;
         try
         {
             client.Disconnect(configPath);
+            var status = client.Connect(configPath);
+            Assert.True(status.Connected, status.LastError ?? $"state={status.State}");
         }
-        catch
+        finally
         {
-            // ignore cleanup errors
+            var restored = initiallyConnected ? client.Connect(configPath) : client.Disconnect(configPath);
+            Assert.Equal(initiallyConnected, restored.Connected);
         }
-
-        var status = client.Connect(configPath);
-        Assert.True(status.Connected, status.LastError ?? $"state={status.State}");
     }
 }
 

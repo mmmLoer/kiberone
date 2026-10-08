@@ -8,6 +8,25 @@ namespace Kiberone.Tests;
 public sealed class NetworkCoordinationTests
 {
     [Fact]
+    public void Presence_KeepsLongTransferOnlineWithoutChangingStudent()
+    {
+        var clock = new ManualTimeProvider(DateTimeOffset.UtcNow);
+        var registry = new ClientRegistry(clock);
+        var owner = Guid.NewGuid();
+        registry.Heartbeat(CreateHeartbeat("copying") with { StudentId = owner });
+        for (var i = 0; i < 30; i++)
+        {
+            clock.Advance(TimeSpan.FromSeconds(4));
+            Assert.True(registry.Touch("copying"));
+            Assert.True(registry.GetAll().Single().IsOnline);
+            Assert.Equal(owner, registry.GetAll().Single().StudentId);
+        }
+        Assert.False(registry.Touch("unknown"));
+        clock.Advance(TimeSpan.FromSeconds(16));
+        Assert.False(registry.GetAll().Single().IsOnline);
+    }
+
+    [Fact]
     public void Heartbeat_ChangesOnlineStateAfterFifteenSeconds()
     {
         var clock = new ManualTimeProvider(DateTimeOffset.Parse("2026-08-27T12:00:00Z"));

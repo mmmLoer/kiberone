@@ -1,4 +1,4 @@
-<Window xmlns="https://github.com/avaloniaui"
+﻿<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Kiberone.Student.ViewModels"
         xmlns:views="using:Kiberone.Student.Views"
@@ -129,7 +129,7 @@
           <Button Command="{Binding NavigateCommand}" CommandParameter="8" Classes="nav" Classes.active="{Binding IsAppsSection}" AutomationProperties.HelpText="Приложения компьютера и правила группы">
             <Grid ColumnDefinitions="30,*"><Border Width="26" Height="26" Background="#E9F5F4" CornerRadius="8"><TextBlock Text="▦" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#068F8A" FontSize="14"/></Border><TextBlock Grid.Column="1" Text="Приложения" VerticalAlignment="Center" Margin="10,0,0,0"/></Grid>
           </Button>
-          <Button Command="{Binding NavigateCommand}" CommandParameter="9" Classes="nav" Classes.active="{Binding IsMailSection}" AutomationProperties.HelpText="Почта, письма и сервисы">
+          <Button Command="{Binding NavigateCommand}" CommandParameter="9" Classes="nav" Classes.active="{Binding IsMailSection}" AutomationProperties.HelpText="Твоя почта и письма">
             <Grid ColumnDefinitions="30,*"><Border Width="26" Height="26" Background="#E9F5F4" CornerRadius="8"><TextBlock Text="✉" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#068F8A" FontSize="14"/></Border><TextBlock Grid.Column="1" Text="Почта" VerticalAlignment="Center" Margin="10,0,0,0"/></Grid>
           </Button>
         </StackPanel>
@@ -142,6 +142,7 @@
                        FontWeight="SemiBold"
                        FontSize="12"
                        TextWrapping="Wrap"/>
+            <TextBlock Text="{Binding QuizResultMessage}" TextWrapping="Wrap" Foreground="#056D69"/>
             <TextBlock Text="{Binding UpdateLabel}"
                        Classes="muted"
                        FontSize="11"
@@ -169,10 +170,7 @@
                 <StackPanel Spacing="8">
                   <TextBlock Text="СЕГОДНЯ" Classes="eyebrow"/>
                   <TextBlock Text="{Binding Greeting}" Classes="h1"/>
-                  <TextBlock Text="Начни с короткой разминки или дождись задания тьютора."
-                             Classes="muted"
-                             FontSize="16"
-                             TextWrapping="Wrap"/>
+
                 </StackPanel>
 
                 <Border Classes="softCard">
@@ -233,10 +231,7 @@
                 <StackPanel Spacing="16">
                   <TextBlock Text="Моя цель" Classes="h2"/>
                   <TextBlock Text="Пока нет цели накопления" FontSize="16" FontWeight="SemiBold"/>
-                  <TextBlock Text="Награда появится здесь, когда тьютор её назначит."
-                             Classes="muted"
-                             FontSize="13"
-                             TextWrapping="Wrap"/>
+
                 </StackPanel>
               </Border>
 
@@ -567,12 +562,7 @@
             </Border>
 
             <Grid ColumnDefinitions="*,Auto,*">
-              <Border Grid.Column="1" Classes="softCard" Padding="14,9">
-                <TextBlock Text="ПРОБЕЛ — старт   ·   ESC — пауза   ·   Backspace отключён"
-                           Classes="muted"
-                           FontSize="11"
-                           FontWeight="SemiBold"/>
-              </Border>
+
             </Grid>
           </StackPanel>
         </ScrollViewer>
@@ -592,10 +582,7 @@
               </Border>
               <StackPanel Spacing="5">
                 <TextBlock Text="Урок на паузе" Classes="h1"/>
-                <TextBlock Text="Урок на паузе. Продолжи, когда будешь готов."
-                           Classes="muted"
-                           FontSize="16"
-                           TextWrapping="Wrap"/>
+
               </StackPanel>
               <Grid ColumnDefinitions="*,*,*">
                 <Border Classes="metric" Margin="0,0,6,0">
@@ -641,10 +628,7 @@
             <Border Grid.Column="1" Classes="card">
               <StackPanel Spacing="10">
                 <TextBlock Text="Лидеры занятия" Classes="h2"/>
-                <TextBlock Text="Пока нет рейтинга — список появится, когда тьютор откроет итоги класса."
-                           Classes="muted"
-                           FontSize="13"
-                           TextWrapping="Wrap"/>
+
               </StackPanel>
             </Border>
           </Grid>
@@ -679,9 +663,7 @@
             <Border Classes="card" Padding="22">
               <StackPanel Spacing="8">
                 <TextBlock Text="Пока нет наград" FontWeight="Bold" FontSize="16"/>
-                <TextBlock Text="Каталог целей пока не приходит на этот компьютер. Баланс киберонов — в шапке профиля."
-                           Classes="muted"
-                           TextWrapping="Wrap"/>
+
               </StackPanel>
             </Border>
           </StackPanel>
@@ -700,9 +682,7 @@
                 <Grid ColumnDefinitions="*,Auto">
                   <StackPanel Spacing="5">
                     <TextBlock Text="Подключение к классу" Classes="h1"/>
-                    <TextBlock Text="Программа находит тьютора автоматически."
-                               Classes="muted"
-                               TextWrapping="Wrap"/>
+
                   </StackPanel>
                   <Border Grid.Column="1"
                           Classes="statusPill"
@@ -758,9 +738,7 @@
                 </Border>
                 <StackPanel Grid.Column="1" Spacing="6" Margin="12,0,0,0">
                   <TextBlock Text="Тьютор пока не найден" FontSize="18" FontWeight="SemiBold"/>
-                  <TextBlock Text="Результаты остаются на этом компьютере. После восстановления связи очередь отправится автоматически."
-                             Classes="muted"
-                             TextWrapping="Wrap"/>
+
                 </StackPanel>
               </Grid>
             </Border>
@@ -768,9 +746,7 @@
             <Border Classes="card">
               <StackPanel Spacing="10">
                 <TextBlock Text="Как работает подключение" Classes="h2"/>
-                <TextBlock Text="Программа находит тьютора автоматически. Если подключения нет, обратись к тьютору."
-                           Classes="muted"
-                           TextWrapping="Wrap"/>
+
                 <Border Classes="softCard" Padding="14">
                   <Grid ColumnDefinitions="30,*">
                     <TextBlock Text="✓" Foreground="#068F8A" FontWeight="Bold" VerticalAlignment="Center"/>
@@ -785,7 +761,7 @@
           </StackPanel>
         </ScrollViewer>
       </TabItem>
-      <TabItem Header="Приложения"><ScrollViewer><StackPanel Margin="24" Spacing="20"><Border Classes="card"><StackPanel Spacing="14"><TextBlock Text="Приложения этого компьютера" Classes="h1"/><TextBlock Text="Каталог с иконками отправляется тьютору автоматически. Он выбирает разрешения сразу для всей группы." Classes="muted" TextWrapping="Wrap"/><TextBlock Text="{Binding AccessStatus}" TextWrapping="Wrap"/><Button Content="Обновить каталог" Command="{Binding RefreshInstalledAppsCommand}"/></StackPanel></Border><ItemsControl ItemsSource="{Binding InstalledApps}"><ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:StudentAppCard"><Border Classes="softCard" Margin="0,0,0,8"><StackPanel Spacing="4"><TextBlock Text="{Binding Name}" FontWeight="SemiBold"/></StackPanel></Border></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></StackPanel></ScrollViewer></TabItem>
+      <TabItem Header="Приложения"><views:ApplicationsView/></TabItem>
       <TabItem Header="Моя почта"><views:MailView/></TabItem>
     </TabControl>
 
@@ -889,11 +865,7 @@
                 <TextBlock Text="ONE" Foreground="#FFCF47" FontSize="22" FontWeight="Bold"/>
               </StackPanel>
               <TextBlock Text="Твоё место в классе" Foreground="White" FontSize="22" FontWeight="Bold" TextWrapping="Wrap"/>
-              <TextBlock Text="Выбери себя один раз — прогресс, награды и уроки будут сохраняться автоматически."
-                         Foreground="#D5F0ED"
-                         FontSize="14"
-                         TextWrapping="Wrap"
-                         LineHeight="21"/>
+
               <Border Background="#24FFFFFF" CornerRadius="12" Padding="14" Margin="0,10,0,0">
                 <StackPanel Spacing="5">
                   <TextBlock Text="КЛАСС" Foreground="#BCE5E1" FontSize="11" FontWeight="Bold" LetterSpacing="1"/>
@@ -906,7 +878,7 @@
           <StackPanel Grid.Column="1" Margin="32" Spacing="16" VerticalAlignment="Center">
             <StackPanel Spacing="5">
               <TextBlock Text="Добро пожаловать" Classes="h1"/>
-              <TextBlock Text="Группа уже выбрана для урока. Можно сменить, если пришли на отработку." Classes="muted"/>
+
             </StackPanel>
 
             <Border Background="#F4F8F8" CornerRadius="12" Padding="12,10">

@@ -31,6 +31,54 @@ public sealed class QuizServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task RestartReplaysCurrentQuestionAndKeepsProgress()
+    {
+        var document = new QuizDocument { TimePerQuestionSeconds = 60, Questions = [new QuizDocumentQuestion { Text = "First question?", Options = ["yes", "no"] }, new QuizDocumentQuestion { Text = "Second question?", Options = ["yes", "no"] }] };
+        var run = await service.StartDocumentAsync(document,["pc-quiz"]);
+        await service.SubmitAsync(new SubmitQuizAnswerRequest(run.SessionId,"pc-quiz",0));
+        await service.TickSequencesAsync(); var session = run.SessionId;
+        var recoveredQueue = new ReliableCommandQueue(clients);
+        var recovered = new QuizService(options, clients, recoveredQueue);
+        recovered.EnableSequences();
+        try
+        {
+            await recovered.TickSequencesAsync();
+            Assert.Contains(recoveredQueue.GetPending("pc-quiz"), c => c.Payload.TryGetProperty("session_id",out var id) && id.GetGuid()==session && c.Payload.GetProperty("question_number").GetInt32()==2);
+            await recovered.SubmitAsync(new SubmitQuizAnswerRequest(session,"pc-quiz",0));
+            await recovered.TickSequencesAsync();
+            Assert.Contains(recoveredQueue.GetPending("pc-quiz"),c=>c.Kind==ClassroomCommandKinds.Notification);
+        }
+        finally { await recovered.StopSequencesAsync(); }
+    }
+
+    [Fact]
+    public async Task WholeQuizAdvancesAndFinishesWithoutRepeatingRewards()
+    {
+        var document = new QuizDocument { Questions = [new QuizDocumentQuestion { Text = "First question?", Options = ["yes", "no"] }, new QuizDocumentQuestion { Text = "Second question?", Options = ["yes", "no"] }] };
+        var run = await service.StartDocumentAsync(document, ["pc-quiz"]);
+        var first = run.SessionId;
+        await service.SubmitAsync(new SubmitQuizAnswerRequest(first, "pc-quiz", 0));
+        await service.TickSequencesAsync();
+        Assert.Equal(1, run.Index); Assert.NotEqual(first, run.SessionId);
+        Assert.Contains(commands.GetPending("pc-quiz"), c => c.Kind == ClassroomCommandKinds.QuizStart && c.Payload.GetProperty("question_number").GetInt32() == 2);
+        await service.SubmitAsync(new SubmitQuizAnswerRequest(run.SessionId, "pc-quiz", 0));
+        await service.TickSequencesAsync();
+        Assert.Contains(commands.GetPending("pc-quiz"), c => c.Kind == ClassroomCommandKinds.Notification && c.Payload.GetProperty("quiz_finished").GetBoolean());
+        await using var db = new ClassroomDbContext(options);
+        Assert.Equal(20, await db.Students.Where(x => x.Id == studentId).Select(x => x.Xp).SingleAsync());
+        Assert.False(await db.QuizSessions.AnyAsync(x => x.IsActive));
+    }
+    [Fact]
+    public async Task TimeoutAdvancesAndRejectsLateAnswer()
+    {
+        var document = new QuizDocument { Questions = [new QuizDocumentQuestion { Text = "First question?", Options = ["yes", "no"] }, new QuizDocumentQuestion { Text = "Second question?", Options = ["yes", "no"] }] };
+        var run = await service.StartDocumentAsync(document, ["pc-quiz"]);
+        run.Deadline = DateTimeOffset.UtcNow.AddSeconds(-1);
+        await Assert.ThrowsAsync<LessonValidationException>(() => service.SubmitAsync(new SubmitQuizAnswerRequest(run.SessionId,"pc-quiz",0)));
+        await service.TickSequencesAsync(); Assert.Equal(1,run.Index);
+    }
+
+    [Fact]
     public async Task CorrectAnswer_IsPersistedAndAwardsXpOnce()
     {
         var quiz = await service.StartAsync(new StartQuizRequest("Сколько будет 2 + 2?", ["3", "4", "5"], 1, 15, ["pc-quiz"]));

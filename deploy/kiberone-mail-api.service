@@ -29,7 +29,7 @@ ProtectControlGroups=true
 RestrictSUIDSGID=true
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER
-ReadWritePaths=/var/lib/kiberone-mail-api /var/lib/kiberone-hub/mail-accounts /var/lib/kiberone-hub/rosters /var/mail/nshub /etc/postfix /run/kiberone-mail-api
+ReadWritePaths=/var/lib/kiberone-mail-api /var/lib/kiberone-hub/mail-accounts /var/lib/kiberone-hub/rosters /var/lib/kiberone-hub/learning /var/mail/nshub /etc/postfix /run/kiberone-mail-api
 Restart=on-failure
 RestartSec=3
 

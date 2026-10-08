@@ -1,4 +1,4 @@
-﻿using Avalonia;
+using Avalonia;
 using System;
 using System.IO;
 using System.Threading;
@@ -16,6 +16,7 @@ sealed class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        if (Kiberone.Infrastructure.AppUpdateInstaller.TryRunHelper(args)) return;
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
         {
             if (e.ExceptionObject is Exception error)

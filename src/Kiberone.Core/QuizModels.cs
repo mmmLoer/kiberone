@@ -35,7 +35,7 @@ public sealed record StartQuizRequest(
     int? TimeLimitSeconds = null,
     bool ShuffleAnswers = false,
     bool ShowFeedback = true,
-    IReadOnlyList<int>? CorrectIndices = null);
+    IReadOnlyList<int>? CorrectIndices = null, int QuestionNumber = 1, int QuestionCount = 1);
 
 public sealed record SubmitQuizAnswerRequest(
     Guid SessionId,
@@ -60,6 +60,8 @@ public static class QuizAnswerSet
 
 public sealed class QuizDocument
 {
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public int SharedRevision { get; set; }
     public string Format { get; set; } = "kiberone-quiz";
     public int Version { get; set; } = 1;
     public string Title { get; set; } = "Новая викторина";

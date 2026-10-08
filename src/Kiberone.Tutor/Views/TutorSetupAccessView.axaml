@@ -1,0 +1,35 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:vm="using:Kiberone.Tutor.ViewModels" x:Class="Kiberone.Tutor.Views.TutorSetupAccessView" x:DataType="vm:MainViewModel">
+ <StackPanel Spacing="16">
+  <TextBlock Text="Приложения и сайты" Classes="h1"/>
+  <Grid ColumnDefinitions="*,Auto">
+   <TextBox Text="{Binding SetupSearch}" Watermark="Поиск приложения"/>
+   <Button Grid.Column="1" Content="Обновить" Command="{Binding RefreshSetupApplicationsCommand}" Margin="12,0,0,0" IsEnabled="{Binding !IsBusy}"/>
+  </Grid>
+  <ProgressBar IsIndeterminate="True" IsVisible="{Binding SetupApplicationsBusy}"/>
+  <ScrollViewer MaxHeight="220">
+   <ItemsControl ItemsSource="{Binding SetupApplications}">
+    <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:AccessApplicationCard">
+     <CheckBox Content="{Binding Name}" IsChecked="{Binding IsAllowed}" IsVisible="{Binding IsVisible}" Margin="0,4"/>
+    </DataTemplate></ItemsControl.ItemTemplate>
+   </ItemsControl>
+  </ScrollViewer>
+  <CheckBox Content="Только выбранные приложения" IsChecked="{Binding SetupOnlyAllowedApps}"/>
+  <Separator/>
+  <Grid ColumnDefinitions="*,Auto">
+   <TextBox Text="{Binding SetupSite}" Watermark="Сайт, например figma.com"/>
+   <Button Grid.Column="1" Content="Добавить" Command="{Binding AddSetupSiteCommand}" Margin="12,0,0,0"/>
+  </Grid>
+  <ScrollViewer MaxHeight="120"><ItemsControl ItemsSource="{Binding SetupSites}">
+   <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:AccessSiteCard">
+    <Grid ColumnDefinitions="*,Auto" Margin="0,4">
+     <TextBlock Text="{Binding Address}" VerticalAlignment="Center"/>
+     <Button Grid.Column="1" Content="Удалить" Click="OnRemoveSite" Classes="ghost"/>
+    </Grid>
+   </DataTemplate></ItemsControl.ItemTemplate>
+  </ItemsControl></ScrollViewer>
+  <CheckBox Content="Только сайты из списка" IsChecked="{Binding SetupOnlyAllowedSites}"/>
+  <TextBlock Text="{Binding SetupError}" TextWrapping="Wrap"/>
+  <Button Content="Завершить настройку" Command="{Binding FinishTutorSetupCommand}" Classes="primary" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsBusy}"/>
+ </StackPanel>
+</UserControl>

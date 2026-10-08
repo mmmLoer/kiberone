@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kiberone.Core;
@@ -89,6 +89,8 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private int currentStudentXp;
     [ObservableProperty] private int selectedSectionIndex;
     private Guid? quizSessionId;
+    private bool showQuizFeedback = true;
+    [ObservableProperty] private string quizResultMessage = string.Empty;
     private bool applyingLoginGroups;
     private bool loginGroupChosenByUser;
     private string? lastPreferredGroup;
@@ -96,6 +98,7 @@ public partial class MainViewModel : ViewModelBase
     public Action? RetryRequested { get; set; }
     public Action<IReadOnlyList<string>, IReadOnlyList<string>>? FocusEnabled { get; set; }
     public Action? FocusDisabled { get; set; }
+    public bool IsExitBlocked { get; set; }
     public Action? WatchdogEnabled { get; set; }
     public Action? WatchdogDisabled { get; set; }
     public Action<Guid, IReadOnlyList<int>>? QuizAnswerRequested { get; set; }
@@ -294,7 +297,7 @@ public partial class MainViewModel : ViewModelBase
         0 => "Твой следующий шаг появится здесь", 1 => "Выбери доступный материал",
         2 => "Пробел запускает урок", 3 => "Одна строка · пробел — старт",
         4 => "Можно передохнуть", 5 => HasPassedLesson ? "Зачёт выполнен" : "Попытка завершена",
-        6 => "Уровень и кибероны", 8 => "Каталог приложений для тьютора", 9 => "Письма, доступы и сервисы", _ => "Связь с классом"
+        6 => "Уровень и кибероны", 8 => "Доступные приложения", 9 => "Твоя почта и письма", _ => "Связь с классом"
     };
 
     partial void OnSelectedSectionIndexChanged(int value)
@@ -315,6 +318,7 @@ public partial class MainViewModel : ViewModelBase
 
     public void SetStudents(IReadOnlyList<StudentSummary> students, string? preferredGroup = null)
     {
+        var activeStudent = IsLoginVisible ? null : SelectedStudent;
         var selectedId = SelectedStudent?.Id;
         var previousGroup = SelectedLoginGroup;
         Students.Clear();
@@ -346,6 +350,8 @@ public partial class MainViewModel : ViewModelBase
         }
 
         RebuildLoginStudents(selectedId);
+        if (activeStudent is not null)
+            SelectedStudent = Students.FirstOrDefault(x => x.Id == activeStudent.Id) ?? activeStudent;
         LoginMessage = Students.Count == 0
             ? "Тьютор ещё не добавил учеников."
             : LoginGroups.Count == 0
@@ -355,6 +361,7 @@ public partial class MainViewModel : ViewModelBase
 
     public void ApplyPreferredGroup(string? preferredGroup)
     {
+        if (!IsLoginVisible) return;
         if (string.IsNullOrWhiteSpace(preferredGroup) || !LoginGroups.Contains(preferredGroup))
             return;
         if (loginGroupChosenByUser && string.Equals(lastPreferredGroup, preferredGroup, StringComparison.Ordinal))
@@ -404,19 +411,39 @@ public partial class MainViewModel : ViewModelBase
         VpnLabel = status?.ConfigExists == true ? "Сеть класса ещё не включена" : "Ждём команду тьютора";
     }
 
+    private bool updateInProgress;
+
     public void SetUpdate(StudentUpdateInfo update)
     {
+        if (updateInProgress) return;
         HasUpdate = true;
         UpdateLabel = "Доступно обновление программы";
     }
 
     public void SetUpdateState(string state) => UpdateLabel = state;
 
+    public void SetUpdateFailed()
+    {
+        updateInProgress = false;
+        HasUpdate = true;
+    }
+
+    public void SetQuizResult(QuizResult result)
+    {
+        if (quizSessionId != result.SessionId) return;
+        QuizFeedback = showQuizFeedback
+            ? (result.XpAwarded > 0 ? $"{result.Message} +{result.XpAwarded} XP" : result.Message)
+            : "Ответ принят.";
+        QuizResultMessage = QuizFeedback;
+    }
+
+
     [RelayCommand]
     private void InstallUpdate()
     {
         if (!HasUpdate) return;
         HasUpdate = false;
+        updateInProgress = true;
         UpdateLabel = "Скачиваем и проверяем обновление…";
         UpdateRequested?.Invoke();
     }
@@ -465,8 +492,10 @@ public partial class MainViewModel : ViewModelBase
             if (IsLessonStarted && !IsFinished) Finish();
             var message = await LogoutRequested(CancellationToken.None);
             ResetMail();
+            SetAccessPolicy(ClassroomAccessPolicy.Empty);
             IsQuizVisible = false;
             quizSessionId = null;
+            QuizResultMessage = string.Empty;
             IsNotificationVisible = false;
             ResetLesson("", 0);
             CurrentStudentName = "Ученик";
@@ -514,7 +543,11 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void Navigate(string? sectionIndex)
     {
-        if (int.TryParse(sectionIndex, out var parsed)) SelectedSectionIndex = Math.Clamp(parsed, 0, 9);
+        if (!int.TryParse(sectionIndex, out var parsed)) return;
+        var target = Math.Clamp(parsed, 0, 9);
+        if (target != 3 && target != 4 && IsLessonStarted && !IsPaused && !IsFinished)
+            TogglePause();
+        SelectedSectionIndex = target;
     }
 
     public void SetTutorLessons(IReadOnlyList<TypingLessonOffer> lessons)
@@ -666,6 +699,7 @@ public partial class MainViewModel : ViewModelBase
                 try
                 {
                     WatchdogEnabled?.Invoke();
+                    IsExitBlocked = true;
                     StatusMessage = "Приложение теперь нельзя закрыть.";
                     return CommandExecutionResult.Success;
                 }
@@ -675,6 +709,7 @@ public partial class MainViewModel : ViewModelBase
                 }
             case ClassroomCommandKinds.WatchdogOff:
                 WatchdogDisabled?.Invoke();
+                IsExitBlocked = false;
                 StatusMessage = "Приложение снова можно закрыть.";
                 return CommandExecutionResult.Success;
             case ClassroomCommandKinds.SetWorkspace:
@@ -683,7 +718,8 @@ public partial class MainViewModel : ViewModelBase
             case ClassroomCommandKinds.SetWallpaper:
                 return CommandExecutionResult.Success;
             case ClassroomCommandKinds.Notification:
-                NotificationText = command.Payload.TryGetProperty("title", out var title) ? title.GetString() ?? "Получена награда" : "Получена награда";
+                if (command.Payload.TryGetProperty("quiz_finished", out var finished) && finished.ValueKind == System.Text.Json.JsonValueKind.True) IsQuizVisible = false;
+                NotificationText = command.Payload.TryGetProperty("message", out var notificationMessage) ? notificationMessage.GetString() ?? "Викторина завершена" : command.Payload.TryGetProperty("title", out var title) ? title.GetString() ?? "Получена награда" : "Получена награда";
                 IsNotificationVisible = true;
                 return CommandExecutionResult.Success;
             case ClassroomCommandKinds.QuizStart:
@@ -701,7 +737,12 @@ public partial class MainViewModel : ViewModelBase
                 }
                 if (QuizOptions.Count < 2) return new CommandExecutionResult(false, "Недостаточно вариантов ответа.");
                 quizSessionId = sessionId;
+                QuizResultMessage = string.Empty;
+                showQuizFeedback = !command.Payload.TryGetProperty("show_feedback", out var feedback)
+                    || feedback.ValueKind != System.Text.Json.JsonValueKind.False;
                 QuizQuestion = questionProperty.GetString() ?? "Вопрос";
+                if (command.Payload.TryGetProperty("question_number", out var number) && command.Payload.TryGetProperty("question_count", out var count) && count.GetInt32() > 1)
+                    QuizQuestion = $"{number.GetInt32()}/{count.GetInt32()} · {QuizQuestion}";
                 QuizAllowsMultiple = command.Payload.TryGetProperty("allow_multiple", out var multipleProperty)
                     && multipleProperty.ValueKind == System.Text.Json.JsonValueKind.True;
                 QuizHint = QuizAllowsMultiple ? "Отметьте все правильные варианты." : "Выберите один вариант.";
@@ -981,7 +1022,7 @@ public sealed class TutorLessonCardViewModel(TypingLessonOffer lesson)
     public string Description { get; } = string.IsNullOrWhiteSpace(lesson.Description)
         ? $"{lesson.DurationMinutes} мин · зачёт с {lesson.MinimumCharacters} знаков"
         : lesson.Description;
-    public string Details { get; } = $"{lesson.KeyboardLayout} · {lesson.ContentKind} · зачёт {lesson.MinimumCharacters}";
+    public string Details { get; } = $"{(lesson.KeyboardLayout.StartsWith("ru", StringComparison.OrdinalIgnoreCase) ? "Русская раскладка" : lesson.KeyboardLayout.StartsWith("en", StringComparison.OrdinalIgnoreCase) ? "Английская раскладка" : "Раскладка: " + lesson.KeyboardLayout)} · {lesson.MinimumCharacters} знаков для зачёта";
     public string Text { get; } = lesson.Text;
     public int MinimumCharacters { get; } = lesson.MinimumCharacters;
 }

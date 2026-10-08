@@ -159,17 +159,31 @@ public sealed class LocationRosterSyncTests
         Assert.NotNull(empty);
         Assert.Empty(empty!.Students);
 
+        var groupId = Guid.NewGuid();
+        var studentId = Guid.NewGuid();
         var snapshot = new LocationRosterSnapshot(
             "ШБ",
             DateTimeOffset.UtcNow,
-            [new LocationGroupSnapshot(Guid.NewGuid(), "Мл3Сб10", "Figma", "", "ШБ", [])],
-            []);
+            [new LocationGroupSnapshot(groupId, "Мл3Сб10", "Figma", "", "ШБ", [])],
+            [new LocationStudentSnapshot(studentId,"Иванов","Артём",12,null,groupId,"","","crm-test-1",5,10)]);
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => client.UploadAsync("ШБ", "wrong", snapshot));
         await client.UploadAsync("ШБ", "Shb-Test-4821", snapshot);
         var loaded = await client.DownloadAsync("ШБ", "Shb-Test-4821");
         Assert.Single(loaded!.Groups);
         Assert.Equal("Мл3Сб10", loaded.Groups[0].Name);
+        var student = Assert.Single(loaded.Students);
+        Assert.Equal(groupId, student.GroupId);
+        Assert.Equal(studentId, student.Id);
+        Assert.Equal("Артём", student.FirstName);
+        Assert.Equal("crm-test-1", student.CrmId);
+        var databasePath = Path.Combine(data, "downloaded.db");
+        var options = ClassroomDatabase.CreateOptions(databasePath);
+        await ClassroomDatabase.InitializeAsync(options);
+        var classroom = new ClassroomService(options);
+        await classroom.ReplaceLocationRosterAsync(loaded);
+        Assert.Single(await classroom.ListStudentsAsync(location: "ШБ"));
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
 
         await app.StopAsync();
         Directory.Delete(data, true);

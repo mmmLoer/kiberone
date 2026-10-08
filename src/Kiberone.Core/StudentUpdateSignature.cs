@@ -21,9 +21,12 @@ public static class StudentUpdateSignature
         """;
 
     public static byte[] Payload(string version, long size, string sha256) =>
-        Encoding.UTF8.GetBytes($"KIBERoneStudent\n{version.Trim()}\n{size}\n{sha256.Trim().ToLowerInvariant()}\n");
+        PayloadApp("student", version, size, sha256);
+    public static byte[] PayloadApp(string app, string version, long size, string sha256) =>
+        Encoding.UTF8.GetBytes($"{(app == "student" ? "KIBERoneStudent" : app == "tutor" ? "KIBERoneTutor" : throw new ArgumentException("Unknown application."))}\n{version.Trim()}\n{size}\n{sha256.Trim().ToLowerInvariant()}\n");
 
-    public static bool Verify(string version, long size, string sha256, string? signature)
+    public static bool Verify(string version, long size, string sha256, string? signature) => VerifyApp("student", version, size, sha256, signature);
+    public static bool VerifyApp(string app, string version, long size, string sha256, string? signature)
     {
         if (string.IsNullOrWhiteSpace(signature) || string.IsNullOrWhiteSpace(version) ||
             string.IsNullOrWhiteSpace(sha256) || size <= 0 || sha256.Length != 64 ||
@@ -33,7 +36,7 @@ public static class StudentUpdateSignature
         {
             using var rsa = RSA.Create();
             rsa.ImportFromPem(PublicKey);
-            return rsa.VerifyData(Payload(version, size, sha256), Convert.FromBase64String(signature),
+            return rsa.VerifyData(PayloadApp(app, version, size, sha256), Convert.FromBase64String(signature),
                 HashAlgorithmName.SHA256, RSASignaturePadding.Pss);
         }
         catch (Exception error) when (error is FormatException or CryptographicException or ArgumentException)

@@ -222,7 +222,7 @@ public sealed class TypingLessonServiceTests : IAsyncLifetime
         await ClassroomDatabase.SeedDefaultsAsync(options);
         var service = new TypingLessonService(options);
         var lessons = await service.ListLessonsAsync();
-        var preset = Assert.Single(lessons.Where(x => x.Name == "Дурак и молния — без знаков"));
+        var preset = Assert.Single(lessons, x => x.Name == "Дурак и молния — без знаков");
 
         var updated = await service.UpdateLessonAsync(preset.Id, new UpdateLessonRequest(
             preset.Name, "changed", LessonContentKind.Custom, "ru-RU", 50, 10, LessonLifecycle.Published,

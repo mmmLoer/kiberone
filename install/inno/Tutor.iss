@@ -1,6 +1,6 @@
 ; KIBERone Tutor — per-user install, no admin required by default.
 #ifndef MyAppVersion
-  #define MyAppVersion "0.10.38"
+  #error MyAppVersion is required; run scripts/build-installers.ps1 (reads version.json)
 #endif
 #ifndef DistRoot
   #define DistRoot "..\..\dist"
@@ -47,4 +47,5 @@ Name: "{group}\KIBERone Tutor"; Filename: "{app}\Kiberone.Tutor.exe"; WorkingDir
 Name: "{userdesktop}\KIBERone Tutor"; Filename: "{app}\Kiberone.Tutor.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\Kiberone.Tutor.exe"; Description: "Запустить Tutor"; Flags: nowait postinstall skipifsilent; WorkingDir: "{app}"
+; The first launch opens the per-user setup wizard. Reinstalls keep its completed settings.
+Filename: "{app}\Kiberone.Tutor.exe"; Flags: nowait runasoriginaluser skipifsilent; WorkingDir: "{app}"

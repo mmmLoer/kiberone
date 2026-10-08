@@ -17,7 +17,7 @@ public partial class MainViewModel
     [ObservableProperty] private bool onlyAllowedSites;
     [ObservableProperty] private string accessSearch = "";
     [ObservableProperty] private string newSite = "";
-    [ObservableProperty] private string accessStatus = "Выберите группу. Правила будут общими для всех её компьютеров.";
+    [ObservableProperty] private string accessStatus = "";
     [ObservableProperty] private string tutorTunnelName = "KIBERoneTutor";
     [ObservableProperty] private string tutorVpnStatus = "Подключение ещё не проверено";
     [ObservableProperty] private bool tutorVpnConnected;
@@ -26,8 +26,9 @@ public partial class MainViewModel
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, StudentMailAccount> issuedMailAccounts = new();
     private async Task<StudentMailAccount> ProvideMailAccountAsync(Guid studentId, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(LocationUploadPassword)) throw new InvalidOperationException("Тьютору нужно указать пароль локации в настройках для выдачи почты.");
-        using var mailbox = new StudentMailboxClient(MailServerUrl);
+        if (string.IsNullOrWhiteSpace(LocationUploadPassword)) throw new InvalidOperationException("Тьютор ещё не подключился к локации.");
+        var mailServer = MailServerUrl;
+        using var mailbox = new StudentMailboxClient(mailServer);
         var location = LocationName; var password = LocationUploadPassword; var server = CredentialServer;
         var roster = await classroom.ExportLocationRosterAsync(location, ct);
         var student = roster.Students.FirstOrDefault(x => x.Id == studentId)
@@ -36,7 +37,7 @@ public partial class MainViewModel
             ?? throw new InvalidOperationException("Группа ученика не найдена.");
         var account = await mailbox.ProvisionAsync(new StudentMailProvisionRequest(location, password, studentId, student, group), ct);
         RememberLocationPassword(server, location, password);
-        account = account with { ServerUrl = MailServerUrl };
+        account = account with { ServerUrl = mailServer };
         issuedMailAccounts[studentId] = account;
         return account;
     }
@@ -89,7 +90,7 @@ public partial class MainViewModel
             AccessApplications.Add(new AccessApplicationCard(app, edited.TryGetValue(app.Application.Executable, out var allowed) ? allowed :
                 policy.OnlyAllowedApps ? policy.AllowedApps.Contains(app.Application.Executable, StringComparer.OrdinalIgnoreCase) : !policy.BlockedApps.Contains(app.Application.Executable, StringComparer.OrdinalIgnoreCase)));
         OnAccessSearchChanged(AccessSearch);
-        AccessStatus = found.Count == 0 ? "Каталог появится после подключения и выбора имени ученика. Нажмите «Обновить каталог»." : $"В каталоге {found.Count} приложений. Изменения применятся после публикации.";
+        AccessStatus = found.Count == 0 ? "Нет приложений." : $"Приложений: {found.Count}.";
     }
     [RelayCommand] private void AddAccessSite()
     {
@@ -97,7 +98,7 @@ public partial class MainViewModel
         {
             var normalized = SiteRule.Normalize(NewSite);
             if (AccessSites.All(x => x.Address != normalized)) AccessSites.Add(new AccessSiteCard(normalized, true));
-            NewSite = ""; AccessStatus = "Сайт добавлен. Опубликуйте изменения для группы.";
+            NewSite = ""; AccessStatus = "Сайт добавлен.";
         }
         catch (Exception error) { AccessStatus = error.Message; }
     }
@@ -106,6 +107,7 @@ public partial class MainViewModel
     {
         if (AccessGroup is null) { AccessStatus = "Выберите группу."; return; }
         var group = AccessGroup;
+        if (!await RequestLocationAuthorizationAsync($"Изменить доступ для группы «{group.Name}»")) return;
         try
         {
             var policy = new ClassroomAccessPolicy("", AccessEnabled, OnlyAllowedApps,

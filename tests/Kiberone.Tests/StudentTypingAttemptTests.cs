@@ -7,6 +7,25 @@ namespace Kiberone.Tests;
 public sealed class StudentTypingAttemptTests
 {
     [Fact]
+    public void DownloadedRecordsAreVisibleAndIsolatedFromOtherStudents()
+    {
+        var owner = Guid.NewGuid(); var other = Guid.NewGuid();
+        var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KIBERone Classroom", "typing-records", owner.ToString("N"));
+        var otherDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KIBERone Classroom", "typing-records", other.ToString("N"));
+        try
+        {
+            var model = new MainViewModel { TargetText = "same lesson text" };
+            model.SetStudents([new StudentSummary(owner, "Test", 10,Guid.NewGuid(),"Group",0,0,1)]); model.ConfirmStudentCommand.Execute(null);
+            var key=TypingRecordKey.For(model.LessonName,model.TargetText);
+            model.MergePersonalRecords(owner,[new(key,120,98,100)]);
+            Assert.Contains("120",model.PersonalSpeedRecord); Assert.Contains("98",model.PersonalAccuracyRecord);
+            model.MergePersonalRecords(owner,[new(key,90,96,100)]); Assert.Contains("120",model.PersonalSpeedRecord);
+            model.MergePersonalRecords(other,[new(key,180,100,100)]); Assert.Contains("120",model.PersonalSpeedRecord);
+        }
+        finally { if(Directory.Exists(directory)) Directory.Delete(directory,true); if(Directory.Exists(otherDirectory)) Directory.Delete(otherDirectory,true); }
+    }
+
+    [Fact]
     public void GoalReached_DoesNotFinishUntilTextEnds()
     {
         var model = new MainViewModel { TargetText = new string('a', 150), GoalCharacters = 120 };

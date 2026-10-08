@@ -9,7 +9,7 @@ using System.Text.Json;
 
 namespace Kiberone.Tutor.ViewModels;
 
-public partial class MainViewModel(TypingLessonService lessons, ClassroomService classroom, FileSyncService fileSync, AssetDistributionService assets, ClientRegistry clients, ReliableCommandQueue commandQueue, QuizService quizzes, AuditService audit) : ViewModelBase
+public partial class MainViewModel(TypingLessonService lessons, ClassroomService classroom, FileSyncService fileSync, AssetDistributionService assets, ClientRegistry clients, ReliableCommandQueue commandQueue, QuizService quizzes, AuditService audit, string? quizLibraryDirectory = null, string? settingsDirectory = null, LocationCredentialStore? credentialStore = null) : ViewModelBase
 {
     public ObservableCollection<LessonCardViewModel> Lessons { get; } = [];
     public ObservableCollection<GroupCardViewModel> Groups { get; } = [];
@@ -99,17 +99,17 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [ObservableProperty] private bool quizShuffleAnswers;
     [ObservableProperty] private bool quizShowFeedback = true;
     [ObservableProperty] private bool showQuizSettings;
-    [ObservableProperty] private string quizStatus = "Соберите вопросы и запустите выбранный класс.";
+    [ObservableProperty] private string quizStatus = "";
     [ObservableProperty] private QuizQuestionEditorViewModel? selectedQuizQuestion;
     public ObservableCollection<QuizQuestionEditorViewModel> QuizQuestions { get; } = [];
     [ObservableProperty] private string auditSearch = string.Empty;
     [ObservableProperty] private string? selectedAuditCategory;
-    [ObservableProperty] private string groupStatisticsText = "Выберите группу и загрузите статистику.";
-    [ObservableProperty] private string studentStatisticsText = "Выберите ученика и загрузите статистику.";
+    [ObservableProperty] private string groupStatisticsText = "";
+    [ObservableProperty] private string studentStatisticsText = "";
     [ObservableProperty] private bool showStatsForStudent;
     [ObservableProperty] private LessonFilterOption? selectedStatsLesson;
     [ObservableProperty] private string statsReportTitle = "Статистика печати";
-    [ObservableProperty] private string statsSummaryText = "Выберите область и нажмите «Показать».";
+    [ObservableProperty] private string statsSummaryText = "";
     public ObservableCollection<LessonFilterOption> StatsLessonFilters { get; } = [];
     public ObservableCollection<ChartBarViewModel> StatsCpmBars { get; } = [];
     public ObservableCollection<ChartBarViewModel> StatsAccuracyBars { get; } = [];
@@ -126,25 +126,25 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [ObservableProperty] private bool isDarkTheme;
     [ObservableProperty] private string locationName = "";
     [ObservableProperty] private string hubUrl = ClassroomHubClient.DefaultBaseUrl;
-    [ObservableProperty] private string hubStatus = "Сервер хранит учеников и группы локации.";
+    [ObservableProperty] private string hubStatus = "";
     [ObservableProperty] private string locationUploadPassword = "";
     [ObservableProperty] private bool needsLocationSetup;
     [ObservableProperty] private int setupStep;
     [ObservableProperty] private string? setupLocationName;
     [ObservableProperty] private string setupStudentSavesFolder = DefaultStudentSavesFolder();
-    [ObservableProperty] private string settingsStatus = "Настройки действуют только на этом Tutor.";
+    [ObservableProperty] private string settingsStatus = "";
     [ObservableProperty] private string vpnConfigsFolder = string.Empty;
     [ObservableProperty] private string studentSavesFolder = DefaultStudentSavesFolder();
     [ObservableProperty] private string focusBlocklist = string.Empty;
     [ObservableProperty] private string vpnLocationName = VpnRegionCatalog.AutoName;
     [ObservableProperty] private string? setupVpnLocationName = VpnRegionCatalog.AutoName;
-    [ObservableProperty] private string vpnDistributionStatus = "Конфиги берутся с VPN-сервера по локации класса (15 слотов на путь).";
+    [ObservableProperty] private string vpnDistributionStatus = "";
     [ObservableProperty] private StarterAssetCardViewModel? selectedStarterAsset;
     [ObservableProperty] private string wallpaperName = "Обои ещё не выбраны";
-    [ObservableProperty] private string softwareStatus = "Соберите пакет: папки урока и установщики .exe / .msi.";
-    [ObservableProperty] private string programStatus = "Программа подтянется при первом запуске или по кнопке ниже.";
+    [ObservableProperty] private string softwareStatus = "";
+    [ObservableProperty] private string programStatus = "";
     [ObservableProperty] private bool showOtherLocationStudents;
-    [ObservableProperty] private string rolloutHeadline = "Статус раздачи появится после отправки пакета или обоев.";
+    [ObservableProperty] private string rolloutHeadline = "";
     [ObservableProperty] private int selectedSectionIndex;
 
     public ClassroomLiveState LiveState { get; set; } = new();
@@ -249,7 +249,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     public bool ShowStatsForGroup => !ShowStatsForStudent;
     public bool HasStatsBars => StatsCpmBars.Count > 0;
     public bool HasNoStatsBars => !HasStatsBars;
-    public bool ShowQuizQuestions => !ShowQuizSettings;
+    public bool ShowQuizQuestions => !ShowQuizSettings && !ShowQuizLibrary;
     public bool HasSelectedQuizQuestion => SelectedQuizQuestion is not null;
     public bool HasNoSelectedQuizQuestion => !HasSelectedQuizQuestion;
     public string ScreensLockLabel => IsScreensLocked ? "Экраны заблокированы. Нажмите, чтобы разблокировать." : "Заблокировать экраны учеников.";
@@ -295,6 +295,8 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
                 LocationName = Locations[0];
             loadingSettings = false;
             EnsureQuizSeed();
+            RefreshQuizLibrary();
+            ShowQuizLibrary = true;
             fileSync.SetRosterRoot(StudentSavesFolder);
             if (!NeedsLocationSetup && !string.IsNullOrWhiteSpace(LocationName))
                 await ApplyLocationProgramAsync();
@@ -302,11 +304,10 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             RefreshSoftwarePack();
             RefreshProgramStatus();
             await RefreshScreensAsync(force: true);
+            _ = CheckTutorUpdateAsync();
             if (EnableStudentUpdates)
-                await TrySyncStudentUpdateFromHubAsync(quiet: true);
-            StatusMessage = Lessons.Count == 0
-                ? "Создайте первый урок — он сохранится в локальной базе."
-                : $"Загружено уроков: {Lessons.Count}";
+                _ = TrySyncStudentUpdateFromHubAsync(quiet: true);
+            StatusMessage = $"Уроков: {Lessons.Count}";
         }
         catch (Exception error)
         {
@@ -356,14 +357,14 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         var online = onlineClients.Count;
         if (string.IsNullOrWhiteSpace(LocationName))
         {
-            VpnDistributionStatus = "Выберите локацию класса — по ней VPN API выдаст свободный слот.";
+            VpnDistributionStatus = "Локация не выбрана.";
             return;
         }
 
         var path = VpnRegionCatalog.IsAuto(VpnLocationName)
-            ? "Авто (менее загруженный путь)"
+            ? "Авто"
             : VpnRegionCatalog.Resolve(VpnLocationName).Name;
-        VpnDistributionStatus = $"Локация «{LocationName}» · путь {path} · онлайн ПК: {online}. При включении VPN каждый ПК получит свободный слот с сервера.";
+        VpnDistributionStatus = $"{LocationName} · {path} · В сети: {online}";
     }
 
     private string? FallbackVpnFolder()
@@ -715,6 +716,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         OnPropertyChanged(nameof(IsSetupWelcome));
         OnPropertyChanged(nameof(IsSetupLocation));
         OnPropertyChanged(nameof(IsSetupDownload));
+        OnPropertyChanged(nameof(IsSetupAccess));
         ConfirmSetupLocationCommand.NotifyCanExecuteChanged();
     }
 
@@ -772,6 +774,13 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [RelayCommand]
     private void BeginLocationSetup()
     {
+        if (!NeedsLocationSetup)
+        {
+            SetupLocationName = LocationName;
+            SetupStudentSavesFolder = StudentSavesFolder;
+            SetupVpnLocationName = VpnLocationName;
+        }
+        NeedsLocationSetup = true;
         if (string.IsNullOrWhiteSpace(SetupStudentSavesFolder))
             SetupStudentSavesFolder = DefaultStudentSavesFolder();
         if (string.IsNullOrWhiteSpace(SetupVpnLocationName))
@@ -780,26 +789,32 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     }
 
     private bool CanConfirmSetupLocation() =>
-        !IsBusy && !string.IsNullOrWhiteSpace(SetupLocationName);
+        !IsBusy && !string.IsNullOrWhiteSpace(SetupLocationName) && !string.IsNullOrWhiteSpace(SetupLocationPassword);
 
     [RelayCommand(CanExecute = nameof(CanConfirmSetupLocation))]
     private async Task ConfirmSetupLocationAsync()
     {
-        loadingSettings = true;
-        LocationName = SetupLocationName!.Trim();
-        LocationUploadPassword = string.IsNullOrWhiteSpace(SetupLocationPassword) ? ReadLocationPassword(LocationName) : SetupLocationPassword;
-        if (!string.IsNullOrWhiteSpace(SetupVpnLocationName))
-            VpnLocationName = SetupVpnLocationName.Trim();
-        if (!string.IsNullOrWhiteSpace(SetupStudentSavesFolder))
-            ApplyStudentSavesFolder(SetupStudentSavesFolder);
-        loadingSettings = false;
-        SetupStep = 2;
-        HubStatus = $"Загружаем группы и учеников локации «{LocationName}»…";
-        await DownloadLocationRosterAsync();
-        if (NeedsLocationSetup)
-            HubStatus = string.IsNullOrWhiteSpace(HubStatus)
-                ? "Не получилось скачать. Проверьте сеть и попробуйте ещё раз."
-                : HubStatus;
+        SetupError = "";
+        try
+        {
+            loadingSettings = true;
+            LocationName = SetupLocationName!.Trim();
+            LocationUploadPassword = string.IsNullOrWhiteSpace(SetupLocationPassword) ? ReadLocationPassword(LocationName) : SetupLocationPassword;
+            if (!string.IsNullOrWhiteSpace(SetupVpnLocationName))
+                VpnLocationName = SetupVpnLocationName.Trim();
+            if (!string.IsNullOrWhiteSpace(SetupStudentSavesFolder))
+                ApplyStudentSavesFolder(SetupStudentSavesFolder);
+            loadingSettings = false;
+            SetupStep = 2;
+            HubStatus = $"Загружаем группы и учеников локации «{LocationName}»…";
+            await DownloadLocationRosterAsync();
+            if (NeedsLocationSetup)
+                HubStatus = string.IsNullOrWhiteSpace(HubStatus)
+                    ? "Не получилось скачать. Проверьте сеть и попробуйте ещё раз."
+                    : HubStatus;
+        }
+        catch { SetupError = "Не удалось подготовить папку сохранений."; SetupStep = 1; }
+        finally { loadingSettings = false; }
     }
 
     [RelayCommand]
@@ -813,6 +828,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [RelayCommand]
     private async Task DownloadLocationRosterAsync()
     {
+        if (!NeedsLocationSetup && !await RequestLocationAuthorizationAsync("Обновить состав локации")) return;
         if (string.IsNullOrWhiteSpace(LocationName))
         {
             HubStatus = "Сначала выберите локацию.";
@@ -822,7 +838,6 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         try
         {
             IsBusy = true;
-            await ApplyLocationProgramAsync();
             if (string.IsNullOrWhiteSpace(LocationUploadPassword))
             {
                 HubStatus = "Введите пароль локации один раз, чтобы загрузить группы и учеников.";
@@ -832,6 +847,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             var snapshot = await new ClassroomHubClient(credentialServer).DownloadAsync(credentialLocation, credentialPassword);
             if (snapshot is null)
                 throw new InvalidOperationException("Сервер не вернул данные локации.");
+            await ApplyLocationProgramAsync();
             RememberLocationPassword(credentialServer, credentialLocation, credentialPassword);
             if (snapshot.Groups.Count == 0 && snapshot.Students.Count == 0)
             {
@@ -842,10 +858,10 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
                 await classroom.ReplaceLocationRosterAsync(snapshot);
                 HubStatus = $"Скачано: {snapshot.Groups.Count} групп, {FormatStudentCount(snapshot.Students.Count)}.";
             }
+            await ApplyDefaultAccessToNewGroupsAsync();
             await RefreshCoreAsync();
-            NeedsLocationSetup = false;
-            SetupStep = 0;
-            SaveSettings();
+            if (NeedsLocationSetup) await OpenSetupAccessAsync();
+            else SaveSettings();
             HasError = false;
             StatusMessage = HubStatus;
         }
@@ -864,6 +880,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [RelayCommand]
     private async Task UploadLocationRosterAsync()
     {
+        if (!await RequestLocationAuthorizationAsync("Отправить данные локации на сервер")) return;
         if (string.IsNullOrWhiteSpace(LocationName))
         {
             HubStatus = "Сначала выберите локацию.";
@@ -907,6 +924,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [RelayCommand]
     private async Task DownloadVpnPeersAsync()
     {
+        if (!await RequestLocationAuthorizationAsync("Получить настройки VPN", requireConfirmation: false)) return;
         if (string.IsNullOrWhiteSpace(LocationName))
         {
             HubStatus = "Сначала выберите локацию класса.";
@@ -970,76 +988,6 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
 
     [RelayCommand]
     private async Task DownloadStudentUpdateFromHubAsync() => await TrySyncStudentUpdateFromHubAsync(quiet: false);
-
-    private async Task TrySyncStudentUpdateFromHubAsync(bool quiet)
-    {
-        try
-        {
-            if (!quiet)
-                IsBusy = true;
-            var hub = CreateHubClient();
-            var manifest = await hub.GetStudentUpdateAsync(UseTestStudentUpdates);
-            if (manifest is null)
-            {
-                if (!quiet)
-                {
-                    HubStatus = "На сервере нет обновления Student.";
-                    StatusMessage = HubStatus;
-                }
-                return;
-            }
-
-            var local = assets.GetStudentRelease();
-            if (local is not null
-                && Version.TryParse(local.Version, out var localVersion)
-                && Version.TryParse(manifest.Version, out var remoteVersion)
-                && remoteVersion <= localVersion
-                && string.Equals(local.Sha256, manifest.Sha256, StringComparison.OrdinalIgnoreCase))
-            {
-                if (!quiet)
-                {
-                    HubStatus = $"Уже актуально: Student {local.Version}.";
-                    StatusMessage = HubStatus;
-                }
-                return;
-            }
-
-            var bytes = await hub.DownloadStudentUpdateFileAsync(UseTestStudentUpdates);
-            var stored = assets.ImportStudentRelease(manifest, bytes);
-            HubStatus = quiet
-                ? $"С сервера подтянуто обновление Student {stored.Version}."
-                : $"Обновление Student {stored.Version} сохранено для раздачи по классу.";
-            HasError = false;
-            StatusMessage = HubStatus;
-        }
-        catch (Exception error)
-        {
-            if (quiet)
-                return;
-            HasError = true;
-            HubStatus = $"Не удалось скачать обновление Student: {error.Message}";
-            StatusMessage = HubStatus;
-        }
-        finally
-        {
-            if (!quiet)
-                IsBusy = false;
-        }
-    }
-
-    [RelayCommand]
-    private void SkipLocationServer()
-    {
-        loadingSettings = true;
-        if (!string.IsNullOrWhiteSpace(SetupLocationName)) LocationName = SetupLocationName.Trim();
-        else if (string.IsNullOrWhiteSpace(LocationName) && Locations.Count > 0) LocationName = Locations[0];
-        loadingSettings = false;
-        LocationUploadPassword = string.IsNullOrWhiteSpace(SetupLocationPassword) ? ReadLocationPassword(LocationName) : SetupLocationPassword;
-        NeedsLocationSetup = false;
-        SetupStep = 0;
-        HubStatus = "Работаем без сервера. Скачать состав локации можно в настройках.";
-        SaveSettings();
-    }
 
     private void TrackRollout(string title, ClassroomCommand? command)
     {
@@ -1815,10 +1763,18 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             StudentSavesFolder.Trim(),
             VpnRegionCatalog.IsAuto(VpnLocationName) ? "auto" : VpnRegionCatalog.Resolve(VpnLocationName).Id,
             FocusBlocklist,
-            UseTestStudentUpdates);
-        var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KIBERone", "Tutor");
+            UseTestStudentUpdates,
+            defaultAccessPolicy);
+        var directory = settingsDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KIBERone", "Tutor");
         Directory.CreateDirectory(directory);
-        File.WriteAllText(Path.Combine(directory, "settings.json"), JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
+        var path = Path.Combine(directory, "settings.json");
+        var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            File.WriteAllText(temporary, JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
+            File.Move(temporary, path, true);
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
         fileSync.SetRosterRoot(StudentSavesFolder);
         PublishPreferredGroup();
         SettingsStatus = $"Настройки сохранены · {DateTime.Now:t}";
@@ -1828,7 +1784,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     {
         try
         {
-            var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KIBERone", "Tutor", "settings.json");
+            var path = Path.Combine(settingsDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KIBERone", "Tutor"), "settings.json");
             if (!File.Exists(path))
             {
                 NeedsLocationSetup = true;
@@ -1860,6 +1816,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             if (!string.IsNullOrWhiteSpace(saved.StudentSavesFolder))
                 StudentSavesFolder = saved.StudentSavesFolder;
             FocusBlocklist = saved.FocusBlocklist ?? string.Empty;
+            defaultAccessPolicy = saved.DefaultAccessPolicy ?? ClassroomAccessPolicy.Empty;
             fileSync.SetRosterRoot(StudentSavesFolder);
             IsDarkTheme = saved.PreferDarkTheme;
             pendingActiveClassGroupId = saved.ActiveClassGroupId;
@@ -1914,7 +1871,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
                 trimmed,
                 trimmedCorrect.FirstOrDefault(),
                 QuizXpReward,
-                ["__all__"],
+                GetQuizTargets(),
                 QuizTimePerQuestion,
                 QuizShuffleAnswers,
                 QuizShowFeedback,
@@ -1944,6 +1901,8 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     [RelayCommand]
     private void NewQuiz()
     {
+        ShowQuizLibrary = false;
+        quizDocumentId = Guid.NewGuid(); quizSharedRevision = 0; editingQuizPath = null;
         QuizTitle = "Новая викторина";
         QuizTimePerQuestion = 30;
         QuizXpReward = 10;
@@ -2017,11 +1976,13 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             var document = BuildQuizDocument();
             var directory = GetQuizLibraryDirectory();
             Directory.CreateDirectory(directory);
-            var fileName = SanitizeFileName(document.Title) + ".json";
-            var path = Path.Combine(directory, fileName);
-            File.WriteAllText(path, JsonSerializer.Serialize(document, QuizJsonOptions));
+            var fileName = document.Id.ToString("N") + ".json";
+            var path = editingQuizPath ?? Path.Combine(directory, fileName);
+            File.WriteAllText(path + ".tmp", JsonSerializer.Serialize(document, QuizJsonOptions)); File.Move(path + ".tmp", path, true);
+            editingQuizPath = path;
             File.WriteAllText(Path.Combine(directory, "draft.json"), JsonSerializer.Serialize(document, QuizJsonOptions));
-            QuizStatus = $"Сохранено локально: {path}";
+            QuizStatus = "Викторина сохранена.";
+            RefreshQuizLibrary();
             HasError = false;
         }
         catch (Exception error)
@@ -2074,7 +2035,9 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return;
             var document = JsonSerializer.Deserialize<QuizDocument>(File.ReadAllText(path), QuizJsonOptions)
                 ?? throw new InvalidOperationException("Файл викторины пуст или повреждён.");
+            editingQuizPath = null;
             ApplyQuizDocument(document);
+            ShowQuizLibrary = false;
             QuizStatus = $"Импортировано: {document.Title} · вопросов: {QuizQuestions.Count}";
             HasError = false;
             ShowQuizQuestionsPane();
@@ -2109,6 +2072,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
 
     private QuizDocument BuildQuizDocument() => new()
     {
+        Id = quizDocumentId, SharedRevision = quizSharedRevision,
         Title = string.IsNullOrWhiteSpace(QuizTitle) ? "Новая викторина" : QuizTitle.Trim(),
         TimePerQuestionSeconds = Math.Clamp(QuizTimePerQuestion, 5, 300),
         XpReward = Math.Clamp(QuizXpReward, 0, 1000),
@@ -2119,6 +2083,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
 
     private void ApplyQuizDocument(QuizDocument document)
     {
+        quizDocumentId = document.Id; quizSharedRevision = document.SharedRevision;
         QuizTitle = document.Title;
         QuizTimePerQuestion = Math.Clamp(document.TimePerQuestionSeconds, 5, 300);
         QuizXpReward = Math.Clamp(document.XpReward, 0, 1000);
@@ -2147,8 +2112,8 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         OnPropertyChanged(nameof(ShowQuizQuestions));
     }
 
-    private static string GetQuizLibraryDirectory() =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KIBERone", "Tutor", "quizzes");
+    private string GetQuizLibraryDirectory() =>
+        quizLibraryDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KIBERone", "Tutor", "quizzes");
 
     private static string SanitizeFileName(string name)
     {
@@ -2420,6 +2385,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
 
     private async Task<bool> EnableVpnForClassAsync()
     {
+        if (!await RequestLocationAuthorizationAsync("Включить VPN для класса", requireConfirmation: false)) return false;
         try
         {
             var online = clients.GetAll().Where(client => client.IsOnline).ToList();
@@ -2905,6 +2871,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         await RunActionAsync(async () =>
         {
             var group = await classroom.CreateGroupAsync(new GroupDraft(GroupName, GroupModule, GroupTopics, LocationName));
+            if (defaultAccessPolicy != ClassroomAccessPolicy.Empty) await classroom.SaveAccessPolicyAsync(group.Id, defaultAccessPolicy);
             fileSync.EnsureGroupFolder(group.Name);
             GroupName = GroupModule = GroupTopics = string.Empty;
             ShowCreateGroupForm = false;
@@ -2923,6 +2890,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
 
         var name = SelectedGroup.Name;
         var id = SelectedGroup.Id;
+        if (!await RequestLocationAuthorizationAsync($"Удалить группу «{name}»")) return;
         await RunActionAsync(async () =>
         {
             if (!await classroom.DeleteGroupAsync(id))
@@ -3008,6 +2976,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         }
         var name = SelectedStudent.Name;
         var id = SelectedStudent.Id;
+        if (!await RequestLocationAuthorizationAsync($"Удалить ученика {name}")) return;
         await RunActionAsync(async () =>
         {
             if (!await classroom.DeleteStudentAsync(id))
@@ -3083,6 +3052,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     private async Task DecideSyncAsync(SyncApprovalCardViewModel? approval, bool takeStudent)
     {
         if (approval is null) { ShowSelectionError("Выберите запрос синхронизации."); return; }
+        if (!await RequestLocationAuthorizationAsync(takeStudent ? "Принять изменения сохранений" : "Восстановить сохранения ученика")) return;
         SelectedSyncApproval = approval;
         await RunActionAsync(async () =>
         {
@@ -3105,6 +3075,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         foreach (var snapshot in await fileSync.ListProjectSnapshotsAsync(SelectedSyncClient.ClientId))
             ProjectSnapshots.Add(new ProjectSnapshotCardViewModel(snapshot));
         SelectedProjectSnapshot = ProjectSnapshots.FirstOrDefault();
+        await LoadGitHistoryAsync();
         StatusMessage = $"Файлов на сервере: {SyncedFiles.Count}.";
     }
 
@@ -3123,6 +3094,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
 
     partial void OnSelectedSyncClientChanged(SyncClientCardViewModel? value)
     {
+        GitCommits.Clear(); GitBranches.Clear(); SelectedGitCommit = null; SelectedGitBranch = null; GitDiff = "Выберите сохранение.";
         RestoreVersionCommand.NotifyCanExecuteChanged();
         RestoreProjectSnapshotCommand.NotifyCanExecuteChanged();
     }
@@ -3136,9 +3108,12 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     private async Task RestoreProjectSnapshotAsync()
     {
         if (SelectedSyncClient is null || SelectedProjectSnapshot is null) return;
+        var clientId = SelectedSyncClient.ClientId;
+        var snapshotId = SelectedProjectSnapshot.Id;
+        if (!await RequestLocationAuthorizationAsync("Восстановить проект ученика")) return;
         await RunActionAsync(async () =>
         {
-            await fileSync.RestoreProjectSnapshotAsync(new RestoreProjectSnapshotRequest(SelectedSyncClient.ClientId, SelectedProjectSnapshot.Id));
+            await fileSync.RestoreProjectSnapshotAsync(new RestoreProjectSnapshotRequest(clientId, snapshotId));
             StatusMessage = "Проект восстановлен на сервере. На ПК ученика изменения появятся при следующей синхронизации.";
             await LoadSyncedFilesAsync();
         });
@@ -3148,10 +3123,12 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     private async Task RestoreVersionAsync()
     {
         if (SelectedSyncClient is null || SelectedSyncedFile is null || SelectedFileVersion is null) { ShowSelectionError("Выберите версию для восстановления."); return; }
+        var restore = new RestoreVersionRequest(SelectedSyncClient.ClientId, SelectedSyncedFile.Path, SelectedFileVersion.Id);
+        if (!await RequestLocationAuthorizationAsync("Восстановить версию файла")) return;
         await RunActionAsync(async () =>
         {
-            await fileSync.RestoreVersionAsync(new RestoreVersionRequest(SelectedSyncClient.ClientId, SelectedSyncedFile.Path, SelectedFileVersion.Id));
-            StatusMessage = $"Версия {SelectedFileVersion.Label} восстановлена на сервере.";
+            await fileSync.RestoreVersionAsync(restore);
+            StatusMessage = "Версия файла восстановлена.";
         });
     }
 
@@ -3306,17 +3283,21 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
         OnPropertyChanged(nameof(GroupsWorkspaceWidth));
     }
 
+    private long groupProgramLoadVersion;
     private async Task LoadGroupProgramAsync()
     {
+        var version = ++groupProgramLoadVersion;
+        var group = SelectedGroup;
         SelectedGroupModules.Clear();
-        if (SelectedGroup is null)
+        if (group is null)
         {
             CurrentModuleSchedule = "Выберите группу, чтобы увидеть модуль по дате";
             return;
         }
 
-        var current = await classroom.ApplyCurrentModuleAsync(SelectedGroup.Id);
-        var modules = await classroom.ListProgramModulesAsync(SelectedGroup.Id);
+        var current = await classroom.ApplyCurrentModuleAsync(group.Id);
+        var modules = await classroom.ListProgramModulesAsync(group.Id);
+        if (version != groupProgramLoadVersion || SelectedGroup?.Id != group.Id) return;
         foreach (var module in modules)
             SelectedGroupModules.Add(new ProgramModuleCardViewModel(module, current is not null && current.Id == module.Id));
         if (current is null)
@@ -3325,13 +3306,14 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
             return;
         }
 
-        SelectedGroup.SetCurrentModule(current.Name);
+        group.SetCurrentModule(current.Name);
         CurrentModuleSchedule = $"Сейчас: {current.Name} · {current.StartDate:dd.MM.yyyy}–{current.EndDate:dd.MM.yyyy}";
-        fileSync.EnsureGroupFolder(SelectedGroup.Name);
+        fileSync.EnsureGroupFolder(group.Name);
     }
 
     partial void OnActiveClassGroupChanged(GroupCardViewModel? value)
     {
+        OnPropertyChanged(nameof(QuizAudience));
         PublishPreferredGroup();
         if (value is not null)
         {
@@ -3350,6 +3332,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     {
         fileSync.AutoApproveSafeFiles = AutoApproveSafeFiles;
         LiveState.MailAccountProvider = ProvideMailAccountAsync;
+        LiveState.TypingRecordsProvider = SyncTypingRecordsAsync;
         LiveState.PreferredGroupName = ActiveClassGroup?.Name;
         LiveState.LocationName = string.IsNullOrWhiteSpace(LocationName) ? null : LocationName.Trim();
         LiveState.ShowAllLocations = ShowOtherLocationStudents;
@@ -3370,6 +3353,7 @@ public partial class MainViewModel(TypingLessonService lessons, ClassroomService
     private async Task SwitchLocationAsync()
     {
         if (string.IsNullOrWhiteSpace(LocationName) || IsBusy) return;
+        if (!await RequestLocationAuthorizationAsync("Подключиться к локации", requireConfirmation: false)) return;
         try
         {
             IsBusy = true;
@@ -3903,7 +3887,8 @@ public sealed record TutorLocalSettings(
     string StudentSavesFolder = "",
     string VpnRegionId = "",
     string FocusBlocklist = "",
-    bool UseTestStudentUpdates = false);
+    bool UseTestStudentUpdates = false,
+    ClassroomAccessPolicy? DefaultAccessPolicy = null);
 
 public partial class QuizQuestionEditorViewModel : ObservableObject
 {

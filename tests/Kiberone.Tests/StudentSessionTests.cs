@@ -7,6 +7,71 @@ namespace Kiberone.Tests;
 public sealed class StudentSessionTests
 {
     [Fact]
+    public void LoggedInStudent_IsPreserved_WhenTutorChangesGroupOrRoster()
+    {
+        var model = new MainViewModel();
+        var first = new StudentSummary(Guid.NewGuid(), "First", 10, Guid.NewGuid(), "Group A", 0, 0, 1);
+        var second = new StudentSummary(Guid.NewGuid(), "Second", 10, Guid.NewGuid(), "Group B", 0, 0, 1);
+        model.SetStudents([first, second], "Group A");
+        model.ConfirmStudentCommand.Execute(null);
+        model.ApplyPreferredGroup("Group B");
+        Assert.Equal(first.Id, model.SelectedStudent!.Id);
+        model.SetStudents([first, second], "Group B");
+        Assert.Equal(first.Id, model.SelectedStudent!.Id);
+        model.SetStudents([second], "Group B");
+        Assert.Equal(first.Id, model.SelectedStudent!.Id);
+    }
+
+    [Fact]
+    public void ExitProtection_TracksSuccessfulTutorCommands()
+    {
+        var model = new MainViewModel { WatchdogEnabled = () => { }, WatchdogDisabled = () => { } };
+        ClassroomCommand Command(string kind) => new(Guid.NewGuid(), kind,
+            System.Text.Json.JsonSerializer.SerializeToElement(new { }), DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(1));
+        Assert.True(model.ApplyCommand(Command(ClassroomCommandKinds.WatchdogOn)).Succeeded);
+        Assert.True(model.IsExitBlocked);
+        Assert.True(model.ApplyCommand(Command(ClassroomCommandKinds.WatchdogOff)).Succeeded);
+        Assert.False(model.IsExitBlocked);
+        model.WatchdogEnabled = () => throw new IOException("failed");
+        Assert.False(model.ApplyCommand(Command(ClassroomCommandKinds.WatchdogOn)).Succeeded);
+        Assert.False(model.IsExitBlocked);
+    }
+
+    [Fact]
+    public void UpdateFailure_AllowsRetry_WithoutHeartbeatResettingProgress()
+    {
+        var model = new MainViewModel();
+        var update = new StudentUpdateInfo("test", "test", 1);
+        var requests = 0;
+        model.UpdateRequested = () => requests++;
+        model.SetUpdate(update);
+        model.InstallUpdateCommand.Execute(null);
+        var progress = model.UpdateLabel;
+        model.SetUpdate(update);
+        Assert.False(model.HasUpdate);
+        Assert.Equal(progress, model.UpdateLabel);
+        model.SetUpdateFailed();
+        Assert.True(model.HasUpdate);
+        model.InstallUpdateCommand.Execute(null);
+        Assert.Equal(2, requests);
+    }
+
+    [Fact]
+    public void LeavingTrainer_PausesWithoutLosingTypedText()
+    {
+        var model = new MainViewModel { TargetText = "abcdef", SelectedSectionIndex = 3 };
+        model.StartLesson();
+        model.HandleCharacter('a');
+        model.NavigateCommand.Execute("6");
+        Assert.True(model.IsPaused);
+        Assert.Equal(6, model.SelectedSectionIndex);
+        Assert.Equal("a", model.TypedText);
+        model.TogglePause();
+        Assert.False(model.IsPaused);
+        Assert.Equal(3, model.SelectedSectionIndex);
+    }
+
+    [Fact]
     public void Mail_IsRequestedAfterLoginAndRetriesAreThrottled()
     {
         var calls = 0;

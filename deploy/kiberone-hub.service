@@ -12,6 +12,7 @@ Environment=KIBERONE_HUB_URL=http://0.0.0.0:8787
 Environment=DOTNET_BUNDLE_EXTRACT_BASE_DIR=/var/lib/kiberone-hub/.net
 EnvironmentFile=-/var/lib/kiberone-hub/webhook.env
 Environment=KIBERONE_RELEASE_UNIT=kiberone-release.service
+Environment=KIBERONE_BETA_RELEASE_UNIT=kiberone-release-beta.service
 Environment=KIBERONE_GIT_BRANCH=main
 ExecStart=/opt/kiberone-hub/Kiberone.Hub
 Restart=always

@@ -16,7 +16,7 @@ public sealed record CommandExecutionResult(bool Succeeded, string? Error = null
 
 public sealed record StudentConnectionState(bool IsConnected, string Message, string? TutorAddress, DateTimeOffset ChangedAt);
 
-public sealed class StudentAgent : IAsyncDisposable
+public sealed partial class StudentAgent : IAsyncDisposable
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -25,6 +25,7 @@ public sealed class StudentAgent : IAsyncDisposable
 
     private readonly CancellationTokenSource lifetime = new();
     private readonly string clientId;
+    private readonly string clientSecret;
     private readonly string pcNumber;
     private readonly string watchFolder;
     private readonly StudentFileSyncClient fileSync;
@@ -42,10 +43,11 @@ public sealed class StudentAgent : IAsyncDisposable
     private Guid? studentId;
     private readonly ConcurrentQueue<SubmitQuizAnswerRequest> quizAnswers = new();
     private readonly TypingAttemptOutbox typingAttempts;
-    private readonly ConcurrentDictionary<Guid, byte> handledCommands = [];
+    private readonly ConcurrentDictionary<Guid, (CommandExecutionResult Result, DateTimeOffset ExpiresAt)> handledCommands = [];
     private Task? loopTask;
     private ClientWebSocket? commandSocket;
     private int commandSocketLive;
+    private readonly SemaphoreSlim commandExecutionGate = new(1, 1);
     private bool sessionOnline;
     private DiscoveryBeacon? currentBeacon;
     public async Task<StudentMailAccount> GetMailAccountAsync(CancellationToken ct = default)
@@ -54,6 +56,7 @@ public sealed class StudentAgent : IAsyncDisposable
         using var http = new HttpClient { BaseAddress = new Uri($"http://{beacon.Host}:{beacon.Port}"), Timeout = TimeSpan.FromSeconds(25) };
         http.DefaultRequestHeaders.Add("X-Sync-Token", beacon.Token);
         http.DefaultRequestHeaders.Add("X-Client-Id", clientId);
+        http.DefaultRequestHeaders.Add("X-Client-Secret", clientSecret);
         await SendHeartbeatAsync(http, ct);
         using var response = await http.GetAsync("/mail/account", ct);
         if (!response.IsSuccessStatusCode)
@@ -79,6 +82,7 @@ public sealed class StudentAgent : IAsyncDisposable
     public StudentAgent(string? pcNumber = null, string? watchFolder = null)
     {
         clientId = ResolveClientId();
+        clientSecret = new DeviceCredentials(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KIBERone Classroom", "device-secrets")).GetOrCreateSecret(clientId);
         typingAttempts = new TypingAttemptOutbox(Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "KIBERone Classroom", $"typing-attempts-{clientId}.json"));
@@ -111,6 +115,13 @@ public sealed class StudentAgent : IAsyncDisposable
     public event Action<StudentSyncState>? SyncStateChanged;
     public event Action<StudentUpdateInfo>? UpdateAvailable;
     public event Action<string>? UpdateStateChanged;
+    public event Action? UpdateFailed;
+    private void ReportUpdateFailure(string message)
+    {
+        UpdateStateChanged?.Invoke(message);
+        UpdateFailed?.Invoke();
+    }
+    public event Action<QuizResult>? QuizResultReceived;
     public event Action<string?>? ScreenStateChanged;
     public event Action<Guid, string>? TypingResultStateChanged;
     /// <summary>Raised after a verified update is staged; UI should exit so Apply can replace the exe.</summary>
@@ -150,9 +161,11 @@ public sealed class StudentAgent : IAsyncDisposable
     }
     public void AssignStudent(Guid id)
     {
+        lastAccessRevision = null;
         if (previousStudentId is Guid previous && previous != id) fileSync.RestoreForNewStudent();
         studentId = id;
         fileSync.StudentId = id;
+        nextRecordsAt = DateTimeOffset.MinValue;
         nextSyncAt = DateTimeOffset.MinValue;
     }
 
@@ -180,12 +193,16 @@ public sealed class StudentAgent : IAsyncDisposable
                 using var http = new HttpClient(new HttpClientHandler { UseProxy = false }) { BaseAddress = new Uri($"http://{beacon.Host}:{beacon.Port}"), Timeout = TimeSpan.FromSeconds(15) };
                 http.DefaultRequestHeaders.Add("X-Sync-Token", beacon.Token);
                 http.DefaultRequestHeaders.Add("X-Client-Id", clientId);
+                http.DefaultRequestHeaders.Add("X-Client-Secret", clientSecret);
                 using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 deadline.CancelAfter(TimeSpan.FromSeconds(15));
                 try
                 {
                     await SendHeartbeatCoreAsync(http, deadline.Token);
                     await FlushTypingAttemptsAsync(http, deadline.Token);
+                    nextRecordsAt = DateTimeOffset.MinValue;
+                    await SyncPersonalRecordsAsync(http, deadline.Token, gateHeld: true);
+
                     await fileSync.SyncOnceAsync(http, deadline.Token);
                     sent = await fileSync.SaveSessionCheckpointAsync(owner, ct: ct) is null;
                 }
@@ -195,6 +212,24 @@ public sealed class StudentAgent : IAsyncDisposable
             previousStudentId = owner;
             studentId = null;
             fileSync.EndSession();
+            // Publish the cleared identity before releasing the session gate. Presence
+            // refreshes only the timestamp and cannot clear the Tutor's student binding.
+            if (currentBeacon is { } logoutBeacon)
+            {
+                using var http = new HttpClient(new HttpClientHandler { UseProxy = false })
+                {
+                    BaseAddress = new Uri($"http://{logoutBeacon.Host}:{logoutBeacon.Port}"),
+                    Timeout = TimeSpan.FromSeconds(5)
+                };
+                http.DefaultRequestHeaders.Add("X-Sync-Token", logoutBeacon.Token);
+                http.DefaultRequestHeaders.Add("X-Client-Id", clientId);
+                http.DefaultRequestHeaders.Add("X-Client-Secret", clientSecret);
+                using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                deadline.CancelAfter(TimeSpan.FromSeconds(5));
+                try { await SendHeartbeatCoreAsync(http, deadline.Token); }
+                catch (Exception error) when (error is HttpRequestException or OperationCanceledException or IOException or JsonException)
+                { Trace.TraceWarning($"Logout binding update deferred: {error.GetType().Name}"); }
+            }
             quizAnswers.Clear();
             nextSyncAt = DateTimeOffset.MinValue;
             return sent ? "Сохранения отправлены. Выберите своё имя." : "Изменения сохранены на этом компьютере. Выберите своё имя.";
@@ -232,6 +267,7 @@ public sealed class StudentAgent : IAsyncDisposable
             };
             http.DefaultRequestHeaders.Add("X-Sync-Token", beacon.Token);
             http.DefaultRequestHeaders.Add("X-Client-Id", clientId);
+            http.DefaultRequestHeaders.Add("X-Client-Secret", clientSecret);
 
             // Confirm HTTP before claiming "connected" — WISP/AP isolation often lets UDP through only.
             try
@@ -256,6 +292,7 @@ public sealed class StudentAgent : IAsyncDisposable
             var rosterLoaded = false;
             var nextRosterAt = DateTimeOffset.MinValue;
             Task? socketTask = null;
+            await using var presence = new StudentPresenceLease(http, cancellationToken);
             while (!cancellationToken.IsCancellationRequested && consecutiveFailures < 5)
             {
                 if (Interlocked.Exchange(ref rediscoverRequested, 0) == 1)
@@ -281,7 +318,9 @@ public sealed class StudentAgent : IAsyncDisposable
                     {
                         try
                         {
-                            await LoadLessonsAsync(http, cancellationToken);
+                            using var lessonsTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                            lessonsTimeout.CancelAfter(TimeSpan.FromSeconds(5));
+                            await LoadLessonsAsync(http, lessonsTimeout.Token);
                         }
                         catch (Exception error)
                         {
@@ -294,13 +333,15 @@ public sealed class StudentAgent : IAsyncDisposable
                     {
                         heartbeatCts.CancelAfter(TimeSpan.FromSeconds(15));
                         await SendHeartbeatAsync(http, heartbeatCts.Token);
+                        try { await SyncPersonalRecordsAsync(http, heartbeatCts.Token); }
+                        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                        { Trace.TraceWarning("Personal records sync timed out; classroom heartbeat succeeded."); }
                     }
 
                     if (studentId is Guid assigned)
                         fileSync.StudentId = assigned;
                     socketTask = await EnsureCommandSocketAsync(beacon, http, socketTask, cancellationToken);
-                    if (Volatile.Read(ref commandSocketLive) == 0)
-                        await PollCommandsAsync(http, cancellationToken);
+                    await PollCommandsAsync(http, cancellationToken);
                     await FlushQuizAnswersAsync(http, cancellationToken);
                     await FlushTypingAttemptsAsync(http, cancellationToken);
                     if (DateTimeOffset.UtcNow >= nextSyncAt)
@@ -342,7 +383,7 @@ public sealed class StudentAgent : IAsyncDisposable
                         }
                         catch (Exception error)
                         {
-                            UpdateStateChanged?.Invoke($"Обновление не установлено: {error.Message}");
+                            ReportUpdateFailure($"Обновление не установлено: {error.Message}");
                         }
                     }
                     if (!sessionOnline)
@@ -430,18 +471,26 @@ public sealed class StudentAgent : IAsyncDisposable
                 settings.SaveIgnoreFolders);
             if (workspaceChanged || !string.Equals(previousFolder, fileSync.WatchFolder, StringComparison.OrdinalIgnoreCase))
                 nextSyncAt = DateTimeOffset.MinValue;
-            if (settings.StudentUpdate is not null)
+            if (settings.StudentUpdate is { } update && IsMatchingStudentUpdate(update))
             {
-                availableUpdate = settings.StudentUpdate;
-                UpdateAvailable?.Invoke(settings.StudentUpdate);
+                availableUpdate = update;
+                UpdateAvailable?.Invoke(update);
+            }
+            else
+            {
+                availableUpdate = null;
+                if (settings.StudentUpdate is not null)
+                    Trace.TraceWarning("Tutor advertised an invalid, older or wrong-channel Student update.");
             }
         }
     }
 
     private async Task PollCommandsAsync(HttpClient http, CancellationToken cancellationToken)
     {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(5));
         var commands = await http.GetFromJsonAsync<List<ClassroomCommand>>(
-            $"/commands?client_id={Uri.EscapeDataString(clientId)}", JsonOptions, cancellationToken) ?? [];
+            $"/commands?client_id={Uri.EscapeDataString(clientId)}", JsonOptions, deadline.Token) ?? [];
         foreach (var command in commands)
             await ExecuteAndAckAsync(http, command, cancellationToken);
     }
@@ -460,7 +509,8 @@ public sealed class StudentAgent : IAsyncDisposable
         var socket = new ClientWebSocket();
         socket.Options.SetRequestHeader("X-Sync-Token", beacon.Token);
         socket.Options.SetRequestHeader("X-Client-Id", clientId);
-        var uri = new Uri($"ws://{beacon.Host}:{beacon.Port}/ws?client_id={Uri.EscapeDataString(clientId)}&token={Uri.EscapeDataString(beacon.Token)}");
+        socket.Options.SetRequestHeader("X-Client-Secret", clientSecret);
+        var uri = new Uri($"ws://{beacon.Host}:{beacon.Port}/ws?client_id={Uri.EscapeDataString(clientId)}");
         using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         connectCts.CancelAfter(TimeSpan.FromSeconds(3));
         try
@@ -531,51 +581,58 @@ public sealed class StudentAgent : IAsyncDisposable
 
     private async Task ExecuteAndAckAsync(HttpClient http, ClassroomCommand command, CancellationToken cancellationToken)
     {
-        if (!handledCommands.TryAdd(command.Id, 0)) return;
-        TrimHandledCommands();
-
-        CommandReceived?.Invoke(command);
-        CommandExecutionResult result;
+        await commandExecutionGate.WaitAsync(cancellationToken);
         try
         {
-            if (command.Kind == ClassroomCommandKinds.SyncNow) nextSyncAt = DateTimeOffset.MinValue;
-            if (command.Kind == ClassroomCommandKinds.SetWorkspace)
+            if (command.ExpiresAt <= DateTimeOffset.UtcNow) return;
+            CommandExecutionResult result;
+            if (handledCommands.TryGetValue(command.Id, out var cached)) result = cached.Result;
+            else
             {
-                await sessionGate.WaitAsync(cancellationToken);
-                try { if (studentId is not null) ApplyWorkspaceCommand(command); }
-                finally { sessionGate.Release(); }
-                nextSyncAt = DateTimeOffset.MinValue;
-            }
-            if (command.Kind == ClassroomCommandKinds.Configure && command.Payload.ValueKind == JsonValueKind.Object
-                && command.Payload.TryGetProperty("sync_seconds", out var seconds) && seconds.TryGetInt32(out var configured))
-                syncSeconds = Math.Clamp(configured, 15, 3600);
-            result = await TryHandleSoftwareCommandAsync(http, command, cancellationToken)
-                ?? await TryHandleVpnCommandAsync(command, cancellationToken)
-                ?? (CommandHandler is null
+                CommandReceived?.Invoke(command);
+                try
+                {
+                    if (command.Kind == ClassroomCommandKinds.SyncNow) nextSyncAt = DateTimeOffset.MinValue;
+                    if (command.Kind == ClassroomCommandKinds.SetWorkspace)
+                    {
+                        await sessionGate.WaitAsync(cancellationToken);
+                        try { if (studentId is not null) ApplyWorkspaceCommand(command); }
+                        finally { sessionGate.Release(); }
+                        nextSyncAt = DateTimeOffset.MinValue;
+                    }
+                    if (command.Kind == ClassroomCommandKinds.Configure && command.Payload.ValueKind == JsonValueKind.Object
+                    && command.Payload.TryGetProperty("sync_seconds", out var seconds) && seconds.TryGetInt32(out var configured))
+                    syncSeconds = Math.Clamp(configured, 15, 3600);
+                    result = await TryHandleSoftwareCommandAsync(http, command, cancellationToken)
+                    ?? await TryHandleVpnCommandAsync(command, cancellationToken)
+                    ?? (CommandHandler is null
                     ? new CommandExecutionResult(false, "Обработчик команд не настроен.")
                     : await CommandHandler(command, cancellationToken));
-        }
-        catch (Exception error)
-        {
-            result = new CommandExecutionResult(false, error.Message);
-        }
-        try
-        {
-            var acknowledgement = new CommandAcknowledgement(command.Id, result.Succeeded, result.Error);
-            using var response = await http.PostAsJsonAsync(
+                }
+                catch (Exception error)
+                {
+                    result = new CommandExecutionResult(false, error.Message);
+                }
+                handledCommands[command.Id] = (result, command.ExpiresAt);
+                TrimHandledCommands();
+            }
+            {
+                using var acknowledgementTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                acknowledgementTimeout.CancelAfter(TimeSpan.FromSeconds(5));
+                var acknowledgement = new CommandAcknowledgement(command.Id, result.Succeeded, result.Error);
+                using var response = await http.PostAsJsonAsync(
                 $"/commands/{command.Id}/ack?client_id={Uri.EscapeDataString(clientId)}",
                 acknowledgement,
                 JsonOptions,
-                cancellationToken);
-            response.EnsureSuccessStatusCode();
+                acknowledgementTimeout.Token);
+                // A second transport can deliver an already acknowledged command.
+                if (response.StatusCode != System.Net.HttpStatusCode.NotFound)
+                response.EnsureSuccessStatusCode();
+            }
         }
-        catch
-        {
-            // Allow Tutor to redeliver if ACK never reached the server.
-            handledCommands.TryRemove(command.Id, out _);
-            throw;
-        }
+        finally { commandExecutionGate.Release(); }
     }
+
 
     private void ApplyWorkspaceCommand(ClassroomCommand command)
     {
@@ -601,9 +658,9 @@ public sealed class StudentAgent : IAsyncDisposable
 
     private void TrimHandledCommands()
     {
-        if (handledCommands.Count < 400) return;
-        foreach (var key in handledCommands.Keys.Take(handledCommands.Count - 200))
-            handledCommands.TryRemove(key, out _);
+        foreach (var item in handledCommands)
+            if (item.Value.ExpiresAt <= DateTimeOffset.UtcNow)
+                handledCommands.TryRemove(item.Key, out _);
     }
 
     private async Task CloseCommandSocketAsync()
@@ -614,7 +671,10 @@ public sealed class StudentAgent : IAsyncDisposable
         try
         {
             if (socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
-                await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "bye", CancellationToken.None);
+                {
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                await socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "bye", timeout.Token);
+            }
         }
         catch
         {
@@ -670,13 +730,31 @@ public sealed class StudentAgent : IAsyncDisposable
 
     private async Task FlushQuizAnswersAsync(HttpClient http, CancellationToken cancellationToken)
     {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(5));
         while (quizAnswers.TryPeek(out var answer))
         {
-            using var response = await http.PostAsJsonAsync("/quiz/answer", answer, JsonOptions, cancellationToken);
-            response.EnsureSuccessStatusCode();
-            var result = await response.Content.ReadFromJsonAsync<QuizResult>(JsonOptions, cancellationToken);
-            UpdateStateChanged?.Invoke(result is null ? "Ответ викторины отправлен." : $"{result.Message} +{result.XpAwarded} XP");
-            _ = quizAnswers.TryDequeue(out _);
+            try
+            {
+                using var response = await http.PostAsJsonAsync("/quiz/answer", answer, JsonOptions, timeout.Token);
+                if (response.StatusCode is System.Net.HttpStatusCode.BadRequest or System.Net.HttpStatusCode.NotFound
+                    or System.Net.HttpStatusCode.Gone or System.Net.HttpStatusCode.Conflict)
+                {
+                    quizAnswers.TryDequeue(out _);
+                    QuizResultReceived?.Invoke(new QuizResult(answer.SessionId, false, 0, "Этот вопрос уже завершён."));
+                    continue;
+                }
+                if (!response.IsSuccessStatusCode) return;
+                var result = await response.Content.ReadFromJsonAsync<QuizResult>(JsonOptions, timeout.Token);
+                quizAnswers.TryDequeue(out _);
+                if (result is not null) QuizResultReceived?.Invoke(result);
+            }
+            catch (Exception error) when (error is HttpRequestException or JsonException
+                || error is OperationCanceledException && !cancellationToken.IsCancellationRequested)
+            {
+                Trace.TraceWarning($"Quiz answer retry: {error.GetType().Name}");
+                return;
+            }
         }
     }
 
@@ -701,11 +779,21 @@ public sealed class StudentAgent : IAsyncDisposable
         }
     }
 
+    private static bool IsMatchingStudentUpdate(StudentUpdateInfo update) =>
+        AppReleaseVersion.IsValid(update.Version)
+        && AppReleaseVersion.ChannelFor(update.Version) == BuildInfo.Channel
+        && AppReleaseVersion.IsNewer(update.Version, BuildInfo.Version);
+
     private async Task StageUpdateAsync(HttpClient http, StudentUpdateInfo update, CancellationToken cancellationToken)
     {
+        if (!IsMatchingStudentUpdate(update))
+        {
+            ReportUpdateFailure("Обновление не установлено: версия не новее текущей или относится к другому каналу.");
+            return;
+        }
         if (!StudentUpdateSignature.Verify(update.Version, update.Size, update.Sha256, update.Signature))
         {
-            UpdateStateChanged?.Invoke("Обновление не установлено: недействительная подпись.");
+            ReportUpdateFailure("Обновление не установлено: недействительная подпись.");
             return;
         }
         var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KIBERone Classroom", "updates");
@@ -713,7 +801,7 @@ public sealed class StudentAgent : IAsyncDisposable
         var temporary = Path.Combine(directory, $"student-{update.Version}-{Guid.NewGuid():N}.tmp");
         try
         {
-            using var response = await http.GetAsync("/update/student/file", HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            using var response = await http.GetAsync($"/update/student/file?channel={Uri.EscapeDataString(BuildInfo.Channel)}&version={Uri.EscapeDataString(update.Version)}", HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             response.EnsureSuccessStatusCode();
             await using var input = await response.Content.ReadAsStreamAsync(cancellationToken);
             await using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, true))
@@ -742,7 +830,7 @@ public sealed class StudentAgent : IAsyncDisposable
         catch (Exception error)
         {
             if (File.Exists(temporary)) File.Delete(temporary);
-            UpdateStateChanged?.Invoke($"Обновление не установлено: {error.Message}");
+            ReportUpdateFailure($"Обновление не установлено: {error.Message}");
         }
     }
 
@@ -752,6 +840,7 @@ public sealed class StudentAgent : IAsyncDisposable
     /// </summary>
     public bool PrepareStagedUpdate()
     {
+        if (stagedUpdateInfo is null || !IsMatchingStudentUpdate(stagedUpdateInfo)) return false;
         if (stagedUpdatePath is null || !File.Exists(stagedUpdatePath)) return false;
         var current = Environment.ProcessPath;
         if (string.IsNullOrWhiteSpace(current) || !IsStudentExecutablePath(current)) return false;
@@ -783,7 +872,7 @@ public sealed class StudentAgent : IAsyncDisposable
 
         if (!appliedViaBridge && !CanWriteUpdateTarget(current))
         {
-            UpdateStateChanged?.Invoke("Обновление скачано, но нет доступа к папке Student. Нужно обновить установленную системную службу через установщик.");
+            ReportUpdateFailure("Обновление скачано, но нет доступа к папке Student. Нужно обновить установленную системную службу через установщик.");
             return false;
         }
 

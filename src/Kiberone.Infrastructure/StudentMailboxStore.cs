@@ -37,9 +37,10 @@ public sealed class StudentMailboxStore
     public StudentMailboxStore(string dataDirectory, string? mailRoot)
     {
         directory = Path.Combine(dataDirectory, "mail-accounts");
+        this.mailRoot = string.IsNullOrWhiteSpace(mailRoot) ? null : Path.GetFullPath(mailRoot);
+        if (!Enabled) return;
         Directory.CreateDirectory(directory);
         if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        this.mailRoot = string.IsNullOrWhiteSpace(mailRoot) ? null : Path.GetFullPath(mailRoot);
     }
     public StudentMailAccount GetOrCreate(Guid studentId, string? lastName = null, string? firstName = null)
     {
@@ -91,15 +92,26 @@ public sealed class StudentMailboxStore
         foreach (var file in files)
         {
             ct.ThrowIfCancellationRequested();
-            if (new FileInfo(file).Length > 10 * 1024 * 1024) continue;
+            var message = await ReadMessageAsync(file, ct);
+            if (message is not null) result.Add(message);
+        }
+        return result;
+    }
+    private static async Task<StudentMailMessage?> ReadMessageAsync(string file, CancellationToken ct)
+    {
+        try
+        {
+            if (new FileInfo(file).Length > 10 * 1024 * 1024) return null;
             using var message = await MimeMessage.LoadAsync(file, ct);
             var (body, links) = MailBodyReader.Read(message);
             var code = MailBodyReader.FindConfirmationCode(body);
-            result.Add(new StudentMailMessage(Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFileName(file)))),
+            return new StudentMailMessage(Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFileName(file)))),
                 message.From.ToString(), message.Subject ?? "Без темы", body, message.Date,
-                Path.GetFileName(Path.GetDirectoryName(file)) == "new", code, links, MailHtml.Read(message), new DateTimeOffset(File.GetLastWriteTimeUtc(file), TimeSpan.Zero) + Retention));
+                Path.GetFileName(Path.GetDirectoryName(file)) == "new", code, links, MailHtml.Read(message), new DateTimeOffset(File.GetLastWriteTimeUtc(file), TimeSpan.Zero) + Retention);
         }
-        return result;
+        // Maildir delivery/retention may remove or rename a file after enumeration.
+        catch (FileNotFoundException) { return null; }
+        catch (DirectoryNotFoundException) { return null; }
     }
     private string AccountPath(Guid studentId) => Path.Combine(directory, studentId.ToString("N") + ".json");
 }

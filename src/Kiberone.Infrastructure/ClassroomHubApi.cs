@@ -93,11 +93,17 @@ public static class ClassroomHubApi
             catch (VpnPeerConflictException error) { return Results.Conflict(new { error = error.Message }); }
             catch (InvalidOperationException error) { return Results.BadRequest(new { error = error.Message }); }
         });
-        app.MapGet("/api/update/student", (HttpRequest request) =>
+        app.MapGet("/api/update/{application}", (string application, HttpRequest request) =>
         {
             var channel = request.Query["channel"].ToString();
-            if (channel is not "" and not "test") return Results.BadRequest(new { error = "Неизвестный канал обновления." });
-            var manifest = store.GetStudentUpdate(channel == "test");
+            if (string.IsNullOrEmpty(channel)) channel = "release";
+            AppUpdateManifest? manifest;
+            try
+            {
+                manifest = application == "student" && channel == "test"
+                    ? store.GetStudentUpdate(testChannel: true) : store.GetAppUpdate(application, channel);
+            }
+            catch (ArgumentException error) { return Results.BadRequest(new { error = error.Message }); }
             return manifest is null
                 ? Results.NotFound()
                 : Results.Json(manifest, new JsonSerializerOptions
@@ -105,13 +111,24 @@ public static class ClassroomHubApi
                     PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
                 });
         });
-        app.MapGet("/api/update/student/file", (HttpRequest request) =>
+        app.MapGet("/api/update/{application}/file", (string application, HttpRequest request) =>
         {
             var channel = request.Query["channel"].ToString();
-            if (channel is not "" and not "test") return Results.BadRequest(new { error = "Неизвестный канал обновления." });
-            return store.OpenStudentUpdate(channel == "test") is { } stream
-                ? Results.File(stream, "application/octet-stream", "KIBERoneStudent.exe", enableRangeProcessing: true)
-                : Results.NotFound();
+            if (string.IsNullOrEmpty(channel)) channel = "release";
+            var version = request.Query.ContainsKey("version") ? request.Query["version"].ToString() : null;
+            var sha256 = request.Query.ContainsKey("sha256") ? request.Query["sha256"].ToString() : null;
+            Stream? stream;
+            try
+            {
+                stream = application == "student" && channel == "test"
+                    ? store.OpenStudentUpdate(testChannel: true, version, sha256) : store.OpenAppUpdate(application, channel, version, sha256);
+            }
+            catch (ArgumentException error) { return Results.BadRequest(new { error = error.Message }); }
+            return stream is not null
+                ? Results.File(stream, "application/octet-stream", application == "student" ? "KIBERoneStudent.exe" : "KIBERoneTutor.exe", enableRangeProcessing: true)
+                : version is not null || sha256 is not null
+                    ? Results.Conflict(new { error = "Запрошенное обновление больше не доступно. Получите новый манифест." })
+                    : Results.NotFound();
         });
         app.MapGet("/api/update/installers", () => Results.Json(store.ListInstallerZips()));
     }

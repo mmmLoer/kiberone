@@ -22,9 +22,10 @@ mailboxes.ProvisionAlias = (username, alias) =>
 };
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls(Environment.GetEnvironmentVariable("KIBERONE_MAIL_API_LISTEN") ?? "http://127.0.0.1:8790");
-builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 16384);
+builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 1048576);
 var app = builder.Build();
 StudentMailApi.Map(app, store, mailboxes);
+LearningApi.Map(app, new LearningStore(Path.Combine(data, "learning"), store));
 var cleanup = Task.Run(async () =>
 {
     using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));

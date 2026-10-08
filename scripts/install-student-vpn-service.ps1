@@ -86,6 +86,20 @@ function Write-InstallLog([string] $Message) {
 $sourceExe = Join-Path $SourceDir "Kiberone.Student.exe"
 Assert-File $sourceExe "Publish Student first."
 
+# Stop and wait before any copy, including native DLL normalization in in-place mode.
+$existingService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+$serviceExists = $null -ne $existingService
+if ($serviceExists) {
+    try {
+        if ($existingService.Status -ne [System.ServiceProcess.ServiceControllerStatus]::Stopped) {
+            Stop-Service -InputObject $existingService -ErrorAction Stop
+        }
+        $existingService.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Stopped, [TimeSpan]::FromSeconds(60))
+    } finally {
+        $existingService.Dispose()
+    }
+}
+
 $nativeDir = Join-Path $SourceDir "native"
 New-Item -ItemType Directory -Force -Path $nativeDir | Out-Null
 foreach ($dll in @("tunnel.dll", "wireguard.dll")) {
@@ -127,17 +141,18 @@ $binPath = Get-ServiceBinaryPath $installedExe
 Write-Host "Service binary path: $binPath"
 
 Write-Host "Registering Windows service $ServiceName ..."
-& sc.exe stop $ServiceName 2>$null | Out-Null
-Start-Sleep -Seconds 1
-& sc.exe delete $ServiceName 2>$null | Out-Null
-Start-Sleep -Seconds 1
-
 # sc.exe quoting breaks under PowerShell for paths with spaces; New-Service passes PathName correctly.
 try {
-    New-Service -Name $ServiceName -BinaryPathName $binPath -DisplayName "KIBERone Student VPN" -StartupType Automatic -ErrorAction Stop | Out-Null
-    Write-InstallLog "Created service $ServiceName via New-Service."
+    if ($serviceExists) {
+        Set-ServiceBinaryPath $ServiceName $binPath
+        Set-Service -Name $ServiceName -DisplayName "KIBERone Student VPN" -StartupType Automatic -ErrorAction Stop
+        Write-InstallLog "Updated existing service $ServiceName."
+    } else {
+        New-Service -Name $ServiceName -BinaryPathName $binPath -DisplayName "KIBERone Student VPN" -StartupType Automatic -ErrorAction Stop | Out-Null
+        Write-InstallLog "Created service $ServiceName via New-Service."
+    }
 } catch {
-    throw "New-Service failed: $($_.Exception.Message) (binPath=$binPath)"
+    throw "Service registration failed: $($_.Exception.Message) (binPath=$binPath)"
 }
 
 & sc.exe description $ServiceName "WireGuard tunnel bridge for KIBERone Student. Installed once; no UAC during lessons." | Out-Null

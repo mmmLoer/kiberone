@@ -11,6 +11,7 @@ public sealed record StudentReleaseManifest(string Version, string Filename, lon
 
 public sealed class AssetDistributionService
 {
+    public string DataRoot { get; }
     private const long MaxScreenBytes = 2L * 1024 * 1024;
     private const long MaxStarterBytes = 1024L * 1024 * 1024;
     private const long MaxWallpaperBytes = 12L * 1024 * 1024;
@@ -19,9 +20,14 @@ public sealed class AssetDistributionService
     private readonly string starterRoot;
     private readonly string wallpaperRoot;
     private readonly string screensRoot;
+    private readonly object studentReleaseGate = new();
+    private readonly Dictionary<string, StudentReleaseFingerprint> verifiedStudentReleases = new(StringComparer.OrdinalIgnoreCase);
+    private long studentFileVerificationCount;
+    private sealed record StudentReleaseFingerprint(string ManifestPath, string ManifestHash, string FilePath, long Length, DateTime LastWriteTimeUtc);
 
     public AssetDistributionService(string applicationRoot, string dataRoot)
     {
+        DataRoot = Path.GetFullPath(dataRoot);
         updatesRoot = Path.Combine(applicationRoot, "updates");
         deployRoot = Path.Combine(applicationRoot, "deploy");
         var bundledStarter = Path.Combine(applicationRoot, "starter-pack");
@@ -46,41 +52,134 @@ public sealed class AssetDistributionService
 
     public string StarterPackFolder => starterRoot;
 
-    public StudentReleaseManifest? GetStudentRelease()
+    public StudentReleaseManifest? GetStudentRelease(string? channel = null)
     {
-        var manifestPath = Path.Combine(updatesRoot, "student_manifest.json");
+        channel ??= "release";
+        if (!IsStudentChannel(channel)) return null;
+        lock (studentReleaseGate)
+        {
+            return FindStudentRelease(channel)?.Release;
+        }
+    }
+
+    private (StudentReleaseManifest Release, string ManifestPath)? FindStudentRelease(string channel, string? version = null,
+        string? currentVersion = null, bool verifyContent = true)
+    {
+        var candidates = new List<(StudentReleaseManifest Release, string Path)>();
+        var legacyPath = Path.Combine(updatesRoot, "student_manifest.json");
+        if (ReadStudentRelease(legacyPath, channel, verifyContent: false) is { } legacy)
+            candidates.Add((legacy, legacyPath));
+        var bundledPath = Path.Combine(updatesRoot, channel, "student_manifest.json");
+        if (ReadStudentRelease(bundledPath, channel, verifyContent: false) is { } bundled)
+            candidates.Add((bundled, bundledPath));
+        var channelRoot = Path.Combine(updatesRoot, "student", channel);
+        if (Directory.Exists(channelRoot))
+        {
+            foreach (var directory in Directory.EnumerateDirectories(channelRoot))
+            {
+                var path = Path.Combine(directory, "student_manifest.json");
+                var release = ReadStudentRelease(path, channel, verifyContent: false);
+                if (release is not null && release.Version == Path.GetFileName(directory))
+                    candidates.Add((release, path));
+            }
+        }
+        candidates.Sort((left, right) => AppReleaseVersion.IsNewer(left.Release.Version, right.Release.Version) ? -1
+            : AppReleaseVersion.IsNewer(right.Release.Version, left.Release.Version) ? 1 : 0);
+        // Retained versions need not all be hashed on every client heartbeat.
+        foreach (var candidate in candidates)
+            if ((version is null || candidate.Release.Version == version)
+                && (currentVersion is null || AppReleaseVersion.IsNewer(candidate.Release.Version, currentVersion))
+                && ReadStudentRelease(candidate.Path, channel, verifyContent) is { } release) return (release, candidate.Path);
+        return null;
+    }
+
+    private StudentReleaseManifest? ReadStudentRelease(string manifestPath, string channel, bool verifyContent = true)
+    {
         if (!File.Exists(manifestPath)) return null;
         try
         {
-            var manifest = JsonSerializer.Deserialize<StudentReleaseManifest>(File.ReadAllText(manifestPath), new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower });
-            if (manifest is null || !IsSafeName(manifest.Filename) ||
+            var manifestBytes = File.ReadAllBytes(manifestPath);
+            var manifest = JsonSerializer.Deserialize<StudentReleaseManifest>(manifestBytes, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower });
+            if (manifest is null || !AppReleaseVersion.IsValid(manifest.Version)
+                || AppReleaseVersion.ChannelFor(manifest.Version) != channel || !IsSafeName(manifest.Filename) ||
                 !StudentUpdateSignature.Verify(manifest.Version, manifest.Size, manifest.Sha256, manifest.Signature)) return null;
-            var file = Path.Combine(updatesRoot, manifest.Filename);
-            if (!File.Exists(file) || new FileInfo(file).Length != manifest.Size) return null;
-            var hash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(file)));
-            return hash.Equals(manifest.Sha256, StringComparison.OrdinalIgnoreCase) ? manifest : null;
+            var file = Path.Combine(Path.GetDirectoryName(manifestPath)!, manifest.Filename);
+            var info = new FileInfo(file);
+            if (!info.Exists || info.Length != manifest.Size) return null;
+            if (!verifyContent) return manifest;
+            var fingerprint = new StudentReleaseFingerprint(Path.GetFullPath(manifestPath),
+                Convert.ToHexString(SHA256.HashData(manifestBytes)), info.FullName, info.Length, info.LastWriteTimeUtc);
+            if (verifiedStudentReleases.TryGetValue(fingerprint.ManifestPath, out var verified) && verified == fingerprint)
+                return manifest;
+            verifiedStudentReleases.Remove(fingerprint.ManifestPath);
+            using var content = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read);
+            if (!VerifyStudentFile(content, manifest)) return null;
+            info.Refresh();
+            if (!info.Exists || info.Length != fingerprint.Length || info.LastWriteTimeUtc != fingerprint.LastWriteTimeUtc) return null;
+            verifiedStudentReleases[fingerprint.ManifestPath] = fingerprint;
+            return manifest;
         }
         catch { return null; }
     }
 
     public StudentUpdateInfo? GetUpdateFor(string currentVersion)
     {
-        var release = GetStudentRelease();
-        if (release is null || !Version.TryParse(release.Version, out var available)) return null;
-        return !Version.TryParse(currentVersion, out var current) || available > current
-            ? new StudentUpdateInfo(release.Version, release.Sha256, release.Size, release.Signature)
-            : null;
+        if (!AppReleaseVersion.IsValid(currentVersion)) return null;
+        lock (studentReleaseGate)
+        {
+            var release = FindStudentRelease(AppReleaseVersion.ChannelFor(currentVersion), currentVersion: currentVersion)?.Release;
+            return release is not null
+                ? new StudentUpdateInfo(release.Version, release.Sha256, release.Size, release.Signature)
+                : null;
+        }
     }
 
-    public Stream? OpenStudentUpdate()
+    private bool VerifyStudentFile(Stream content, StudentReleaseManifest manifest)
     {
-        var release = GetStudentRelease();
-        if (release is null) return null;
-        return new FileStream(Path.Combine(updatesRoot, release.Filename), FileMode.Open, FileAccess.Read, FileShare.Read);
+        if (content.Length != manifest.Size) return false;
+        studentFileVerificationCount++;
+        var hash = Convert.ToHexString(SHA256.HashData(content));
+        content.Position = 0;
+        return hash.Equals(manifest.Sha256, StringComparison.OrdinalIgnoreCase);
     }
+
+    public Stream? OpenStudentUpdate(string? channel = null, string? version = null)
+    {
+        channel ??= "release";
+        if (!IsStudentChannel(channel) || (version is not null &&
+            (!AppReleaseVersion.IsValid(version) || !IsSafeName(version) || AppReleaseVersion.ChannelFor(version) != channel))) return null;
+        lock (studentReleaseGate)
+        {
+            var selected = FindStudentRelease(channel, version, verifyContent: false);
+            if (selected is null) return null;
+            var file = Path.Combine(Path.GetDirectoryName(selected.Value.ManifestPath)!, selected.Value.Release.Filename);
+            FileStream? content = null;
+            try
+            {
+                content = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read);
+                // Metadata is only a heartbeat cache hint. Downloads always verify
+                // the exact handle returned, even if size and timestamps are unchanged.
+                if (!VerifyStudentFile(content, selected.Value.Release))
+                {
+                    verifiedStudentReleases.Remove(Path.GetFullPath(selected.Value.ManifestPath));
+                    return null;
+                }
+                var verified = content;
+                content = null;
+                return verified;
+            }
+            catch (IOException) { return null; }
+            catch (UnauthorizedAccessException) { return null; }
+            finally { content?.Dispose(); }
+        }
+    }
+
+    private static bool IsStudentChannel(string channel) => channel is "release" or "beta";
 
     public StudentReleaseManifest ImportStudentRelease(AppUpdateManifest remote, byte[] content)
     {
+        if (!AppReleaseVersion.IsValid(remote.Version) || !IsSafeName(remote.Version))
+            throw new LessonValidationException(["Некорректная версия обновления Student."]);
         if (content.Length == 0)
             throw new LessonValidationException(["Пустой файл обновления Student."]);
         if (!IsSafeName(remote.Filename))
@@ -90,15 +189,25 @@ public sealed class AssetDistributionService
         var hash = Convert.ToHexString(SHA256.HashData(content));
         if (!hash.Equals(remote.Sha256, StringComparison.OrdinalIgnoreCase))
             throw new LessonValidationException(["Хеш обновления Student не совпал."]);
+        if (content.LongLength != remote.Size)
+            throw new LessonValidationException(["Размер обновления Student не совпал."]);
 
-        Directory.CreateDirectory(updatesRoot);
-        var destination = Path.Combine(updatesRoot, remote.Filename);
-        File.WriteAllBytes(destination, content);
-        var stored = new StudentReleaseManifest(remote.Version, remote.Filename, content.Length, hash, remote.PublishedAt, remote.Signature);
-        File.WriteAllText(
-            Path.Combine(updatesRoot, "student_manifest.json"),
-            JsonSerializer.Serialize(stored, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower, WriteIndented = true }));
-        return stored;
+        lock (studentReleaseGate)
+        {
+            verifiedStudentReleases.Clear();
+            var root = Path.Combine(updatesRoot, "student", AppReleaseVersion.ChannelFor(remote.Version), remote.Version);
+            Directory.CreateDirectory(root);
+            var destination = Path.Combine(root, remote.Filename);
+            var temporary = destination + ".tmp";
+            File.WriteAllBytes(temporary, content);
+            File.Move(temporary, destination, true);
+            var stored = new StudentReleaseManifest(remote.Version, remote.Filename, content.LongLength, hash, remote.PublishedAt, remote.Signature);
+            var manifestPath = Path.Combine(root, "student_manifest.json");
+            File.WriteAllText(manifestPath + ".tmp",
+                JsonSerializer.Serialize(stored, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower, WriteIndented = true }));
+            File.Move(manifestPath + ".tmp", manifestPath, true);
+            return stored;
+        }
     }
 
     public IReadOnlyList<DistributedAsset> ListStarterPack() => ListAssets(starterRoot);

@@ -54,14 +54,14 @@ public sealed class StudentMailViewTests
             window.UpdateLayout();
             Dispatcher.UIThread.RunJobs();
             var buttons = view.GetVisualDescendants().OfType<Button>().ToList();
-            var letterButton = Assert.Single(buttons.Where(x => ReferenceEquals(x.Command, model.OpenMailMessageCommand)));
+            var letterButton = Assert.Single(buttons, x => ReferenceEquals(x.Command, model.OpenMailMessageCommand));
             Assert.Same(message, letterButton.CommandParameter);
             letterButton.Command!.Execute(letterButton.CommandParameter);
             window.UpdateLayout();
             Assert.Same(message, model.SelectedMailMessage);
             Assert.True(model.IsMessageVisible);
             Assert.Contains(view.GetVisualDescendants().OfType<TextBlock>(), x => x.Text == "Your code is 123456");
-            Assert.Single(view.GetVisualDescendants().OfType<Button>().Where(x => ReferenceEquals(x.Command, model.OpenMailLinkCommand)));
+            Assert.Single(view.GetVisualDescendants().OfType<Button>(), x => ReferenceEquals(x.Command, model.OpenMailLinkCommand));
             Assert.Equal("Письмо", model.SectionTitle);
             string? copied = null;
             model.CopyTextRequested = text => { copied = text; return Task.CompletedTask; };

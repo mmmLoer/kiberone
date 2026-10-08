@@ -30,6 +30,7 @@ public sealed class ClassroomLiveState
     public bool ShowAllLocations { get; set; }
     public int SyncSeconds { get; set; } = 300;
     public Func<Guid, CancellationToken, Task<StudentMailAccount>>? MailAccountProvider { get; set; }
+    public Func<Guid, IReadOnlyList<TypingPersonalBest>, CancellationToken, Task<IReadOnlyList<TypingPersonalBest>>>? TypingRecordsProvider { get; set; }
 }
 
 public sealed class ClassroomServer(
@@ -44,6 +45,7 @@ public sealed class ClassroomServer(
     ReliableCommandQueue commands) : IAsyncDisposable
 {
     private WebApplication? app;
+    private readonly DeviceCredentials deviceCredentials = new(Path.Combine(assets.DataRoot, "device-pins"));
     private readonly StudentCommandSockets commandSockets = new();
     private Action<ClassroomCommand, IReadOnlyList<string>>? queuedHandler;
     private CancellationTokenSource? presenceCts;
@@ -103,6 +105,33 @@ public sealed class ClassroomServer(
                 await context.Response.WriteAsJsonAsync(new { error = "unauthorized" }, cancellationToken);
                 return;
             }
+            if (!IsTutor(context))
+            {
+                var id = context.Request.Headers["X-Client-Id"].ToString();
+                var secret = context.Request.Headers["X-Client-Secret"].ToString();
+                // Query credentials support WebSocket clients that cannot set handshake headers.
+                // A supplied header always wins; an invalid header cannot fall back to a query secret.
+                if (context.Request.Path == "/ws")
+                {
+                    if (!context.Request.Headers.ContainsKey("X-Client-Id"))
+                        id = context.Request.Query["client_id"].ToString();
+                    if (!context.Request.Headers.ContainsKey("X-Client-Secret"))
+                        secret = context.Request.Query["client_secret"].ToString();
+                    context.Request.Headers["X-Client-Id"] = id;
+                }
+                if (!deviceCredentials.AuthenticateOrEnroll(id, secret))
+                {
+                    context.Response.StatusCode = 401;
+                    await context.Response.WriteAsJsonAsync(new { error = "device_credential_required_or_rejected" });
+                    return;
+                }
+                if (context.Request.Query.TryGetValue("client_id", out var target)
+                    && !string.Equals(id, target.ToString(), StringComparison.OrdinalIgnoreCase))
+                {
+                    context.Response.StatusCode = 403;
+                    return;
+                }
+            }
             await next(context);
         });
         app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(30) });
@@ -112,6 +141,7 @@ public sealed class ClassroomServer(
         presenceCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         presenceTask = RunPresenceAuditLoopAsync(presenceCts.Token);
         await app.StartAsync(cancellationToken);
+        quizzes.EnableSequences();
     }
 
     private void MapRoutes(WebApplication application)
@@ -124,8 +154,12 @@ public sealed class ClassroomServer(
             preferred_group = LiveState.PreferredGroupName,
             command_push = true
         }));
-        application.MapPost("/heartbeat", async ([FromBody] HeartbeatRequest request, CancellationToken ct) =>
+        application.MapPost("/presence", (HttpContext context) =>
+            clients.Touch(context.Request.Headers["X-Client-Id"].ToString())
+                ? Results.Ok() : Results.NotFound());
+        application.MapPost("/heartbeat", async (HttpContext context, [FromBody] HeartbeatRequest request, CancellationToken ct) =>
         {
+            if (!OwnsClient(context, request.ClientId)) return Results.StatusCode(403);
             clients.Heartbeat(request);
             await WritePresenceAuditsAsync(ct);
             fileSync.BindClient(request.ClientId, request.StudentId);
@@ -175,6 +209,13 @@ public sealed class ClassroomServer(
         application.MapGet("/command-receipts", (HttpContext context, int? limit) =>
             IsTutor(context) ? Results.Ok(commands.GetReceipts(limit ?? 200)) : Results.Unauthorized());
         application.Map("/ws", HandleCommandSocketAsync);
+        application.MapPost("/typing/records", async (HttpContext context, SaveTypingRecordsRequest request, CancellationToken ct) =>
+        {
+            var client = clients.GetAll().FirstOrDefault(x => x.ClientId == NormalizeClientIdHeader(context.Request.Headers["X-Client-Id"].ToString()));
+            if (client?.StudentId is not Guid student) return Results.Unauthorized();
+            if (LiveState.TypingRecordsProvider is null) return Results.StatusCode(503);
+            return Results.Ok(await LiveState.TypingRecordsProvider(student, request.Records, ct));
+        });
         application.MapGet("/typing/lessons", async (CancellationToken ct) =>
             Results.Ok(await lessons.ListCatalogAsync(ct)));
         application.MapGet("/typing/lessons/{id:guid}", async (Guid id, CancellationToken ct) =>
@@ -265,15 +306,23 @@ public sealed class ClassroomServer(
         });
         application.MapPut("/store/orders/{id:guid}/status", async (HttpContext context, Guid id, [FromBody] UpdateOrderStatusRequest request, CancellationToken ct) =>
             !IsTutor(context) ? Results.Unauthorized() : await classroom.UpdateOrderStatusAsync(id, request, ct) is { } order ? Results.Ok(order) : Results.NotFound());
-        application.MapPost("/sync/prepare", ([FromBody] SyncPrepareRequest request, CancellationToken ct) => fileSync.PrepareAsync(request, ct));
+        application.MapPost("/sync/prepare", async (HttpContext context, [FromBody] SyncPrepareRequest request, CancellationToken ct) =>
+        {
+            if (!OwnsClient(context, request.ClientId)) return Results.StatusCode(403);
+            if (!IsTutor(context) && request.StudentId is Guid student
+                && !clients.GetAll().Any(c => string.Equals(c.ClientId, request.ClientId, StringComparison.OrdinalIgnoreCase) && c.StudentId == student))
+                return Results.StatusCode(403);
+            return Results.Ok(await fileSync.PrepareAsync(request, ct));
+        });
         application.MapGet("/sync/approval", async (string client_id, CancellationToken ct) =>
             await fileSync.GetApprovalAsync(client_id, ct) is { } approval ? Results.Ok(approval) : Results.NotFound());
         application.MapGet("/sync/approvals", async (HttpContext context, CancellationToken ct) =>
             IsTutor(context) ? Results.Ok(await fileSync.ListPendingApprovalsAsync(ct)) : Results.Unauthorized());
         application.MapPost("/sync/approval/{id:guid}", async (HttpContext context, Guid id, [FromBody] SyncDecisionRequest request, CancellationToken ct) =>
             !IsTutor(context) ? Results.Unauthorized() : await fileSync.DecideAsync(id, string.IsNullOrWhiteSpace(request.Action) ? (request.Approved ? "update" : "restore") : request.Action, ct) is { } decision ? Results.Ok(decision) : Results.NotFound());
-        application.MapPost("/sync/complete", async ([FromBody] SyncCompleteRequest request, CancellationToken ct) =>
+        application.MapPost("/sync/complete", async (HttpContext context, [FromBody] SyncCompleteRequest request, CancellationToken ct) =>
         {
+            if (!OwnsClient(context, request.ClientId)) return Results.StatusCode(403);
             await fileSync.CompleteAsync(request.ClientId, ct);
             return Results.Ok(new { ok = true });
         });
@@ -309,10 +358,22 @@ public sealed class ClassroomServer(
             IsTutor(context) ? Results.Ok(await fileSync.ListProjectSnapshotsAsync(client_id, ct)) : Results.Unauthorized());
         application.MapPost("/projects/snapshots/restore", async (HttpContext context, [FromBody] RestoreProjectSnapshotRequest request, CancellationToken ct) =>
             IsTutor(context) ? Results.Ok(await fileSync.RestoreProjectSnapshotAsync(request, ct)) : Results.Unauthorized());
-        application.MapGet("/update/student", () => assets.GetStudentRelease() is { } release ? Results.Ok(release) : Results.NotFound());
-        application.MapGet("/update/student/file", () => assets.OpenStudentUpdate() is { } stream
-            ? Results.File(stream, "application/octet-stream", "KIBERoneStudent.exe", enableRangeProcessing: true)
-            : Results.NotFound());
+        application.MapGet("/update/student", (HttpContext context, string? channel) =>
+        {
+            var selection = ResolveStudentUpdateChannel(context, channel);
+            if (selection.ErrorStatus != 0) return Results.StatusCode(selection.ErrorStatus);
+            return assets.GetStudentRelease(selection.Channel) is { } release ? Results.Ok(release) : Results.NotFound();
+        });
+        application.MapGet("/update/student/file", (HttpContext context, string? channel, string? version) =>
+        {
+            var selection = ResolveStudentUpdateChannel(context, channel);
+            if (selection.ErrorStatus != 0) return Results.StatusCode(selection.ErrorStatus);
+            if (version is not null && (!AppReleaseVersion.IsValid(version)
+                || AppReleaseVersion.ChannelFor(version) != selection.Channel)) return Results.BadRequest();
+            return assets.OpenStudentUpdate(selection.Channel, version) is { } stream
+                ? Results.File(stream, "application/octet-stream", "KIBERoneStudent.exe", enableRangeProcessing: true)
+                : Results.NotFound();
+        });
         application.MapGet("/starter-pack", () => assets.ListStarterPack());
         application.MapGet("/starter-pack/file", (string name) => assets.OpenStarterAsset(name) is { } asset
             ? Results.File(asset.Content, asset.ContentType, asset.FileName, enableRangeProcessing: true)
@@ -335,7 +396,14 @@ public sealed class ClassroomServer(
                 : Results.NotFound());
         application.MapPost("/quiz/start", async (HttpContext context, [FromBody] StartQuizRequest request, CancellationToken ct) =>
             IsTutor(context) ? Results.Ok(await quizzes.StartAsync(request, ct)) : Results.Unauthorized());
-        application.MapPost("/quiz/answer", ([FromBody] SubmitQuizAnswerRequest request, CancellationToken ct) => quizzes.SubmitAsync(request, ct));
+        application.MapPost("/quiz/run", async (HttpContext context, StartQuizDocumentRequest request, CancellationToken ct) =>
+            IsTutor(context) ? Results.Ok(await quizzes.StartDocumentAsync(request.Document, request.ClientIds, ct)) : Results.Unauthorized());
+        application.MapPost("/quiz/answer", async (HttpContext context, [FromBody] SubmitQuizAnswerRequest request, CancellationToken ct) =>
+        {
+            var id = NormalizeClientIdHeader(context.Request.Headers["X-Client-Id"].ToString());
+            if (!string.Equals(id, request.ClientId, StringComparison.Ordinal) || !clients.GetAll().Any(c => c.ClientId == id && c.StudentId is not null)) return Results.Unauthorized();
+            return Results.Ok(await quizzes.SubmitAsync(request, ct));
+        });
         application.MapGet("/quiz/{id:guid}/answers", async (HttpContext context, Guid id, CancellationToken ct) =>
             IsTutor(context) ? Results.Ok(await quizzes.GetAnswersAsync(id, ct)) : Results.Unauthorized());
         application.MapGet("/audit", async (HttpContext context, string? category, string? search, int? limit, CancellationToken ct) =>
@@ -369,6 +437,20 @@ public sealed class ClassroomServer(
             context.RequestAborted,
             onChannelOpened: () => audit.WriteAsync("Система", "Подключение канала", clientId, "/ws", "", 101, 0, CancellationToken.None),
             onChannelClosed: () => audit.WriteAsync("Система", "Отключение канала", clientId, "/ws", "", 200, 0, CancellationToken.None));
+    }
+
+    private (string? Channel, int ErrorStatus) ResolveStudentUpdateChannel(HttpContext context, string? channel)
+    {
+        // Authentication middleware has already checked the Tutor/device credentials.
+        if (channel is not null && channel is not ("release" or "beta")) return (null, 400);
+        if (IsTutor(context)) return channel is null ? (null, 400) : (channel, 0);
+        var clientId = NormalizeClientIdHeader(context.Request.Headers["X-Client-Id"].ToString());
+        var client = clients.GetAll().FirstOrDefault(x => string.Equals(x.ClientId, clientId, StringComparison.OrdinalIgnoreCase));
+        if (client is null) return channel is null ? (null, 400) : (channel, 0);
+        if (!AppReleaseVersion.IsValid(client.AppVersion)) return (null, 400);
+        var currentChannel = AppReleaseVersion.ChannelFor(client.AppVersion);
+        if (channel is not null && channel != currentChannel) return (null, 403);
+        return (currentChannel, 0);
     }
 
     private async Task RunPresenceAuditLoopAsync(CancellationToken cancellationToken)
@@ -449,6 +531,9 @@ public sealed class ClassroomServer(
     private string? StudentLocationFilter() =>
         LiveState.ShowAllLocations ? null : LiveState.LocationName;
 
+    private bool OwnsClient(HttpContext context, string id) =>
+        IsTutor(context) || string.Equals(context.Request.Headers["X-Client-Id"].ToString(), id, StringComparison.OrdinalIgnoreCase);
+
     private bool IsTutor(HttpContext context) =>
         context.Request.Headers["X-Tutor"].ToString().Equals("1", StringComparison.Ordinal)
         && TokensMatch(context.Request.Headers["X-Tutor-Token"].ToString(), serverOptions.TutorToken);
@@ -501,6 +586,7 @@ public sealed class ClassroomServer(
 
     public async ValueTask DisposeAsync()
     {
+        await quizzes.StopSequencesAsync();
         if (presenceCts is not null)
         {
             try { presenceCts.Cancel(); } catch { }

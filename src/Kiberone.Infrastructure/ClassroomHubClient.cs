@@ -14,16 +14,28 @@ public sealed class ClassroomHubClient
         PropertyNameCaseInsensitive = true
     };
 
+    // The roster endpoint uses the ASP.NET web (camelCase) contract.
+    // Update manifests use snake_case and keep their separate options above.
+    private static readonly JsonSerializerOptions RosterJson = new(JsonSerializerDefaults.Web);
     private readonly HttpClient http;
 
     public ClassroomHubClient(string? baseUrl = null)
     {
         http = new HttpClient
         {
-            BaseAddress = new Uri((string.IsNullOrWhiteSpace(baseUrl) ? DefaultBaseUrl : baseUrl.Trim()).TrimEnd('/') + "/"),
+            BaseAddress = ResolveBaseAddress(baseUrl),
             // Student update packages are ~200MB+; keep this high for hub downloads.
             Timeout = TimeSpan.FromMinutes(15)
         };
+    }
+
+    public static Uri ResolveBaseAddress(string? baseUrl)
+    {
+        var value = (string.IsNullOrWhiteSpace(baseUrl) ? DefaultBaseUrl : baseUrl.Trim()).TrimEnd('/') + "/";
+        var uri = new Uri(value);
+        // Upgrade the known production endpoint while preserving the existing credential scope.
+        return uri.Scheme == "http" && uri.Host == "193.182.145.64" && uri.Port == 8787
+            ? new Uri("https://nshub.pro/") : uri;
     }
 
     public async Task<IReadOnlyList<HubLocationStatus>> ListLocationsAsync(CancellationToken ct = default)
@@ -45,7 +57,7 @@ public sealed class ClassroomHubClient
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             return null;
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<LocationRosterSnapshot>(Json, ct);
+        return await response.Content.ReadFromJsonAsync<LocationRosterSnapshot>(RosterJson, ct);
     }
 
     public async Task UploadAsync(string location, string password, LocationRosterSnapshot snapshot, CancellationToken ct = default)
@@ -120,11 +132,52 @@ public sealed class ClassroomHubClient
     }
 
     public Task<AppUpdateManifest?> GetStudentUpdateAsync(bool testChannel = false, CancellationToken ct = default) =>
-        GetOptionalAsync<AppUpdateManifest>(testChannel ? "api/update/student?channel=test" : "api/update/student", ct);
+        testChannel ? GetOptionalAsync<AppUpdateManifest>("api/update/student?channel=test", ct)
+            : GetAppUpdateAsync("student", "release", ct);
 
-    public async Task<byte[]> DownloadStudentUpdateFileAsync(bool testChannel = false, CancellationToken ct = default)
+    public async Task<AppUpdateManifest?> GetAppUpdateAsync(string app, string channel, CancellationToken ct = default)
     {
-        using var response = await http.GetAsync(testChannel ? "api/update/student/file?channel=test" : "api/update/student/file",
+        ClassroomHubStore.ValidateAppChannel(app, channel);
+        var manifest = await GetOptionalAsync<AppUpdateManifest>($"api/update/{app}?channel={channel}", ct);
+        if (manifest is null) return null;
+        ValidateAppManifest(app, channel, manifest);
+        return manifest;
+    }
+
+    public async Task<byte[]> DownloadAppUpdateFileAsync(string app, string channel, CancellationToken ct = default)
+    {
+        ClassroomHubStore.ValidateAppChannel(app, channel);
+        var manifest = await GetAppUpdateAsync(app, channel, ct)
+            ?? throw new HttpRequestException("Обновление не найдено.", null, System.Net.HttpStatusCode.NotFound);
+        return await DownloadAppUpdateFileAsync(app, channel, manifest, ct);
+    }
+
+    public async Task<byte[]> DownloadAppUpdateFileAsync(string app, string channel, AppUpdateManifest expected, CancellationToken ct = default)
+    {
+        ClassroomHubStore.ValidateAppChannel(app, channel);
+        ArgumentNullException.ThrowIfNull(expected);
+        ValidateAppManifest(app, channel, expected);
+        var bytes = await DownloadUpdateFileAsync($"api/update/{app}/file?channel={channel}&version={Uri.EscapeDataString(expected.Version)}&sha256={Uri.EscapeDataString(expected.Sha256)}", ct);
+        if (bytes.LongLength != expected.Size
+            || !Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).Equals(expected.Sha256, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("Файл обновления не соответствует подписанному манифесту.");
+        return bytes;
+    }
+
+    private static void ValidateAppManifest(string app, string channel, AppUpdateManifest manifest)
+    {
+        if (!AppReleaseVersion.IsValid(manifest.Version) || AppReleaseVersion.ChannelFor(manifest.Version) != channel
+            || !StudentUpdateSignature.VerifyApp(app, manifest.Version, manifest.Size, manifest.Sha256, manifest.Signature))
+            throw new InvalidDataException("Сервер вернул недействительное обновление приложения или канала.");
+    }
+
+    public Task<byte[]> DownloadStudentUpdateFileAsync(bool testChannel = false, CancellationToken ct = default) =>
+        testChannel ? DownloadUpdateFileAsync("api/update/student/file?channel=test", ct)
+            : DownloadAppUpdateFileAsync("student", "release", ct);
+
+    private async Task<byte[]> DownloadUpdateFileAsync(string url, CancellationToken ct)
+    {
+        using var response = await http.GetAsync(url,
             HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
         await using var stream = await response.Content.ReadAsStreamAsync(ct);

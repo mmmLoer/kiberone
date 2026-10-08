@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kiberone.Infrastructure;
 
-public sealed class FileSyncService
+public sealed partial class FileSyncService
 {
     private const long MaxUploadBytes = 50L * 1024 * 1024;
     private static readonly HashSet<string> ExcludedDirectories = new(StringComparer.OrdinalIgnoreCase)
@@ -110,11 +110,16 @@ public sealed class FileSyncService
         TryDeleteEmptyDirectories(legacy);
     }
 
-    public async Task<SyncPrepareResult> PrepareAsync(SyncPrepareRequest request, CancellationToken ct = default)
+    public Task<SyncPrepareResult> PrepareAsync(SyncPrepareRequest request, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(request.ClientId)) throw new LessonValidationException(["client_id обязателен."]);
         if (request.StudentId is Guid studentId)
             BindClient(request.ClientId, studentId);
+        return WithProjectGateAsync(request.ClientId, () => PrepareCoreAsync(request, ct), ct);
+    }
+
+    private async Task<SyncPrepareResult> PrepareCoreAsync(SyncPrepareRequest request, CancellationToken ct)
+    {
         foreach (var change in request.Changes) ValidateRelativePath(change.Path);
         if (request.LocalFiles is not null)
             foreach (var file in request.LocalFiles) ValidateRelativePath(file.Path);
@@ -159,7 +164,14 @@ public sealed class FileSyncService
 
         plan = await ApplyRestoreIntentsAsync(request.ClientId, plan, ct);
         if (plan.RestoreFromServer)
+        {
             reasons.RemoveAll(x => x.StartsWith("удаление ", StringComparison.Ordinal) || x == "рабочая папка стала пустой");
+            var remainingDeletes = plan.Changes.Where(x => x.Kind == SyncChangeKind.Deleted).ToArray();
+            if (remainingDeletes.Length > 0)
+                reasons.Add(remainingDeletes.Length == 1
+                    ? $"удаление файла: {remainingDeletes[0].Path}"
+                    : $"удаление {remainingDeletes.Length} файлов");
+        }
         if (!AutoApproveSafeFiles && plan.Upload.Count + plan.Conflicts.Count > 0)
             reasons.Add($"создание или изменение {plan.Upload.Count + plan.Conflicts.Count} файлов");
 
@@ -201,6 +213,14 @@ public sealed class FileSyncService
     public async Task<SyncPrepareResult?> DecideAsync(Guid id, string action, CancellationToken ct = default)
     {
         await using var db = new ClassroomDbContext(options);
+        var approval = await db.SyncApprovals.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, ct);
+        if (approval is null) return null;
+        return await WithProjectGateAsync(approval.ClientId, () => DecideCoreAsync(id, action, ct), ct);
+    }
+
+    private async Task<SyncPrepareResult?> DecideCoreAsync(Guid id, string action, CancellationToken ct)
+    {
+        await using var db = new ClassroomDbContext(options);
         var approval = await db.SyncApprovals.FindAsync([id], ct);
         if (approval is null) return null;
         if (approval.Status != SyncApprovalStatus.Pending) throw new InvalidOperationException("Решение по этому запросу уже принято.");
@@ -211,12 +231,13 @@ public sealed class FileSyncService
             .Select(x => Normalize(x.Path))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
-        if (!takeStudent && deletes.Count > 0)
+        if (!takeStudent)
         {
             // Keep tutor copies: push deleted files back to the student.
             plan = plan with
             {
                 Download = plan.Download.Concat(deletes).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+                Upload = [],
                 Changes = []
             };
         }
@@ -227,20 +248,19 @@ public sealed class FileSyncService
         if (takeStudent)
         {
             foreach (var path in deletes)
-                await DeleteAsync(approval.ClientId, path, ct);
+                await DeleteCoreAsync(approval.ClientId, path, ct);
         }
         return ToResult(approval, true, plan);
     }
 
-    public async Task CompleteAsync(string clientId, CancellationToken ct = default)
+    private async Task CompleteCoreAsync(string clientId, CancellationToken ct = default)
     {
         await using var db = new ClassroomDbContext(options);
-        var candidates = await db.SyncApprovals.Where(x => x.ClientId == clientId &&
-            (x.Status == SyncApprovalStatus.Approved
-             || x.Status == SyncApprovalStatus.NotRequired
-             || x.Status == SyncApprovalStatus.Restore)).ToListAsync(ct);
+        var candidates = await db.SyncApprovals.Where(x => x.ClientId == clientId).ToListAsync(ct);
         var latest = candidates.OrderByDescending(x => x.CreatedAt).FirstOrDefault();
-        if (latest is null) throw new InvalidOperationException("Нет активной синхронизации.");
+        if (latest is null || latest.Status is not (SyncApprovalStatus.Approved or SyncApprovalStatus.NotRequired or SyncApprovalStatus.Restore)
+            || DateTimeOffset.UtcNow - latest.CreatedAt > TimeSpan.FromHours(1))
+            throw new InvalidOperationException("Нет активной синхронизации.");
         var plan = ReadPlan(latest.ChangesJson);
         if (plan.Upload.Count > 0 || plan.Changes.Count > 0)
             await CaptureProjectSnapshotAsync(clientId, "Автосохранение", ct);
@@ -252,9 +272,9 @@ public sealed class FileSyncService
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task<SyncedFileInfo> UploadAsync(string clientId, string relativePath, Stream content, CancellationToken ct = default)
+    private async Task<SyncedFileInfo> UploadCoreAsync(string clientId, string relativePath, Stream content, CancellationToken ct = default)
     {
-        await EnsureCanSyncAsync(clientId, ct);
+        await EnsureCanSyncAsync(clientId, relativePath, deleting: false, ct);
         var destination = ResolvePath(clientId, relativePath);
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
         var temporary = destination + $".upload-{Guid.NewGuid():N}.tmp";
@@ -287,9 +307,9 @@ public sealed class FileSyncService
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
 
-    public async Task DeleteAsync(string clientId, string relativePath, CancellationToken ct = default)
+    private async Task DeleteCoreAsync(string clientId, string relativePath, CancellationToken ct = default)
     {
-        await EnsureCanSyncAsync(clientId, ct);
+        await EnsureCanSyncAsync(clientId, relativePath, deleting: true, ct);
         var path = ResolvePath(clientId, relativePath);
         if (!File.Exists(path)) return;
         await ArchiveAsync(clientId, relativePath, path, await HashFileAsync(path, ct), "Перед удалением", ct);
@@ -307,9 +327,10 @@ public sealed class FileSyncService
     public async Task<IReadOnlyList<SyncedFileInfo>> ListFilesAsync(string clientId, CancellationToken ct = default)
     {
         var clientRoot = GetStorageRoot(clientId);
+        EnsureNoReparsePoints(clientRoot);
         if (!Directory.Exists(clientRoot)) return [];
         var result = new List<SyncedFileInfo>();
-        foreach (var path in Directory.EnumerateFiles(clientRoot, "*", SearchOption.AllDirectories))
+        foreach (var path in EnumerateProjectFiles(clientRoot))
         {
             ct.ThrowIfCancellationRequested();
             var relative = Path.GetRelativePath(clientRoot, path).Replace('\\', '/');
@@ -327,7 +348,10 @@ public sealed class FileSyncService
         return versions.OrderByDescending(x => x.CreatedAt).Select(x => new FileVersionInfo(x.Id.ToString("N"), x.RelativePath, x.Size, x.Sha256, x.CreatedAt, x.Label)).ToList();
     }
 
-    public async Task<SyncedFileInfo> RestoreVersionAsync(RestoreVersionRequest request, CancellationToken ct = default)
+    public Task<SyncedFileInfo> RestoreVersionAsync(RestoreVersionRequest request, CancellationToken ct = default) =>
+        WithProjectGateAsync(request.ClientId, () => RestoreVersionCoreAsync(request, ct), ct);
+
+    private async Task<SyncedFileInfo> RestoreVersionCoreAsync(RestoreVersionRequest request, CancellationToken ct)
     {
         ValidateRelativePath(request.Path);
         if (!Guid.TryParse(request.VersionId, out var versionId)) throw new LessonValidationException(["Некорректный ID версии."]);
@@ -335,11 +359,13 @@ public sealed class FileSyncService
         var version = await db.SyncedFileVersions.SingleOrDefaultAsync(x => x.Id == versionId && x.ClientId == request.ClientId && x.RelativePath == Normalize(request.Path), ct)
             ?? throw new KeyNotFoundException("Версия не найдена.");
         if (!File.Exists(version.StoragePath)) throw new KeyNotFoundException("Файл версии отсутствует.");
+        EnsureNoReparsePoints(version.StoragePath);
         var destination = ResolvePath(request.ClientId, request.Path);
+        await InvalidateProjectApprovalsAsync(request.ClientId, ct);
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
         if (File.Exists(destination)) await ArchiveAsync(request.ClientId, request.Path, destination, await HashFileAsync(destination, ct), "Перед восстановлением", ct);
         File.Copy(version.StoragePath, destination, true);
-        await SetRestoreIntentsAsync(request.ClientId, [(Normalize(request.Path), false)], ct);
+        await SetProjectRestoreIntentsAsync(request.ClientId, [(Normalize(request.Path), false)], ct);
         return ToFileInfo(request.Path, destination, version.Sha256);
     }
 
@@ -357,7 +383,11 @@ public sealed class FileSyncService
     public async Task<ProjectSnapshotInfo?> CaptureProjectSnapshotAsync(string clientId, string label = "Автосохранение", CancellationToken ct = default)
     {
         var rootPath = GetStorageRoot(clientId);
+        EnsureNoReparsePoints(Path.Combine(rootPath, ".history"));
+        EnsureNoReparsePoints(Path.Combine(rootPath, ".history", "git"));
+        EnsureNoReparsePoints(Path.Combine(rootPath, ".history", "git-branch.txt"));
         var files = await ListFilesAsync(clientId, ct);
+        await Task.Run(() => new ProjectGitStore(rootPath).Capture(label), ct);
         var entries = files.Select(x => new ProjectEntry(x.Path, x.Sha256, x.Size)).ToList();
         var manifest = JsonSerializer.Serialize(entries, PlanJson);
         await using var db = new ClassroomDbContext(options);
@@ -368,10 +398,12 @@ public sealed class FileSyncService
         if (latest?.ManifestJson == manifest) return null;
 
         var objects = Path.Combine(rootPath, ".history", "objects");
+        EnsureNoReparsePoints(objects);
         Directory.CreateDirectory(objects);
         foreach (var entry in entries)
         {
             var destination = Path.Combine(objects, entry.Sha256 + ".bin");
+            EnsureNoReparsePoints(destination);
             if (!File.Exists(destination)) File.Copy(ResolvePath(clientId, entry.Path), destination);
         }
         var snapshot = new SyncedProjectSnapshot
@@ -388,7 +420,10 @@ public sealed class FileSyncService
         return new ProjectSnapshotInfo(snapshot.Id.ToString("N"), snapshot.CreatedAt, snapshot.Label, snapshot.FileCount, snapshot.TotalBytes);
     }
 
-    public async Task<ProjectSnapshotInfo?> RestoreProjectSnapshotAsync(RestoreProjectSnapshotRequest request, CancellationToken ct = default)
+    public Task<ProjectSnapshotInfo?> RestoreProjectSnapshotAsync(RestoreProjectSnapshotRequest request, CancellationToken ct = default) =>
+        WithProjectGateAsync(request.ClientId, () => RestoreProjectSnapshotCoreAsync(request, ct), ct);
+
+    private async Task<ProjectSnapshotInfo?> RestoreProjectSnapshotCoreAsync(RestoreProjectSnapshotRequest request, CancellationToken ct)
     {
         if (!Guid.TryParse(request.SnapshotId, out var id)) throw new LessonValidationException(["Некорректный ID контрольной точки."]);
         var rootPath = GetStorageRoot(request.ClientId);
@@ -402,13 +437,17 @@ public sealed class FileSyncService
         foreach (var entry in entries)
         {
             ValidateRelativePath(entry.Path);
+            ResolvePath(request.ClientId, entry.Path);
             if (!desired.Add(entry.Path) || entry.Sha256.Length != 64 || !entry.Sha256.All(Uri.IsHexDigit))
                 throw new InvalidDataException("Некорректный манифест контрольной точки.");
-            if (!File.Exists(Path.Combine(rootPath, ".history", "objects", entry.Sha256 + ".bin")))
+            var source = Path.Combine(rootPath, ".history", "objects", entry.Sha256 + ".bin");
+            EnsureNoReparsePoints(source);
+            if (!File.Exists(source))
                 throw new FileNotFoundException("Объект контрольной точки отсутствует.", entry.Path);
         }
         var current = await ListFilesAsync(request.ClientId, ct);
         await CaptureProjectSnapshotAsync(request.ClientId, "Перед восстановлением", ct);
+        await InvalidateProjectApprovalsAsync(request.ClientId, ct);
         foreach (var entry in entries)
         {
             var destination = ResolvePath(request.ClientId, entry.Path);
@@ -417,7 +456,7 @@ public sealed class FileSyncService
         }
         var removed = current.Where(x => !desired.Contains(x.Path)).Select(x => x.Path).ToList();
         foreach (var path in removed) File.Delete(ResolvePath(request.ClientId, path));
-        await SetRestoreIntentsAsync(request.ClientId,
+        await SetProjectRestoreIntentsAsync(request.ClientId,
             entries.Select(x => (x.Path, false)).Concat(removed.Select(x => (x, true))), ct);
         return await CaptureProjectSnapshotAsync(request.ClientId, $"Восстановлено: {snapshot.Label}", ct);
     }
@@ -437,6 +476,7 @@ public sealed class FileSyncService
                 .Concat(intents.Where(x => !x.DeleteLocal).Select(x => x.RelativePath))
                 .Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
             Conflicts = plan.Conflicts.Where(x => !paths.Contains(x)).ToList(),
+            Changes = plan.Changes.Where(x => !paths.Contains(Normalize(x.Path))).ToList(),
             DeleteLocal = intents.Where(x => x.DeleteLocal).Select(x => x.RelativePath).ToList(),
             RestoreFromServer = true
         };
@@ -461,8 +501,36 @@ public sealed class FileSyncService
         await db.SaveChangesAsync(ct);
     }
 
-    private async Task EnsureCanSyncAsync(string clientId, CancellationToken ct)
+    private string[] ProjectClientIds(string clientId)
     {
+        var projectRoot = GetStorageRoot(clientId);
+        return clientStudents.Keys.Where(id => string.Equals(GetStorageRoot(id), projectRoot, StringComparison.OrdinalIgnoreCase))
+            .Append(clientId).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    private async Task InvalidateProjectApprovalsAsync(string clientId, CancellationToken ct)
+    {
+        var related = ProjectClientIds(clientId);
+        await using var db = new ClassroomDbContext(options);
+        var approvals = await db.SyncApprovals.Where(x => related.Contains(x.ClientId) && x.Status != SyncApprovalStatus.Completed).ToListAsync(ct);
+        foreach (var approval in approvals)
+        {
+            approval.Status = SyncApprovalStatus.Completed;
+            approval.CompletedAt = DateTimeOffset.UtcNow;
+        }
+        await db.SaveChangesAsync(ct);
+    }
+
+    private async Task SetProjectRestoreIntentsAsync(string clientId, IEnumerable<(string Path, bool DeleteLocal)> changes, CancellationToken ct)
+    {
+        var materialized = changes.ToArray();
+        foreach (var related in ProjectClientIds(clientId))
+            await SetRestoreIntentsAsync(related, materialized, ct);
+    }
+
+    private async Task EnsureCanSyncAsync(string clientId, string relativePath, bool deleting, CancellationToken ct)
+    {
+        ValidateRelativePath(relativePath);
         await using var db = new ClassroomDbContext(options);
         var approvals = await db.SyncApprovals.AsNoTracking().Where(x => x.ClientId == clientId).ToListAsync(ct);
         var latest = approvals.OrderByDescending(x => x.CreatedAt).FirstOrDefault();
@@ -470,11 +538,19 @@ public sealed class FileSyncService
         if (latest.Status == SyncApprovalStatus.Pending) throw new InvalidOperationException("Ожидается решение тьютора.");
         if (latest.Status == SyncApprovalStatus.Rejected) throw new InvalidOperationException("Синхронизация отклонена тьютором.");
         if (latest.Status == SyncApprovalStatus.Completed) throw new InvalidOperationException("Синхронизация уже завершена.");
+        if (latest.Status == SyncApprovalStatus.Restore) throw new InvalidOperationException("Восстановление не разрешает изменение файлов учеником.");
+        var path = Normalize(relativePath);
+        var plan = ReadPlan(latest.ChangesJson);
+        var allowed = deleting
+            ? latest.Status == SyncApprovalStatus.Approved && plan.Changes.Any(x => x.Kind == SyncChangeKind.Deleted && string.Equals(Normalize(x.Path), path, StringComparison.OrdinalIgnoreCase))
+            : plan.Upload.Contains(path, StringComparer.OrdinalIgnoreCase);
+        if (!allowed) throw new InvalidOperationException("Операция с файлом не разрешена планом синхронизации.");
     }
 
     private async Task ArchiveAsync(string clientId, string relativePath, string source, string hash, string label, CancellationToken ct)
     {
         var historyRoot = Path.Combine(GetStorageRoot(clientId), ".history", Convert.ToHexString(SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(Normalize(relativePath)))).ToLowerInvariant());
+        EnsureNoReparsePoints(historyRoot);
         Directory.CreateDirectory(historyRoot);
         var version = new SyncedFileVersion { ClientId = clientId, RelativePath = Normalize(relativePath), Sha256 = hash, Size = new FileInfo(source).Length, Label = label, StoragePath = Path.Combine(historyRoot, $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}.bin") };
         File.Copy(source, version.StoragePath, false);
@@ -484,6 +560,7 @@ public sealed class FileSyncService
         var all = await db.SyncedFileVersions.Where(x => x.ClientId == clientId && x.RelativePath == version.RelativePath).ToListAsync(ct);
         foreach (var stale in all.OrderByDescending(x => x.CreatedAt).Skip(30))
         {
+            EnsureNoReparsePoints(stale.StoragePath);
             if (File.Exists(stale.StoragePath)) File.Delete(stale.StoragePath);
             db.SyncedFileVersions.Remove(stale);
         }
@@ -504,7 +581,44 @@ public sealed class FileSyncService
         var full = Path.GetFullPath(Path.Combine(clientRoot, Normalize(relativePath).Replace('/', Path.DirectorySeparatorChar)));
         var prefix = clientRoot.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
         if (!full.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) throw new LessonValidationException(["Путь выходит за рабочую папку ученика."]);
+        EnsureNoReparsePoints(full);
         return full;
+    }
+
+    private static void EnsureNoReparsePoints(string path)
+    {
+        for (string? current = Path.GetFullPath(path); current is not null; current = Path.GetDirectoryName(current))
+        {
+            try
+            {
+                if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+                    throw new LessonValidationException(["Ссылки в рабочей папке не поддерживаются."]);
+            }
+            catch (FileNotFoundException) { }
+            catch (DirectoryNotFoundException) { }
+        }
+    }
+
+    private static IEnumerable<string> EnumerateProjectFiles(string projectRoot)
+    {
+        EnsureNoReparsePoints(projectRoot);
+        var pending = new Stack<string>();
+        pending.Push(projectRoot);
+        while (pending.Count > 0)
+        {
+            var directory = pending.Pop();
+            EnsureNoReparsePoints(directory);
+            foreach (var child in Directory.EnumerateDirectories(directory))
+            {
+                EnsureNoReparsePoints(child);
+                if (!ExcludedDirectories.Contains(Path.GetFileName(child))) pending.Push(child);
+            }
+            foreach (var file in Directory.EnumerateFiles(directory))
+            {
+                EnsureNoReparsePoints(file);
+                if (!ExcludedFiles.Contains(Path.GetFileName(file))) yield return file;
+            }
+        }
     }
 
     private string GetStorageRoot(string clientId)
@@ -523,6 +637,7 @@ public sealed class FileSyncService
     public string GetClientFolderPath(string clientId)
     {
         var path = GetStorageRoot(clientId);
+        EnsureNoReparsePoints(path);
         Directory.CreateDirectory(path);
         return path;
     }
@@ -530,6 +645,7 @@ public sealed class FileSyncService
     public string EnsureGroupFolder(string groupName)
     {
         var path = Path.Combine(rosterRoot, SanitizeFolderName(groupName));
+        EnsureNoReparsePoints(path);
         Directory.CreateDirectory(path);
         return path;
     }
@@ -538,6 +654,7 @@ public sealed class FileSyncService
     {
         var studentName = $"{lastName} {firstName}".Trim();
         var path = Path.Combine(EnsureGroupFolder(groupName), SanitizeFolderName(studentName));
+        EnsureNoReparsePoints(path);
         Directory.CreateDirectory(path);
         return path;
     }
@@ -545,6 +662,7 @@ public sealed class FileSyncService
     public string EnsureStudentModuleFolder(string groupName, string lastName, string firstName, string module)
     {
         var path = Path.Combine(EnsureStudentFolder(groupName, lastName, firstName), SanitizeFolderName(string.IsNullOrWhiteSpace(module) ? "модуль" : module));
+        EnsureNoReparsePoints(path);
         Directory.CreateDirectory(path);
         return path;
     }
@@ -646,11 +764,11 @@ public sealed class FileSyncService
         if (string.IsNullOrWhiteSpace(path) || IsAbsoluteSyncPath(path)) throw new LessonValidationException(["Требуется относительный путь."]);
         var normalized = Normalize(path);
         var parts = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length == 0 || parts.Any(x => x is "." or "..") || parts.Any(ExcludedDirectories.Contains) || ExcludedFiles.Contains(parts[^1]))
+        if (parts.Length == 0 || parts.Any(x => x is "." or ".." || x.Contains(':') || x.EndsWith('.') || x.EndsWith(' ')) || parts.Any(ExcludedDirectories.Contains) || ExcludedFiles.Contains(parts[^1]))
             throw new LessonValidationException(["Путь запрещён для синхронизации."]);
     }
 
-    private static string Normalize(string path) => path.Replace('\\', '/').Trim('/');
+    private static string Normalize(string path) => string.Join("/", path.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries));
 
     private static bool IsAbsoluteSyncPath(string path)
     {
